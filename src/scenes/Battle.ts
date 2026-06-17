@@ -82,6 +82,10 @@ export default class Battle extends Phaser.Scene {
   private throwButton?: Phaser.GameObjects.Text;
   private targetingPointerHandler?: (pointer: Phaser.Input.Pointer) => void;
 
+  // Move tooltip
+  private tooltipBg?: Phaser.GameObjects.Rectangle;
+  private tooltipText?: Phaser.GameObjects.Text;
+
   constructor() {
     super("Battle");
   }
@@ -103,6 +107,9 @@ export default class Battle extends Phaser.Scene {
     this.targetingActive = false;
     this.targetingBallType = undefined;
     this.targetingElements = [];
+    // Reset tooltip
+    this.tooltipBg = undefined;
+    this.tooltipText = undefined;
   }
 
   create(data: BattleData): void {
@@ -347,6 +354,36 @@ export default class Battle extends Phaser.Scene {
     const rowY = [this.scale.height - 210, this.scale.height - 130];
     const btnWidth = this.scale.width * 0.46;
 
+    // Type colors for tooltip badge
+    const TYPE_COLORS: Record<string, number> = {
+      fire: 0xff6030, water: 0x6890f0, grass: 0x78c850, electric: 0xf8d030,
+      psychic: 0xf85888, ice: 0x98d8d8, dragon: 0x7038f8, dark: 0x705848,
+      normal: 0xa8a878, fighting: 0xc03028, poison: 0xa040a0, ground: 0xe0c068,
+      flying: 0xa890f0, bug: 0xa8b820, rock: 0xb8a038, ghost: 0x705898,
+      steel: 0xb8b8d0, fairy: 0xee99ac
+    };
+
+    // Create shared tooltip objects (hidden initially)
+    if (!this.tooltipBg) {
+      this.tooltipBg = this.add.rectangle(0, 0, 200, 80, 0x1e293b, 0.95)
+        .setStrokeStyle(2, 0xfbbf24)
+        .setScrollFactor(0)
+        .setDepth(850)
+        .setVisible(false);
+    }
+    if (!this.tooltipText) {
+      this.tooltipText = this.add.text(0, 0, "", {
+        fontFamily: "monospace",
+        fontSize: "12px",
+        color: "#f8fafc",
+        align: "center"
+      })
+        .setScrollFactor(0)
+        .setDepth(851)
+        .setOrigin(0.5)
+        .setVisible(false);
+    }
+
     moveIds.forEach((moveId, index) => {
       const move = MOVES[moveId];
       const label = move ? `${move.name}\n${move.type.toUpperCase()}` : moveId;
@@ -364,6 +401,31 @@ export default class Battle extends Phaser.Scene {
       text.setOrigin(0.5).setDepth(100);
       text.setInteractive({ useHandCursor: true });
       text.on("pointerdown", () => this.handleFight(moveId));
+
+      // Tooltip on hover
+      text.on("pointerover", () => {
+        if (!move || !this.tooltipBg || !this.tooltipText) return;
+        const typeColor = TYPE_COLORS[move.type] || 0xa8a878;
+        const typeHex = `#${typeColor.toString(16).padStart(6, "0")}`;
+        const catIcon = move.category === "physical" ? "⚔️ Physical" :
+                        move.category === "special" ? "✨ Special" : "💤 Status";
+        const pwrStr = move.power > 0 ? `Power: ${move.power}` : "Power: —";
+        const accStr = move.accuracy < 1 ? `Acc: ${Math.round(move.accuracy * 100)}%` : "Acc: 100%";
+        const tooltipContent = `[${move.type.toUpperCase()}]\n${pwrStr} | ${accStr}\n${catIcon}`;
+        this.tooltipText.setText(tooltipContent);
+        this.tooltipText.setColor(typeHex);
+
+        // Position tooltip above the button
+        const tx = x;
+        const ty = y - 60;
+        this.tooltipBg.setPosition(tx, ty).setSize(220, 72).setVisible(true);
+        this.tooltipText.setPosition(tx, ty).setVisible(true);
+      });
+      text.on("pointerout", () => {
+        this.tooltipBg?.setVisible(false);
+        this.tooltipText?.setVisible(false);
+      });
+
       this.moveMenuItems.push(text);
     });
 
@@ -387,6 +449,8 @@ export default class Battle extends Phaser.Scene {
     this.moveMenuOpen = false;
     this.moveMenuItems.forEach((item) => item.destroy());
     this.moveMenuItems = [];
+    this.tooltipBg?.setVisible(false);
+    this.tooltipText?.setVisible(false);
     this.rootMenuItems.forEach((item) => item.setVisible(true));
   }
 
@@ -644,6 +708,18 @@ export default class Battle extends Phaser.Scene {
       this.busy = false;
       return;
     }
+
+    // Award prize money on final victory
+    let prizeMoneyEarned = 0;
+    if (this.isTrainerBattle) {
+      const avgLevel = this.enemyTeam.reduce((sum, m) => sum + m.level, 0) / Math.max(1, this.enemyTeam.length);
+      prizeMoneyEarned = Math.max(1, Math.floor(avgLevel * 20));
+    } else {
+      prizeMoneyEarned = Math.max(1, Math.floor(this.enemyMon.level * 5));
+    }
+    gameState.money = (gameState.money ?? 0) + prizeMoneyEarned;
+    this.setMessage(`You won! Earned ₽${prizeMoneyEarned}`);
+    await this.wait(800);
 
     this.endBattle("victory");
   }
@@ -1033,6 +1109,40 @@ export default class Battle extends Phaser.Scene {
 
     if (result.effectivenessText) {
       this.setMessage(result.effectivenessText);
+      // Type matchup colour flash
+      if (result.effectiveness !== 1) {
+        let flashColor: number;
+        let flashAlpha: number;
+        if (result.effectiveness === 0) {
+          flashColor = 0x888888;
+          flashAlpha = 0.25;
+        } else if (result.effectiveness > 1) {
+          flashColor = 0x00ff88;
+          flashAlpha = 0.25;
+        } else {
+          flashColor = 0xff3300;
+          flashAlpha = 0.20;
+        }
+        const flash = this.add.rectangle(0, 0, this.scale.width, this.scale.height, flashColor, 0)
+          .setOrigin(0)
+          .setScrollFactor(0)
+          .setDepth(800);
+        this.tweens.add({
+          targets: flash,
+          alpha: flashAlpha,
+          duration: 100,
+          yoyo: true,
+          hold: 0,
+          onComplete: () => {
+            this.tweens.add({
+              targets: flash,
+              alpha: 0,
+              duration: 200,
+              onComplete: () => flash.destroy()
+            });
+          }
+        });
+      }
       await this.wait(450);
     }
 

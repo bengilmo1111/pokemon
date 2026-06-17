@@ -90,6 +90,10 @@ export default class Overworld extends Phaser.Scene {
   private walkTime = 0;
   private playerBaseScale = 1;
   private vignette?: Phaser.GameObjects.Graphics;
+  private martOpen = false;
+  private martOverlay?: Phaser.GameObjects.Rectangle;
+  private martElements: Phaser.GameObjects.GameObject[] = [];
+  private tutorialElements: Phaser.GameObjects.GameObject[] = [];
 
   constructor() {
     super("Overworld");
@@ -202,7 +206,12 @@ export default class Overworld extends Phaser.Scene {
     // restore them when it resumes.
     this.events.on(Phaser.Scenes.Events.PAUSE, () => this.touch?.setVisible(false));
     this.events.on(Phaser.Scenes.Events.RESUME, () => {
-      if (!this.starterOpen && !this.isPaused) this.touch?.setVisible(true);
+      if (!this.starterOpen && !this.isPaused) {
+        this.touch?.setVisible(true);
+        // Auto-save after battle ends
+        saveGame();
+        this.showNotification("💾 Auto-saved", 1200);
+      }
     });
 
     this.input.keyboard!.on("keydown-M", () => {
@@ -271,6 +280,10 @@ export default class Overworld extends Phaser.Scene {
 
     if (gameState.team.length === 0) {
       this.openStarterSelect();
+    }
+
+    if (!gameState.tutorialSeen) {
+      this.showTutorial();
     }
   }
 
@@ -999,6 +1012,9 @@ export default class Overworld extends Phaser.Scene {
       gameState.portalTargetX = portal.targetX;
       gameState.portalTargetY = portal.targetY;
       gameState.regionIndex = portal.targetRegionIndex;
+
+      // Auto-save on portal transition
+      saveGame();
 
       // Restart scene to load new region
       this.scene.restart();
@@ -1942,12 +1958,23 @@ export default class Overworld extends Phaser.Scene {
       }
     }
 
+    let martHint = "";
     for (const town of region.towns) {
       const distance = Phaser.Math.Distance.Between(playerX, playerY, town.x * WORLD_SCALE, town.y * WORLD_SCALE);
       if (distance < 70) {
         locationLabel = town.name;
         if (town.services.includes("center")) {
           healHint = "[H] Pokemon Center";
+        }
+        if (town.services.includes("mart") && distance < 50) {
+          martHint = "[E/A] Poke Mart";
+          if ((this.keyE && this.input.keyboard?.checkDown(this.keyE, 250)) || this.interactPressed) {
+            // Don't consume interact if gym is also nearby (gym takes priority)
+            if (!gymHint) {
+              this.interactPressed = false;
+              if (!this.martOpen) this.openMart();
+            }
+          }
         }
         break;
       }
@@ -2013,12 +2040,13 @@ export default class Overworld extends Phaser.Scene {
     const hudLines = [
       `Location: ${locationLabel}`,
       gymLabel,
-      `Badges: ${gameState.badges.length}/3  |  Pokedex: ${pokedexCount.caught}`,
+      `Badges: ${gameState.badges.length}/3  |  Pokedex: ${pokedexCount.caught}  |  ₽${gameState.money ?? 500}`,
       `Goal: ${objective}`,
       xpBoostLabel,
       "",
       powerSpotHint,
       healHint,
+      martHint,
       gymHint,
       leagueHint,
       `[P] Potion (${gameState.inventory.potion}) | [R] Revive (${gameState.inventory.revive})`,
@@ -2676,6 +2704,204 @@ export default class Overworld extends Phaser.Scene {
     if (this.starterOverlay) this.starterOverlay.destroy();
     this.starterText.forEach((item) => item.destroy());
     this.starterText = [];
+  }
+
+  private openMart(): void {
+    if (this.martOpen || this.teamOpen || this.mapOpen || this.pokedexOpen || this.isPaused) return;
+    this.martOpen = true;
+    this.touch?.setVisible(false);
+    const centerX = this.scale.width / 2;
+    const centerY = this.scale.height / 2;
+    const cardW = 420;
+    const cardH = 380;
+
+    this.martOverlay = this.add.rectangle(centerX, centerY, cardW, cardH, 0x0f172a, 0.95);
+    this.martOverlay.setScrollFactor(0).setDepth(950).setStrokeStyle(2, 0xfbbf24);
+    this.martElements = [];
+
+    // Title
+    const title = this.add.text(centerX, centerY - cardH / 2 + 24, "🛒 Poke Mart", {
+      fontFamily: "monospace",
+      fontSize: "22px",
+      color: "#fbbf24",
+      fontStyle: "bold"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(951);
+    this.martElements.push(title);
+
+    // Money display
+    const moneyText = this.add.text(centerX, centerY - cardH / 2 + 52, `Your money: ₽${gameState.money ?? 0}`, {
+      fontFamily: "monospace",
+      fontSize: "14px",
+      color: "#4ade80"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(951);
+    this.martElements.push(moneyText);
+
+    const items: Array<{ name: string; key: keyof typeof gameState.inventory; price: number }> = [
+      { name: "Poke Ball",    key: "pokeball",    price: 100 },
+      { name: "Great Ball",   key: "greatball",   price: 300 },
+      { name: "Ultra Ball",   key: "ultraball",   price: 600 },
+      { name: "Potion",       key: "potion",      price: 80  },
+      { name: "Super Potion", key: "superpotion", price: 200 },
+      { name: "Revive",       key: "revive",      price: 500 }
+    ];
+
+    const startY = centerY - cardH / 2 + 90;
+    const rowH = 42;
+
+    items.forEach((item, i) => {
+      const rowY = startY + i * rowH;
+
+      // Item label
+      const label = this.add.text(centerX - 160, rowY, `${item.name}  ₽${item.price}`, {
+        fontFamily: "monospace",
+        fontSize: "14px",
+        color: "#e2e8f0"
+      }).setScrollFactor(0).setDepth(951);
+      this.martElements.push(label);
+
+      // Buy button
+      const buyBtn = this.add.text(centerX + 130, rowY, "[Buy]", {
+        fontFamily: "monospace",
+        fontSize: "14px",
+        color: "#0f172a",
+        backgroundColor: "#fbbf24",
+        padding: { left: 8, right: 8, top: 3, bottom: 3 }
+      }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(951).setInteractive({ useHandCursor: true });
+
+      buyBtn.on("pointerover", () => buyBtn.setStyle({ backgroundColor: "#f59e0b" }));
+      buyBtn.on("pointerout", () => buyBtn.setStyle({ backgroundColor: "#fbbf24" }));
+      buyBtn.on("pointerdown", () => {
+        const currentMoney = gameState.money ?? 0;
+        if (currentMoney < item.price) {
+          this.showNotification("Not enough money!", 1500);
+          return;
+        }
+        gameState.money = currentMoney - item.price;
+        gameState.inventory[item.key] = (gameState.inventory[item.key] ?? 0) + 1;
+        Sound.playMenuSelect();
+        moneyText.setText(`Your money: ₽${gameState.money}`);
+        this.showNotification(`Bought ${item.name}!`, 1200);
+      });
+      this.martElements.push(buyBtn);
+    });
+
+    // Close button
+    const closeBtn = this.add.text(centerX, centerY + cardH / 2 - 24, "[Close]", {
+      fontFamily: "monospace",
+      fontSize: "16px",
+      color: "#f8fafc",
+      backgroundColor: "#374151",
+      padding: { left: 16, right: 16, top: 8, bottom: 8 }
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(951).setInteractive({ useHandCursor: true });
+    closeBtn.on("pointerdown", () => this.closeMart());
+    this.martElements.push(closeBtn);
+  }
+
+  private closeMart(): void {
+    this.martOpen = false;
+    this.touch?.setVisible(true);
+    if (this.martOverlay) {
+      this.martOverlay.destroy();
+      this.martOverlay = undefined;
+    }
+    this.martElements.forEach(el => (el as Phaser.GameObjects.GameObject).destroy());
+    this.martElements = [];
+  }
+
+  private showTutorial(): void {
+    const tips = [
+      {
+        title: "🕹️ Move around",
+        desc: "Use arrow keys or the on-screen joystick\nto explore the world."
+      },
+      {
+        title: "⚔️ Battle Pokémon",
+        desc: "Walk into wild Pokémon to fight them.\nFind trainers and talk to them for a challenge!"
+      },
+      {
+        title: "🎯 Catch Pokémon",
+        desc: "In battle, choose 'Bag → Pokéball' then\naim your throw at the moving target ring."
+      },
+      {
+        title: "🏆 Your Goal",
+        desc: "Defeat the 3 Gym Leaders then challenge\nthe Elite Four at the League Entrance!"
+      }
+    ];
+
+    let tipIndex = 0;
+    const centerX = this.scale.width / 2;
+    const centerY = this.scale.height / 2;
+    const cardW = 400;
+    const cardH = 280;
+
+    // Dark overlay
+    const overlay = this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x000000, 0.82)
+      .setScrollFactor(0).setDepth(1000).setInteractive();
+    this.tutorialElements.push(overlay);
+
+    // Card background
+    const card = this.add.rectangle(centerX, centerY, cardW, cardH, 0x1e293b, 1)
+      .setScrollFactor(0).setDepth(1001).setStrokeStyle(2, 0xfbbf24);
+    this.tutorialElements.push(card);
+
+    // Title text
+    const titleText = this.add.text(centerX, centerY - 90, tips[0].title, {
+      fontFamily: "monospace",
+      fontSize: "24px",
+      color: "#fbbf24",
+      fontStyle: "bold",
+      align: "center"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1002);
+    this.tutorialElements.push(titleText);
+
+    // Description text
+    const descText = this.add.text(centerX, centerY - 10, tips[0].desc, {
+      fontFamily: "monospace",
+      fontSize: "15px",
+      color: "#e2e8f0",
+      align: "center",
+      lineSpacing: 6
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1002);
+    this.tutorialElements.push(descText);
+
+    // Progress indicator
+    const progressText = this.add.text(centerX, centerY + 70, "1 / 4", {
+      fontFamily: "monospace",
+      fontSize: "13px",
+      color: "#94a3b8"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1002);
+    this.tutorialElements.push(progressText);
+
+    // Next button
+    const nextBtn = this.add.text(centerX + 120, centerY + 100, "Next →", {
+      fontFamily: "monospace",
+      fontSize: "18px",
+      color: "#0f172a",
+      backgroundColor: "#fbbf24",
+      fontStyle: "bold",
+      padding: { left: 16, right: 16, top: 8, bottom: 8 }
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1002).setInteractive({ useHandCursor: true });
+    this.tutorialElements.push(nextBtn);
+
+    nextBtn.on("pointerover", () => nextBtn.setStyle({ backgroundColor: "#f59e0b" }));
+    nextBtn.on("pointerout", () => nextBtn.setStyle({ backgroundColor: "#fbbf24" }));
+    nextBtn.on("pointerdown", () => {
+      tipIndex++;
+      if (tipIndex >= tips.length) {
+        // Close tutorial
+        gameState.tutorialSeen = true;
+        this.tutorialElements.forEach(el => (el as Phaser.GameObjects.GameObject).destroy());
+        this.tutorialElements = [];
+        return;
+      }
+      const tip = tips[tipIndex];
+      titleText.setText(tip.title);
+      descText.setText(tip.desc);
+      progressText.setText(`${tipIndex + 1} / ${tips.length}`);
+      if (tipIndex === tips.length - 1) {
+        nextBtn.setText("Got it!");
+      }
+    });
   }
 
   private findTownOrLandmark(region: RegionData, id: string): TownData | LandmarkData | null {

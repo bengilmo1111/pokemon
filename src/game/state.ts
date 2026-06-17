@@ -101,6 +101,8 @@ export interface GameState {
   xpMultiplier: number;  // For power spot XP boosts
   portalTargetX?: number;  // Target X position after portal transition
   portalTargetY?: number;  // Target Y position after portal transition
+  tutorialSeen: boolean;  // Whether the tutorial overlay has been shown
+  money: number;  // Player's current money (Pokedollars)
 }
 
 export const WORLD_SCALE = 32;
@@ -273,7 +275,9 @@ export function createInitialState(): GameState {
     playerStarter: "",
     eliteFourDefeated: false,
     isChampion: false,
-    xpMultiplier: 1
+    xpMultiplier: 1,
+    tutorialSeen: false,
+    money: 500
   };
 }
 
