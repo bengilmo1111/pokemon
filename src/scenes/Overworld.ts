@@ -39,6 +39,8 @@ export default class Overworld extends Phaser.Scene {
   private routeGraphics!: Phaser.GameObjects.Graphics;
   private poiGraphics!: Phaser.GameObjects.Graphics;
   private propGraphics!: Phaser.GameObjects.Graphics;
+  private oceanGraphics!: Phaser.GameObjects.Graphics;
+  private worldBounds = { x: 0, y: 0, width: 0, height: 0 };
   private propBodies!: Phaser.Physics.Arcade.StaticGroup;
   private hudText!: Phaser.GameObjects.Text;
   private mapContainer?: Phaser.GameObjects.Container;
@@ -96,15 +98,19 @@ export default class Overworld extends Phaser.Scene {
   create(): void {
     const region = getRegion(gameState);
     const bounds = this.getWorldBounds(region);
+    this.worldBounds = bounds;
 
     this.physics.world.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
     this.cameras.main.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
 
+    this.oceanGraphics = this.add.graphics();
+    this.oceanGraphics.setDepth(-200);
     this.zoneGraphics = this.add.graphics();
     this.routeGraphics = this.add.graphics();
     this.poiGraphics = this.add.graphics();
     this.propGraphics = this.add.graphics();
     this.propBodies = this.physics.add.staticGroup();
+    this.drawOceanBackground(region);
     this.drawZones(region);
     this.drawRoutes(region);
     this.drawPointsOfInterest(region);
@@ -1130,6 +1136,99 @@ export default class Overworld extends Phaser.Scene {
     this.encounterCooldown = 5000;
   }
 
+  private drawZoneShape(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, shape: string, rotation: number): void {
+    switch (shape) {
+      case "ellipse": {
+        g.save();
+        g.translateCanvas(x, y);
+        g.rotateCanvas(rotation);
+        g.fillEllipse(0, 0, r * 1.4, r * 0.8);
+        g.restore();
+        break;
+      }
+      case "blob": {
+        const seed = x * 1000 + y;
+        const mainRx = r * (0.9 + 0.2 * Math.sin(seed));
+        const mainRy = r * (0.9 + 0.2 * Math.cos(seed));
+        g.fillEllipse(x, y, mainRx * 2, mainRy * 2);
+        for (let i = 0; i < 5; i++) {
+          const angle = (i / 5) * Math.PI * 2 + seed * 0.1;
+          const dist = r * 0.6;
+          const bumpX = x + Math.cos(angle) * dist;
+          const bumpY = y + Math.sin(angle) * dist;
+          const bumpR = r * (0.4 + 0.15 * Math.sin(seed + i * 2));
+          g.fillEllipse(bumpX, bumpY, bumpR * 2, bumpR * 1.6);
+        }
+        break;
+      }
+      case "rounded": {
+        const width = r * 1.6;
+        const height = r * 1.2;
+        g.fillRoundedRect(x - width, y - height, width * 2, height * 2, r * 0.4);
+        break;
+      }
+      default:
+        g.fillCircle(x, y, r);
+    }
+  }
+
+  private drawOceanBackground(region: RegionData): void {
+    this.oceanGraphics.clear();
+    const bounds = this.worldBounds;
+    const pad = 500;
+    const ox = bounds.x - pad;
+    const oy = bounds.y - pad;
+    const ow = bounds.width + pad * 2;
+    const oh = bounds.height + pad * 2;
+
+    // Deep ocean base
+    this.oceanGraphics.fillStyle(0x0a2540, 1);
+    this.oceanGraphics.fillRect(ox, oy, ow, oh);
+
+    // Mid-depth ocean variation — scattered ellipses using deterministic pseudo-random
+    this.oceanGraphics.fillStyle(0x1a4a7a, 0.35);
+    for (let i = 0; i < 30; i++) {
+      const s = i * 137.508; // golden angle distribution
+      const wx = ox + (Math.sin(s) * 0.5 + 0.5) * ow;
+      const wy = oy + (Math.cos(s * 0.7) * 0.5 + 0.5) * oh;
+      const wr = 100 + Math.sin(s * 1.3) * 60;
+      this.oceanGraphics.fillEllipse(wx, wy, wr * 3, wr);
+    }
+
+    // Surface shimmer highlights
+    this.oceanGraphics.fillStyle(0x2d6fa5, 0.18);
+    for (let i = 0; i < 60; i++) {
+      const s = i * 73.1;
+      const wx = ox + (Math.sin(s * 0.31) * 0.5 + 0.5) * ow;
+      const wy = oy + (Math.cos(s * 0.17) * 0.5 + 0.5) * oh;
+      const wr = 25 + Math.sin(s * 2.1) * 15;
+      this.oceanGraphics.fillEllipse(wx, wy, wr * 2.5, wr * 0.5);
+    }
+
+    // Island base / beach landmass — drawn slightly larger than zones so beach rim shows
+    // Pass 1: outer sandy beach ring (12% larger)
+    this.oceanGraphics.fillStyle(0xd4a853, 1.0);
+    region.zones.forEach((zone) => {
+      const x = zone.x * WORLD_SCALE;
+      const y = zone.y * WORLD_SCALE;
+      const r = zone.r * WORLD_SCALE;
+      const shape = zone.shape || "circle";
+      const rotation = (zone.rotation || 0) * Math.PI / 180;
+      this.drawZoneShape(this.oceanGraphics, x, y, r * 1.12, shape, rotation);
+    });
+
+    // Pass 2: inner beach / shore transition (sandy-green, 4% larger than zone)
+    this.oceanGraphics.fillStyle(0xc8b464, 1.0);
+    region.zones.forEach((zone) => {
+      const x = zone.x * WORLD_SCALE;
+      const y = zone.y * WORLD_SCALE;
+      const r = zone.r * WORLD_SCALE;
+      const shape = zone.shape || "circle";
+      const rotation = (zone.rotation || 0) * Math.PI / 180;
+      this.drawZoneShape(this.oceanGraphics, x, y, r * 1.04, shape, rotation);
+    });
+  }
+
   private drawZones(region: RegionData): void {
     this.zoneGraphics.clear();
     region.zones.forEach((zone) => {
@@ -1139,62 +1238,9 @@ export default class Overworld extends Phaser.Scene {
       const r = zone.r * WORLD_SCALE;
       const shape = zone.shape || "circle";
       const rotation = (zone.rotation || 0) * Math.PI / 180;
-
-      // No outlines - just fill so zones blend together
-      this.zoneGraphics.fillStyle(biome.color, 0.5);
-
-      switch (shape) {
-        case "ellipse": {
-          // Draw rotated ellipse
-          this.zoneGraphics.save();
-          this.zoneGraphics.translateCanvas(x, y);
-          this.zoneGraphics.rotateCanvas(rotation);
-          this.zoneGraphics.fillEllipse(0, 0, r * 1.4, r * 0.8);
-          this.zoneGraphics.restore();
-          break;
-        }
-        case "blob": {
-          // Draw organic blob shape
-          this.drawBlobShape(x, y, r, biome.color);
-          break;
-        }
-        case "rounded": {
-          // Draw rounded rectangle
-          const width = r * 1.6;
-          const height = r * 1.2;
-          this.zoneGraphics.fillRoundedRect(x - width, y - height, width * 2, height * 2, r * 0.4);
-          break;
-        }
-        default: {
-          // Circle (default)
-          this.zoneGraphics.fillCircle(x, y, r);
-        }
-      }
+      this.zoneGraphics.fillStyle(biome.color, 0.92);
+      this.drawZoneShape(this.zoneGraphics, x, y, r, shape, rotation);
     });
-  }
-
-  private drawBlobShape(x: number, y: number, r: number, color: number): void {
-    // Generate a smooth blob with slight irregularities using ellipses
-    const seed = x * 1000 + y; // Consistent seed per location
-
-    // Draw overlapping ellipses to create blob effect - no outlines for seamless blending
-    this.zoneGraphics.fillStyle(color, 0.5);
-
-    // Main body
-    const mainRx = r * (0.9 + 0.2 * Math.sin(seed));
-    const mainRy = r * (0.9 + 0.2 * Math.cos(seed));
-    this.zoneGraphics.fillEllipse(x, y, mainRx * 2, mainRy * 2);
-
-    // Add bumps around the edge for organic shape
-    const numBumps = 5;
-    for (let i = 0; i < numBumps; i++) {
-      const angle = (i / numBumps) * Math.PI * 2 + seed * 0.1;
-      const dist = r * 0.6;
-      const bumpX = x + Math.cos(angle) * dist;
-      const bumpY = y + Math.sin(angle) * dist;
-      const bumpR = r * (0.4 + 0.15 * Math.sin(seed + i * 2));
-      this.zoneGraphics.fillEllipse(bumpX, bumpY, bumpR * 2, bumpR * 1.6);
-    }
   }
 
   private createAmbientEffects(region: RegionData): void {
@@ -1995,12 +2041,11 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private setupCameraZoom(): void {
-    // Zoom in a little on small / touch screens so sprites read clearly.
+    // With RESIZE mode the canvas fills the full viewport.
+    // Scale zoom so ~600 world-units are visible along the short axis,
+    // giving phones a close-up view and desktops a wider perspective.
     const minSide = Math.min(this.scale.width, this.scale.height);
-    let zoom = 1;
-    if (minSide < 500) zoom = 1.6;
-    else if (minSide < 720) zoom = 1.35;
-    else if (minSide < 1000) zoom = 1.15;
+    const zoom = Phaser.Math.Clamp(minSide / 600, 0.75, 2.2);
     this.cameras.main.setZoom(zoom);
   }
 
@@ -2677,7 +2722,7 @@ export default class Overworld extends Phaser.Scene {
       maxY = Math.max(maxY, landmark.y * WORLD_SCALE);
     });
 
-    const padding = 300;
+    const padding = 150;
     return {
       x: minX - padding,
       y: minY - padding,
