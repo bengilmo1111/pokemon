@@ -118,5 +118,70 @@ export const BIOMES: Record<string, BiomeData> = {
       { id: "zapdos", weight: 0.1, min: 50, max: 50 }
     ],
     props: ["rock", "rock", "crystal"]
-  }
+  },
+  jungle: {
+    id: "jungle",
+    name: "Tropical Jungle",
+    color: 0x2d5016,
+    spawns: [
+      { id: "caterpie", weight: 4, min: 15, max: 22 },
+      { id: "weedle", weight: 3, min: 14, max: 20 },
+      { id: "pikachu", weight: 2, min: 18, max: 26 },
+      { id: "eevee", weight: 2, min: 20, max: 28 },
+      { id: "nidoran_m", weight: 2, min: 19, max: 25 },
+      { id: "pidgey", weight: 2, min: 15, max: 20 },
+    ],
+    props: ["tree", "tree", "tree", "bush", "flower", "bush"],
+  },
+  ruins: {
+    id: "ruins",
+    name: "Ancient Ruins",
+    color: 0x9a8b72,
+    spawns: [
+      { id: "geodude", weight: 5, min: 18, max: 28 },
+      { id: "gastly", weight: 3, min: 20, max: 30 },
+      { id: "abra", weight: 2, min: 22, max: 32 },
+      { id: "machop", weight: 2, min: 20, max: 28 },
+      { id: "haunter", weight: 1, min: 25, max: 35 },
+    ],
+    props: ["rockspire", "rock", "rock", "boulder", "rockspire", "rock"],
+  },
+  marsh: {
+    id: "marsh",
+    name: "Misty Marsh",
+    color: 0x4a6741,
+    spawns: [
+      { id: "psyduck", weight: 4, min: 16, max: 24 },
+      { id: "seel", weight: 2, min: 18, max: 26 },
+      { id: "pikachu", weight: 2, min: 16, max: 24 },
+      { id: "nidoran_m", weight: 2, min: 17, max: 25 },
+      { id: "lapras", weight: 1, min: 28, max: 36 },
+    ],
+    props: ["reed", "reed", "waterlily", "reed", "bush", "waterlily"],
+  },
+  city: {
+    id: "city",
+    name: "Urban District",
+    color: 0x607080,
+    spawns: [
+      { id: "pikachu", weight: 3, min: 40, max: 52 },
+      { id: "magnemite", weight: 4, min: 38, max: 48 },
+      { id: "rattata", weight: 3, min: 35, max: 45 },
+      { id: "machop", weight: 2, min: 40, max: 50 },
+      { id: "abra", weight: 1, min: 42, max: 52 },
+    ],
+    props: ["rockspire", "rock", "boulder", "rock", "rockspire", "boulder"],
+  },
+  volcano: {
+    id: "volcano",
+    name: "Volcanic Crater",
+    color: 0x8b1a00,
+    spawns: [
+      { id: "charmander", weight: 4, min: 20, max: 30 },
+      { id: "geodude", weight: 3, min: 22, max: 32 },
+      { id: "machop", weight: 2, min: 24, max: 34 },
+      { id: "moltres", weight: 0.05, min: 50, max: 50 },
+    ],
+    props: ["rock", "rock", "boulder", "rockspire", "boulder"],
+  },
 };

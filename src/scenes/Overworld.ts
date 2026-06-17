@@ -163,6 +163,8 @@ export default class Overworld extends Phaser.Scene {
 
     // Create ambient particle effects for each zone
     this.createAmbientEffects(region);
+    this.createWeatherEffect(region);
+    this.showNotification("📍 " + region.name, 2500);
 
     const startZone = region.zones[0];
     const startX = startZone.x * WORLD_SCALE;
@@ -897,12 +899,22 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private spawnWildMons(region: RegionData): void {
+    const difficultyByRegion: Record<string, number> = {
+      aurora: 1.0,
+      "shadow-archipelago": 1.3,
+      verdania: 1.1,
+      solstice: 1.2,
+      frostholm: 1.35,
+      urbania: 1.5,
+    };
+    const regionMult = difficultyByRegion[region.id] ?? 1.0;
+
     region.zones.forEach((zone) => {
       const biome = BIOMES[zone.biome];
       const spawnCount = Math.floor(4 + zone.r * 0.3);
       for (let i = 0; i < spawnCount; i++) {
         const entry = pickWeighted(biome.spawns);
-        const level = randomLevel(entry.min, entry.max);
+        const level = Math.min(100, Math.floor(randomLevel(entry.min, entry.max) * regionMult));
         const mon = makeWildPokemon(entry.id, level, zone.id);
         mon.x = (zone.x + (Math.random() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
         mon.y = (zone.y + (Math.random() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
@@ -1448,6 +1460,26 @@ export default class Overworld extends Phaser.Scene {
             graphics.fillStyle(0x9ca3af, 0.5);
             graphics.fillCircle(3, 3, 2);
             break;
+          case "jungle":
+            graphics.fillStyle(0x22c55e, 0.7);
+            graphics.fillCircle(4, 4, 3);
+            break;
+          case "ruins":
+            graphics.fillStyle(0xa0936e, 0.6);
+            graphics.fillRect(1, 1, 3, 3);
+            break;
+          case "marsh":
+            graphics.fillStyle(0x6bbd8b, 0.6);
+            graphics.fillCircle(4, 4, 3);
+            break;
+          case "city":
+            graphics.fillStyle(0x94a3b8, 0.4);
+            graphics.fillRect(2, 0, 2, 4);
+            break;
+          case "volcano":
+            graphics.fillStyle(0xff6b35, 0.7);
+            graphics.fillCircle(3, 3, 2);
+            break;
           default:
             graphics.fillStyle(0xffffff, 0.3);
             graphics.fillCircle(2, 2, 2);
@@ -1503,6 +1535,60 @@ export default class Overworld extends Phaser.Scene {
 
       this.powerSpotEffects.push(particles);
     });
+  }
+
+  private createWeatherEffect(region: RegionData): void {
+    const id = region.id;
+
+    if (id === 'verdania' || id === 'solstice') {
+      // Rain: falling light-blue droplets, scroll-factor 0, depth 5
+      const rainKey = 'rain-particle';
+      if (!this.textures.exists(rainKey)) {
+        const g = this.add.graphics();
+        g.fillStyle(0x93c5fd, 0.7);
+        g.fillRect(0, 0, 2, 6);
+        g.generateTexture(rainKey, 2, 6);
+        g.destroy();
+      }
+      const emitter = this.add.particles(this.scale.width / 2, -20, rainKey, {
+        x: { min: -this.scale.width / 2, max: this.scale.width / 2 },
+        y: 0,
+        speedX: { min: -20, max: 20 },
+        speedY: { min: 180, max: 280 },
+        scale: 1,
+        alpha: { start: 0.6, end: 0.3 },
+        lifespan: 2000,
+        frequency: id === 'solstice' ? 15 : 40,
+        quantity: 1,
+      });
+      emitter.setScrollFactor(0).setDepth(5);
+      this.ambientParticles.push(emitter);
+    }
+
+    if (id === 'frostholm') {
+      // Snow: drifting white flakes, scroll-factor 0, depth 5
+      const snowKey = 'snow-particle';
+      if (!this.textures.exists(snowKey)) {
+        const g = this.add.graphics();
+        g.fillStyle(0xffffff, 0.9);
+        g.fillCircle(3, 3, 3);
+        g.generateTexture(snowKey, 6, 6);
+        g.destroy();
+      }
+      const emitter = this.add.particles(this.scale.width / 2, -10, snowKey, {
+        x: { min: -this.scale.width / 2, max: this.scale.width / 2 },
+        y: 0,
+        speedX: { min: -15, max: 15 },
+        speedY: { min: 40, max: 80 },
+        scale: { start: 0.6, end: 0.3 },
+        alpha: { start: 0.8, end: 0 },
+        lifespan: 5000,
+        frequency: 60,
+        quantity: 1,
+      });
+      emitter.setScrollFactor(0).setDepth(5);
+      this.ambientParticles.push(emitter);
+    }
   }
 
   private drawRoutes(region: RegionData): void {
