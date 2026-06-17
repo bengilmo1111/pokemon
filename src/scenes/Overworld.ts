@@ -71,7 +71,7 @@ export default class Overworld extends Phaser.Scene {
   private keyL?: Phaser.Input.Keyboard.Key;
   private teamOpen = false;
   private teamOverlay?: Phaser.GameObjects.Rectangle;
-  private teamText: Phaser.GameObjects.Text[] = [];
+  private teamText: Phaser.GameObjects.GameObject[] = [];
   private pokedexOpen = false;
   private pokedexOverlay?: Phaser.GameObjects.Rectangle;
   private pokedexText: Phaser.GameObjects.Text[] = [];
@@ -2584,7 +2584,7 @@ export default class Overworld extends Phaser.Scene {
     const push = (go: Phaser.GameObjects.GameObject) => {
       (go as Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.GameObject).setScrollFactor?.(0);
       (go as Phaser.GameObjects.Components.Depth & Phaser.GameObjects.GameObject).setDepth?.(501);
-      this.teamText.push(go as Phaser.GameObjects.Text);
+      this.teamText.push(go);
     };
 
     // ---- Tabs ----
