@@ -186,8 +186,6 @@ export default class Overworld extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     this.setupCameraZoom();
     this.scale.on("resize", this.setupCameraZoom, this);
-    this.createVignette();
-    this.scale.on("resize", this.createVignette, this);
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.keyE = this.input.keyboard!.addKey("E");
@@ -2320,23 +2318,9 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private createVignette(): void {
+    // Vignette removed — the thick dark edges it produced on narrow phones
+    // made the game look like it had a black border around the viewport.
     this.vignette?.destroy();
-    const w = this.scale.width;
-    const h = this.scale.height;
-    const g = this.add.graphics();
-    g.setScrollFactor(0).setDepth(900);
-    // Soft darkened edges for depth/atmosphere
-    const steps = 6;
-    for (let i = 0; i < steps; i++) {
-      const alpha = 0.06 * (i + 1);
-      const inset = (i / steps) * Math.min(w, h) * 0.18;
-      g.fillStyle(0x000000, alpha);
-      g.fillRect(0, 0, w, inset);
-      g.fillRect(0, h - inset, w, inset);
-      g.fillRect(0, 0, inset, h);
-      g.fillRect(w - inset, 0, inset, h);
-    }
-    this.vignette = g;
   }
 
   /** Soft ground shadow placed under an entity standing at (x, baseY).
