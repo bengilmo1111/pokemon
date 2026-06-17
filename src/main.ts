@@ -4,17 +4,10 @@ import Preload from "./scenes/Preload";
 import Overworld from "./scenes/Overworld";
 import Battle from "./scenes/Battle";
 
-// Fixed portrait design resolution. FIT scales it uniformly to any device so
-// the overworld and every UI panel stay consistent and never clip off-screen.
-const DESIGN_WIDTH = 720;
-const DESIGN_HEIGHT = 1280;
-
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: "app",
-  width: DESIGN_WIDTH,
-  height: DESIGN_HEIGHT,
-  backgroundColor: "#0f1115",
+  backgroundColor: "#1a3a5c",
   pixelArt: true,
   roundPixels: true,
   input: {
@@ -22,10 +15,8 @@ const config: Phaser.Types.Core.GameConfig = {
     activePointers: 4
   },
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: DESIGN_WIDTH,
-    height: DESIGN_HEIGHT
   },
   physics: {
     default: "arcade",
