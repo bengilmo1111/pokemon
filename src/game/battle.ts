@@ -6,6 +6,7 @@ import { PokemonInstance, StatusEffect } from "./state";
 export interface DamageResult {
   damage: number;
   effectivenessText: string;
+  effectiveness: number;
   isCritical: boolean;
   statusInflicted?: StatusEffect;
 }
@@ -17,7 +18,7 @@ export function getMove(moveId: string): MoveData {
 export function calculateDamage(attacker: PokemonInstance, defender: PokemonInstance, moveId: string): DamageResult {
   const move = MOVES[moveId];
   if (!move || move.power <= 0) {
-    return { damage: 0, effectivenessText: "", isCritical: false };
+    return { damage: 0, effectivenessText: "", effectiveness: 1, isCritical: false };
   }
 
   // Check for critical hit (6.25% chance, 1.5x damage)
@@ -65,7 +66,7 @@ export function calculateDamage(attacker: PokemonInstance, defender: PokemonInst
     }
   }
 
-  return { damage, effectivenessText: getEffectivenessText(effectiveness), isCritical, statusInflicted };
+  return { damage, effectivenessText: getEffectivenessText(effectiveness), effectiveness, isCritical, statusInflicted };
 }
 
 export function rollAccuracy(moveId: string, attacker: PokemonInstance): boolean {
