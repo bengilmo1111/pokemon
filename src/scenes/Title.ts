@@ -51,11 +51,12 @@ export default class Title extends Phaser.Scene {
       this.driftCircles.push({ x, y, vy, radius, color, graphic });
     }
 
-    // Title text — animated bob
+    // Title text — animated bob, font size capped so it fits any viewport width
+    const titleFontSize = Math.min(48, Math.floor(W / 10));
     const titleY = H / 2 - 80;
     const titleText = this.add.text(W / 2, titleY, "Pokémon Adventure", {
       fontFamily: "monospace",
-      fontSize: "48px",
+      fontSize: `${titleFontSize}px`,
       color: "#fbbf24",
       fontStyle: "bold",
       stroke: "#000000",

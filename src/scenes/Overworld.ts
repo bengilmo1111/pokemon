@@ -71,7 +71,7 @@ export default class Overworld extends Phaser.Scene {
   private keyL?: Phaser.Input.Keyboard.Key;
   private teamOpen = false;
   private teamOverlay?: Phaser.GameObjects.Rectangle;
-  private teamText: Phaser.GameObjects.GameObject[] = [];
+  private teamText: Phaser.GameObjects.Text[] = [];
   private pokedexOpen = false;
   private pokedexOverlay?: Phaser.GameObjects.Rectangle;
   private pokedexText: Phaser.GameObjects.Text[] = [];
@@ -163,6 +163,8 @@ export default class Overworld extends Phaser.Scene {
 
     // Create ambient particle effects for each zone
     this.createAmbientEffects(region);
+    this.createWeatherEffect(region);
+    this.showNotification("📍 " + region.name, 2500);
 
     const startZone = region.zones[0];
     const startX = startZone.x * WORLD_SCALE;
@@ -897,12 +899,22 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private spawnWildMons(region: RegionData): void {
+    const difficultyByRegion: Record<string, number> = {
+      aurora: 1.0,
+      "shadow-archipelago": 1.3,
+      verdania: 1.1,
+      solstice: 1.2,
+      frostholm: 1.35,
+      urbania: 1.5,
+    };
+    const regionMult = difficultyByRegion[region.id] ?? 1.0;
+
     region.zones.forEach((zone) => {
       const biome = BIOMES[zone.biome];
       const spawnCount = Math.floor(4 + zone.r * 0.3);
       for (let i = 0; i < spawnCount; i++) {
         const entry = pickWeighted(biome.spawns);
-        const level = randomLevel(entry.min, entry.max);
+        const level = Math.min(100, Math.floor(randomLevel(entry.min, entry.max) * regionMult));
         const mon = makeWildPokemon(entry.id, level, zone.id);
         mon.x = (zone.x + (Math.random() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
         mon.y = (zone.y + (Math.random() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
@@ -1448,6 +1460,26 @@ export default class Overworld extends Phaser.Scene {
             graphics.fillStyle(0x9ca3af, 0.5);
             graphics.fillCircle(3, 3, 2);
             break;
+          case "jungle":
+            graphics.fillStyle(0x22c55e, 0.7);
+            graphics.fillCircle(4, 4, 3);
+            break;
+          case "ruins":
+            graphics.fillStyle(0xa0936e, 0.6);
+            graphics.fillRect(1, 1, 3, 3);
+            break;
+          case "marsh":
+            graphics.fillStyle(0x6bbd8b, 0.6);
+            graphics.fillCircle(4, 4, 3);
+            break;
+          case "city":
+            graphics.fillStyle(0x94a3b8, 0.4);
+            graphics.fillRect(2, 0, 2, 4);
+            break;
+          case "volcano":
+            graphics.fillStyle(0xff6b35, 0.7);
+            graphics.fillCircle(3, 3, 2);
+            break;
           default:
             graphics.fillStyle(0xffffff, 0.3);
             graphics.fillCircle(2, 2, 2);
@@ -1503,6 +1535,60 @@ export default class Overworld extends Phaser.Scene {
 
       this.powerSpotEffects.push(particles);
     });
+  }
+
+  private createWeatherEffect(region: RegionData): void {
+    const id = region.id;
+
+    if (id === 'verdania' || id === 'solstice') {
+      // Rain: falling light-blue droplets, scroll-factor 0, depth 5
+      const rainKey = 'rain-particle';
+      if (!this.textures.exists(rainKey)) {
+        const g = this.add.graphics();
+        g.fillStyle(0x93c5fd, 0.7);
+        g.fillRect(0, 0, 2, 6);
+        g.generateTexture(rainKey, 2, 6);
+        g.destroy();
+      }
+      const emitter = this.add.particles(this.scale.width / 2, -20, rainKey, {
+        x: { min: -this.scale.width / 2, max: this.scale.width / 2 },
+        y: 0,
+        speedX: { min: -20, max: 20 },
+        speedY: { min: 180, max: 280 },
+        scale: 1,
+        alpha: { start: 0.6, end: 0.3 },
+        lifespan: 2000,
+        frequency: id === 'solstice' ? 15 : 40,
+        quantity: 1,
+      });
+      emitter.setScrollFactor(0).setDepth(5);
+      this.ambientParticles.push(emitter);
+    }
+
+    if (id === 'frostholm') {
+      // Snow: drifting white flakes, scroll-factor 0, depth 5
+      const snowKey = 'snow-particle';
+      if (!this.textures.exists(snowKey)) {
+        const g = this.add.graphics();
+        g.fillStyle(0xffffff, 0.9);
+        g.fillCircle(3, 3, 3);
+        g.generateTexture(snowKey, 6, 6);
+        g.destroy();
+      }
+      const emitter = this.add.particles(this.scale.width / 2, -10, snowKey, {
+        x: { min: -this.scale.width / 2, max: this.scale.width / 2 },
+        y: 0,
+        speedX: { min: -15, max: 15 },
+        speedY: { min: 40, max: 80 },
+        scale: { start: 0.6, end: 0.3 },
+        alpha: { start: 0.8, end: 0 },
+        lifespan: 5000,
+        frequency: 60,
+        quantity: 1,
+      });
+      emitter.setScrollFactor(0).setDepth(5);
+      this.ambientParticles.push(emitter);
+    }
   }
 
   private drawRoutes(region: RegionData): void {
@@ -2584,7 +2670,7 @@ export default class Overworld extends Phaser.Scene {
     const push = (go: Phaser.GameObjects.GameObject) => {
       (go as Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.GameObject).setScrollFactor?.(0);
       (go as Phaser.GameObjects.Components.Depth & Phaser.GameObjects.GameObject).setDepth?.(501);
-      this.teamText.push(go);
+      this.teamText.push(go as Phaser.GameObjects.Text);
     };
 
     // ---- Tabs ----
@@ -2944,26 +3030,24 @@ export default class Overworld extends Phaser.Scene {
   private openStarterSelect(): void {
     this.starterOpen = true;
     this.touch?.setVisible(false);
-    const centerX = this.scale.width / 2;
-    const centerY = this.scale.height / 2;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const centerX = W / 2;
+    const centerY = H / 2;
 
-    // Main panel background
-    const panelWidth = 520;
-    const panelHeight = 420;
+    // Scale panel to fit the viewport on any screen size
+    const panelWidth = Math.min(520, W - 16);
+    const s = panelWidth / 520; // uniform scale factor
+    const panelHeight = Math.min(Math.round(420 * s), H - 60);
+
     this.starterOverlay = this.add.rectangle(centerX, centerY, panelWidth, panelHeight, 0x0f172a, 0.97);
     this.starterOverlay.setScrollFactor(0);
     this.starterOverlay.setStrokeStyle(3, 0xfbbf24);
 
-    // Decorative border
-    const innerBorder = this.add.rectangle(centerX, centerY, panelWidth - 16, panelHeight - 16, 0x1e293b, 0);
-    innerBorder.setScrollFactor(0);
-    innerBorder.setStrokeStyle(2, 0x334155);
-    this.starterText.push(innerBorder as unknown as Phaser.GameObjects.Text);
-
     // Title
-    const title = this.add.text(centerX, centerY - 175, "Choose Your Partner!", {
+    const title = this.add.text(centerX, centerY - Math.round(175 * s), "Choose Your Partner!", {
       fontFamily: "monospace",
-      fontSize: "24px",
+      fontSize: `${Math.max(14, Math.round(24 * s))}px`,
       color: "#fbbf24",
       fontStyle: "bold"
     });
@@ -2971,9 +3055,9 @@ export default class Overworld extends Phaser.Scene {
     this.starterText.push(title);
 
     // Subtitle
-    const subtitle = this.add.text(centerX, centerY - 145, "Your first Pokemon awaits...", {
+    const subtitle = this.add.text(centerX, centerY - Math.round(145 * s), "Your first Pokemon awaits...", {
       fontFamily: "monospace",
-      fontSize: "14px",
+      fontSize: `${Math.max(10, Math.round(14 * s))}px`,
       color: "#94a3b8"
     });
     subtitle.setScrollFactor(0).setOrigin(0.5);
@@ -2986,11 +3070,16 @@ export default class Overworld extends Phaser.Scene {
       { id: "pikachu", type: "Electric", color: 0xfbbf24, darkColor: 0xd97706 }
     ];
 
-    // 2x2 grid layout
-    const gridStartX = centerX - 115;
-    const gridStartY = centerY - 70;
-    const cellWidth = 230;
-    const cellHeight = 140;
+    // 2x2 grid layout — positions scale with panel
+    const gridStartX = centerX - Math.round(115 * s);
+    const gridStartY = centerY - Math.round(70 * s);
+    const cellWidth = Math.round(230 * s);
+    const cellHeight = Math.round(140 * s);
+    const cardW = Math.round(200 * s);
+    const cardH = Math.round(120 * s);
+    const spriteH = Math.max(48, Math.round(80 * s));
+    const spriteOffX = -Math.round(50 * s);
+    const textOffX = Math.round(30 * s);
 
     starters.forEach((starter, index) => {
       const col = index % 2;
@@ -3000,16 +3089,16 @@ export default class Overworld extends Phaser.Scene {
       const name = SPECIES[starter.id].name;
 
       // Card background
-      const cardBg = this.add.rectangle(x, y, 200, 120, starter.darkColor, 0.3);
+      const cardBg = this.add.rectangle(x, y, cardW, cardH, starter.darkColor, 0.3);
       cardBg.setScrollFactor(0);
       cardBg.setStrokeStyle(2, starter.color);
       this.starterText.push(cardBg as unknown as Phaser.GameObjects.Text);
 
       // Pokemon sprite
       const spriteKey = this.textures.exists(`pokemon-${starter.id}`) ? `pokemon-${starter.id}` : "wild-fallback";
-      const sprite = this.add.sprite(x - 50, y, spriteKey);
+      const sprite = this.add.sprite(x + spriteOffX, y, spriteKey);
       sprite.setScrollFactor(0);
-      this.applyDisplayHeight(sprite, 80);
+      this.applyDisplayHeight(sprite, spriteH);
       this.starterText.push(sprite as unknown as Phaser.GameObjects.Text);
 
       // Add idle animation to sprite
@@ -3023,9 +3112,9 @@ export default class Overworld extends Phaser.Scene {
       });
 
       // Pokemon name
-      const nameText = this.add.text(x + 30, y - 25, name, {
+      const nameText = this.add.text(x + textOffX, y - Math.round(25 * s), name, {
         fontFamily: "monospace",
-        fontSize: "18px",
+        fontSize: `${Math.max(12, Math.round(18 * s))}px`,
         color: "#f8fafc",
         fontStyle: "bold"
       });
@@ -3033,9 +3122,9 @@ export default class Overworld extends Phaser.Scene {
       this.starterText.push(nameText);
 
       // Type badge
-      const typeBadge = this.add.text(x + 30, y + 5, starter.type, {
+      const typeBadge = this.add.text(x + textOffX, y + Math.round(5 * s), starter.type, {
         fontFamily: "monospace",
-        fontSize: "11px",
+        fontSize: `${Math.max(9, Math.round(11 * s))}px`,
         color: "#ffffff",
         backgroundColor: `#${starter.color.toString(16).padStart(6, "0")}`,
         padding: { left: 8, right: 8, top: 3, bottom: 3 }
@@ -3044,9 +3133,9 @@ export default class Overworld extends Phaser.Scene {
       this.starterText.push(typeBadge);
 
       // Level indicator
-      const levelText = this.add.text(x + 30, y + 30, "Lv. 5", {
+      const levelText = this.add.text(x + textOffX, y + Math.round(30 * s), "Lv. 5", {
         fontFamily: "monospace",
-        fontSize: "12px",
+        fontSize: `${Math.max(9, Math.round(12 * s))}px`,
         color: "#94a3b8"
       });
       levelText.setScrollFactor(0).setOrigin(0.5);
@@ -3083,9 +3172,9 @@ export default class Overworld extends Phaser.Scene {
     });
 
     // Bottom hint
-    const hint = this.add.text(centerX, centerY + 175, "Click a Pokemon to begin your adventure!", {
+    const hint = this.add.text(centerX, centerY + Math.round(175 * s), "Click a Pokemon to begin your adventure!", {
       fontFamily: "monospace",
-      fontSize: "13px",
+      fontSize: `${Math.max(10, Math.round(13 * s))}px`,
       color: "#64748b"
     });
     hint.setScrollFactor(0).setOrigin(0.5);
