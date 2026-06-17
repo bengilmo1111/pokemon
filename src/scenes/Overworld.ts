@@ -6,6 +6,7 @@ import { gameState } from "../game/store";
 import {
   WORLD_SCALE,
   addToTeam,
+  addToBox,
   getRegion,
   healTeam,
   makePokemon,
@@ -14,6 +15,7 @@ import {
   usePotion,
   useRevive,
   generateNpcTrainers,
+  generateEliteFourTrainers,
   generateHiddenItems,
   collectItem,
   checkItemRespawns,
@@ -21,9 +23,11 @@ import {
   NpcTrainer,
   HiddenItem,
   RivalEncounter,
+  PokemonInstance,
   markCaught,
   generateRivalEncounters,
-  getRivalTeam
+  getRivalTeam,
+  HELD_ITEMS
 } from "../game/state";
 import { pickWeighted } from "../game/utils";
 import * as Sound from "../game/sound";
@@ -94,6 +98,13 @@ export default class Overworld extends Phaser.Scene {
   private martOverlay?: Phaser.GameObjects.Rectangle;
   private martElements: Phaser.GameObjects.GameObject[] = [];
   private tutorialElements: Phaser.GameObjects.GameObject[] = [];
+  // Elite Four
+  private e4CooldownActive = false;
+  private championOverlay?: Phaser.GameObjects.Rectangle;
+  private championElements: Phaser.GameObjects.GameObject[] = [];
+  // Box tab for team screen
+  private teamTab: "team" | "box" = "team";
+  private teamSelectedMon: { source: "team" | "box"; index: number } | null = null;
 
   constructor() {
     super("Overworld");
@@ -126,10 +137,21 @@ export default class Overworld extends Phaser.Scene {
       this.spawnProps(region);
     }
 
-    // Initialize NPC trainers if not already done
-    if (gameState.npcTrainers.length === 0) {
+    // Initialize NPC trainers if not already done (upgrade to 12 if old save has only 6)
+    if (gameState.npcTrainers.length < 12) {
       gameState.npcTrainers = generateNpcTrainers();
     }
+
+    // Initialize Elite Four trainers if not already done
+    if (gameState.e4Trainers == null || gameState.e4Trainers.length === 0) {
+      gameState.e4Trainers = generateEliteFourTrainers();
+    }
+    if (gameState.e4Progress == null) gameState.e4Progress = 0;
+
+    // Ensure new inventory fields exist for old saves
+    if (gameState.inventory.oranberry == null) gameState.inventory.oranberry = 0;
+    if (gameState.inventory.luckyegg == null) gameState.inventory.luckyegg = 0;
+    if (gameState.inventory.shellbell == null) gameState.inventory.shellbell = 0;
 
     // Initialize hidden items if not already done
     if (gameState.hiddenItems.length === 0) {
@@ -492,17 +514,24 @@ export default class Overworld extends Phaser.Scene {
     if (this.encounterCooldown > 0) return;
 
     for (const trainer of gameState.npcTrainers) {
-      if (gameState.defeatedTrainers[trainer.id]) continue;
-
       const trainerX = trainer.x * WORLD_SCALE;
       const trainerY = trainer.y * WORLD_SCALE;
       const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, trainerX, trainerY);
 
       if (distance < 60) {
-        // Show "!" indicator and start battle
-        this.showNotification(`${trainer.name}: "${trainer.dialogue}"`);
-        this.startTrainerBattle(trainer);
-        break;
+        const alreadyDefeated = !!gameState.defeatedTrainers[trainer.id];
+
+        // Rematch: available when player has 2+ badges and trainer already defeated
+        if (alreadyDefeated && gameState.badges.length >= 2) {
+          this.showNotification(`${trainer.name}: "I've been training! Rematch time!"`, 2000);
+          this.startTrainerRematch(trainer);
+          break;
+        } else if (!alreadyDefeated) {
+          // Show "!" indicator and start battle
+          this.showNotification(`${trainer.name}: "${trainer.dialogue}"`);
+          this.startTrainerBattle(trainer);
+          break;
+        }
       }
     }
   }
@@ -622,54 +651,150 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private checkLeagueEntrance(): void {
-    // Check if all gyms are defeated
-    const region = getRegion(gameState);
-    const allGymsDefeated = region.gyms.every(g => gameState.defeatedGyms[g.id]);
+    if (gameState.isChampion || this.e4CooldownActive) return;
 
-    if (!allGymsDefeated || gameState.isChampion) return;
-
-    // League entrance is at the mountain peak
+    // Require 3 badges
     const leagueX = 45 * WORLD_SCALE;
     const leagueY = 35 * WORLD_SCALE;
     const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, leagueX, leagueY);
 
-    if (distance < 50 && ((this.keyL && this.input.keyboard?.checkDown(this.keyL, 500)) || this.interactPressed)) {
-      this.interactPressed = false;
-      this.startPokemonLeague();
+    if (distance < 80) {
+      if (gameState.badges.length < 3) {
+        // Show "need badges" hint once per approach
+        if (!this.e4CooldownActive) {
+          this.showNotification("You need all 3 Gym Badges first!", 2500);
+          this.e4CooldownActive = true;
+          this.time.delayedCall(3000, () => { this.e4CooldownActive = false; });
+        }
+        return;
+      }
+
+      if ((this.keyL && this.input.keyboard?.checkDown(this.keyL, 500)) || this.interactPressed) {
+        this.interactPressed = false;
+
+        if (gameState.e4Progress >= 4) {
+          // All 4 defeated — show champion screen
+          this.showChampionCelebration();
+          return;
+        }
+
+        // Start next E4 battle
+        const battleNum = gameState.e4Progress + 1;
+        this.showNotification(`Elite Four Battle ${battleNum} of 4!`, 2000);
+        this.time.delayedCall(500, () => this.startE4Battle(gameState.e4Progress));
+      }
     }
   }
 
-  private startPokemonLeague(): void {
+  private startE4Battle(index: number): void {
+    if (!gameState.e4Trainers || gameState.e4Trainers.length === 0) {
+      gameState.e4Trainers = generateEliteFourTrainers();
+    }
+    const trainer = gameState.e4Trainers[index];
+    if (!trainer) return;
+
+    this.e4CooldownActive = true;
     this.encounterCooldown = 1500;
     this.scene.pause();
-
-    // Elite Four battle sequence
-    const eliteFourTeam = [
-      { speciesId: "alakazam", level: 45 },
-      { speciesId: "gengar", level: 46 },
-      { speciesId: "machamp", level: 47 },
-      { speciesId: "dragonite", level: 50 }
-    ];
-
     this.scene.launch("Battle", {
       type: "elite",
-      trainerId: "elite-four",
-      trainerName: "Elite Four Champion",
-      trainerTeam: eliteFourTeam
+      trainerId: trainer.id,
+      trainerName: trainer.name,
+      trainerTeam: trainer.team
     });
 
     const battleScene = this.scene.get("Battle");
     battleScene.events.once("battle-complete", (payload: { result: string }) => {
       if (payload.result === "victory") {
-        gameState.eliteFourDefeated = true;
-        gameState.isChampion = true;
-        this.showNotification("Congratulations! You are the new Pokemon Champion!", 5000);
+        gameState.e4Progress = index + 1;
+        if (gameState.e4Progress >= 4) {
+          gameState.eliteFourDefeated = true;
+          gameState.isChampion = true;
+          this.scene.resume();
+          Sound.playOverworldMusic();
+          this.time.delayedCall(300, () => this.showChampionCelebration());
+        } else {
+          const next = gameState.e4Progress + 1;
+          this.showNotification(`Victory! Next: Elite Four battle ${next} of 4`, 2500);
+          this.scene.resume();
+          Sound.playOverworldMusic();
+          this.e4CooldownActive = false;
+        }
       } else if (payload.result === "defeat") {
+        this.scene.resume();
+        Sound.playOverworldMusic();
         this.handleBattleDefeat();
+        this.e4CooldownActive = false;
+      } else {
+        this.scene.resume();
+        Sound.playOverworldMusic();
+        this.e4CooldownActive = false;
       }
-      this.scene.resume();
-      Sound.playOverworldMusic();
     });
+  }
+
+  private showChampionCelebration(): void {
+    const centerX = this.scale.width / 2;
+    const centerY = this.scale.height / 2;
+
+    const overlay = this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x000000, 0.85)
+      .setScrollFactor(0).setDepth(1200).setInteractive();
+    this.championElements.push(overlay);
+
+    const gold = this.add.rectangle(centerX, centerY, 560, 320, 0x1a1000, 1)
+      .setScrollFactor(0).setDepth(1201).setStrokeStyle(4, 0xffd700);
+    this.championElements.push(gold);
+
+    const title = this.add.text(centerX, centerY - 110, "CHAMPION!", {
+      fontFamily: "monospace",
+      fontSize: "48px",
+      color: "#ffd700",
+      fontStyle: "bold"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1202);
+    this.championElements.push(title);
+
+    const sub = this.add.text(centerX, centerY - 40, "YOU ARE THE POKEMON CHAMPION!", {
+      fontFamily: "monospace",
+      fontSize: "20px",
+      color: "#ffffff",
+      fontStyle: "bold"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1202);
+    this.championElements.push(sub);
+
+    const desc = this.add.text(centerX, centerY + 20,
+      "You defeated all four Elite Four members\nand claimed the title of Champion!", {
+      fontFamily: "monospace",
+      fontSize: "15px",
+      color: "#fbbf24",
+      align: "center",
+      lineSpacing: 6
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1202);
+    this.championElements.push(desc);
+
+    // Sparkle animation
+    for (let i = 0; i < 20; i++) {
+      this.time.delayedCall(i * 150, () => {
+        const sx = centerX + (Math.random() - 0.5) * 480;
+        const sy = centerY + (Math.random() - 0.5) * 260;
+        const star = this.add.circle(sx, sy, 4, 0xffd700)
+          .setScrollFactor(0).setDepth(1203);
+        this.tweens.add({
+          targets: star,
+          y: star.y - 40,
+          alpha: 0,
+          duration: 800,
+          onComplete: () => star.destroy()
+        });
+      });
+    }
+
+    // Auto-close after 5 seconds
+    this.time.delayedCall(5000, () => {
+      this.championElements.forEach(el => (el as Phaser.GameObjects.GameObject).destroy());
+      this.championElements = [];
+    });
+
+    Sound.playVictory();
   }
 
   private startTrainerBattle(trainer: NpcTrainer): void {
@@ -691,6 +816,29 @@ export default class Overworld extends Phaser.Scene {
           sprite.destroy();
           this.trainerSprites.delete(trainer.id);
         }
+      } else if (payload.result === "defeat") {
+        this.handleBattleDefeat();
+      }
+      this.scene.resume();
+      Sound.playOverworldMusic();
+    });
+  }
+
+  private startTrainerRematch(trainer: NpcTrainer): void {
+    // Rematch team is 5 levels higher than original
+    const rematchTeam = trainer.team.map(m => ({ speciesId: m.speciesId, level: m.level + 5 }));
+    this.encounterCooldown = 1500;
+    this.scene.pause();
+    this.scene.launch("Battle", {
+      type: "trainer",
+      trainerId: trainer.id + "-rematch",
+      trainerName: trainer.name,
+      trainerTeam: rematchTeam
+    });
+    const battleScene = this.scene.get("Battle");
+    battleScene.events.once("battle-complete", (payload: { result: string }) => {
+      if (payload.result === "victory") {
+        this.showNotification(`${trainer.name}: "${trainer.dialogue}"`, 2500);
       } else if (payload.result === "defeat") {
         this.handleBattleDefeat();
       }
@@ -1999,12 +2147,20 @@ export default class Overworld extends Phaser.Scene {
 
     // Check for Pokemon League
     const allGymsDefeated = region.gyms.every(g => gameState.defeatedGyms[g.id]);
-    if (allGymsDefeated && !gameState.isChampion) {
+    if (!gameState.isChampion) {
       const leagueX = 45 * WORLD_SCALE;
       const leagueY = 35 * WORLD_SCALE;
       const distance = Phaser.Math.Distance.Between(playerX, playerY, leagueX, leagueY);
-      if (distance < 60) {
-        leagueHint = "[L] Enter Pokemon League!";
+      if (distance < 80) {
+        if (gameState.badges.length < 3) {
+          leagueHint = "Need 3 badges for the Elite Four";
+        } else if (gameState.e4Progress > 0 && gameState.e4Progress < 4) {
+          leagueHint = `[L] Elite Four - Battle ${gameState.e4Progress + 1} of 4`;
+        } else if (gameState.e4Progress >= 4) {
+          leagueHint = "[L] Claim your Champion title!";
+        } else {
+          leagueHint = "[L] Enter the Elite Four!";
+        }
       }
     }
 
@@ -2405,78 +2561,278 @@ export default class Overworld extends Phaser.Scene {
   private openTeamScreen(): void {
     if (this.teamOpen) return;
     this.teamOpen = true;
+    this.teamTab = "team";
+    this.teamSelectedMon = null;
     this.touch?.setVisible(false);
-    const width = 560;
-    const height = 350;
+    this.renderTeamScreen();
+  }
+
+  private renderTeamScreen(): void {
+    // Destroy any existing team UI
+    if (this.teamOverlay) { this.teamOverlay.destroy(); this.teamOverlay = undefined; }
+    this.teamText.forEach(t => t.destroy());
+    this.teamText = [];
+
+    const width = 620;
+    const height = 430;
     const centerX = this.scale.width / 2;
     const centerY = this.scale.height / 2;
-    this.teamOverlay = this.add.rectangle(centerX, centerY, width, height, 0x0f172a, 0.95);
-    this.teamOverlay.setScrollFactor(0);
 
-    const title = this.add.text(centerX - 250, centerY - 160, "Your Pokemon Team", {
-      fontFamily: "monospace",
-      fontSize: "20px",
-      color: "#fbbf24"
-    });
-    title.setScrollFactor(0);
-    this.teamText.push(title);
+    this.teamOverlay = this.add.rectangle(centerX, centerY, width, height, 0x0f172a, 0.97)
+      .setScrollFactor(0).setDepth(500).setStrokeStyle(2, 0x334155);
 
-    if (gameState.team.length === 0) {
-      const empty = this.add.text(centerX - 250, centerY - 100, "No Pokemon in team", {
-        fontFamily: "monospace",
-        fontSize: "14px",
-        color: "#6b7280"
-      });
-      empty.setScrollFactor(0);
-      this.teamText.push(empty);
+    const push = (go: Phaser.GameObjects.GameObject) => {
+      (go as Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.GameObject).setScrollFactor?.(0);
+      (go as Phaser.GameObjects.Components.Depth & Phaser.GameObjects.GameObject).setDepth?.(501);
+      this.teamText.push(go as Phaser.GameObjects.Text);
+    };
+
+    // ---- Tabs ----
+    const tabTeam = this.add.text(centerX - 200, centerY - 200, "[TEAM]", {
+      fontFamily: "monospace", fontSize: "18px",
+      color: this.teamTab === "team" ? "#fbbf24" : "#64748b",
+      backgroundColor: this.teamTab === "team" ? "#1e293b" : "transparent",
+      padding: { left: 10, right: 10, top: 4, bottom: 4 }
+    }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
+    tabTeam.on("pointerdown", () => { this.teamTab = "team"; this.teamSelectedMon = null; this.renderTeamScreen(); });
+    this.teamText.push(tabTeam);
+
+    const tabBox = this.add.text(centerX - 80, centerY - 200, "[BOX]", {
+      fontFamily: "monospace", fontSize: "18px",
+      color: this.teamTab === "box" ? "#fbbf24" : "#64748b",
+      backgroundColor: this.teamTab === "box" ? "#1e293b" : "transparent",
+      padding: { left: 10, right: 10, top: 4, bottom: 4 }
+    }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
+    tabBox.on("pointerdown", () => { this.teamTab = "box"; this.teamSelectedMon = null; this.renderTeamScreen(); });
+    this.teamText.push(tabBox);
+
+    if (this.teamTab === "team") {
+      this.renderTeamTab(centerX, centerY, push);
     } else {
-      gameState.team.forEach((mon, index) => {
-        const y = centerY - 120 + index * 42;
-        const hpPercent = Math.floor((mon.hp / mon.maxHp) * 100);
-        const hpColor = hpPercent > 50 ? "#22c55e" : hpPercent > 20 ? "#eab308" : "#ef4444";
-        const statusStr = mon.status !== "none" ? ` [${mon.status.toUpperCase()}]` : "";
-
-        const line = this.add.text(centerX - 250, y,
-          `${index + 1}. ${mon.nickname || mon.name} Lv${mon.level}`, {
-          fontFamily: "monospace",
-          fontSize: "16px",
-          color: mon.hp > 0 ? "#f8fafc" : "#6b7280"
-        });
-        line.setScrollFactor(0);
-        this.teamText.push(line);
-
-        const stats = this.add.text(centerX - 250, y + 18,
-          `   HP: ${mon.hp}/${mon.maxHp} (${hpPercent}%)${statusStr}  |  EXP: ${mon.exp}/${mon.expToNext}`, {
-          fontFamily: "monospace",
-          fontSize: "12px",
-          color: hpColor
-        });
-        stats.setScrollFactor(0);
-        this.teamText.push(stats);
-      });
+      this.renderBoxTab(centerX, centerY, push);
     }
 
-    const boxLabel = this.add.text(centerX - 250, centerY + 100, `Box: ${gameState.box.length} Pokemon stored`, {
-      fontFamily: "monospace",
-      fontSize: "14px",
-      color: "#94a3b8"
-    });
-    boxLabel.setScrollFactor(0);
-    this.teamText.push(boxLabel);
-
-    const close = this.add.text(centerX - 250, centerY + 140, "[T] Close", {
-      fontFamily: "monospace",
-      fontSize: "14px",
-      color: "#6b7280"
-    });
-    close.setScrollFactor(0);
+    const close = this.add.text(centerX - 290, centerY + 195, "[T] Close", {
+      fontFamily: "monospace", fontSize: "13px", color: "#6b7280"
+    }).setScrollFactor(0).setDepth(502);
     this.teamText.push(close);
+  }
+
+  private renderTeamTab(
+    centerX: number, centerY: number,
+    push: (go: Phaser.GameObjects.GameObject) => void
+  ): void {
+    const selected = this.teamSelectedMon;
+
+    if (gameState.team.length === 0) {
+      push(this.add.text(centerX - 270, centerY - 140, "No Pokemon in team", {
+        fontFamily: "monospace", fontSize: "14px", color: "#6b7280"
+      }));
+      return;
+    }
+
+    gameState.team.forEach((mon, index) => {
+      const y = centerY - 150 + index * 46;
+      const hpPercent = Math.floor((mon.hp / mon.maxHp) * 100);
+      const hpColor = hpPercent > 50 ? "#22c55e" : hpPercent > 20 ? "#eab308" : "#ef4444";
+      const statusStr = mon.status !== "none" ? ` [${mon.status.toUpperCase()}]` : "";
+      const isSelected = selected?.source === "team" && selected.index === index;
+      const heldStr = mon.heldItem ? ` [${HELD_ITEMS[mon.heldItem]?.name ?? mon.heldItem}]` : "";
+
+      const bg = this.add.rectangle(centerX - 5, y + 20, 570, 40,
+        isSelected ? 0x334155 : 0x1e293b, 0.8)
+        .setScrollFactor(0).setDepth(501).setStrokeStyle(1, isSelected ? 0xfbbf24 : 0x334155)
+        .setInteractive({ useHandCursor: true });
+      bg.on("pointerdown", () => {
+        if (isSelected) {
+          this.teamSelectedMon = null;
+        } else {
+          this.teamSelectedMon = { source: "team", index };
+        }
+        this.renderTeamScreen();
+      });
+      this.teamText.push(bg);
+
+      push(this.add.text(centerX - 285, y + 6,
+        `${index + 1}. ${mon.nickname || mon.name} Lv${mon.level}${heldStr}`, {
+        fontFamily: "monospace", fontSize: "15px",
+        color: mon.hp > 0 ? "#f8fafc" : "#6b7280"
+      }));
+      push(this.add.text(centerX - 285, y + 26,
+        `   HP: ${mon.hp}/${mon.maxHp} (${hpPercent}%)${statusStr}`, {
+        fontFamily: "monospace", fontSize: "11px", color: hpColor
+      }));
+    });
+
+    // Action panel when a team mon is selected
+    if (selected?.source === "team") {
+      const mon = gameState.team[selected.index];
+      if (mon) {
+        const panelY = centerY + 100;
+        push(this.add.text(centerX - 290, panelY, `Selected: ${mon.name}`, {
+          fontFamily: "monospace", fontSize: "13px", color: "#fbbf24"
+        }));
+
+        // Send to Box button
+        const toBoxBtn = this.add.text(centerX - 290, panelY + 22, "[Send to Box]", {
+          fontFamily: "monospace", fontSize: "13px", color: "#0f172a",
+          backgroundColor: "#94a3b8",
+          padding: { left: 8, right: 8, top: 3, bottom: 3 }
+        }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
+        toBoxBtn.on("pointerdown", () => {
+          if (gameState.team.length <= 1) {
+            this.showNotification("Can't box your last Pokemon!", 1500);
+            return;
+          }
+          const [removed] = gameState.team.splice(selected.index, 1);
+          addToBox(gameState, removed);
+          this.teamSelectedMon = null;
+          this.renderTeamScreen();
+          this.showNotification(`${removed.name} moved to Box!`, 1500);
+        });
+        this.teamText.push(toBoxBtn);
+
+        // Held item equip/unequip
+        const heldItems = (["oranberry", "luckyegg", "shellbell"] as const).filter(
+          k => (gameState.inventory[k] ?? 0) > 0
+        );
+        if (heldItems.length > 0 || mon.heldItem) {
+          let itemBtnX = centerX - 40;
+          if (mon.heldItem) {
+            const unequipBtn = this.add.text(itemBtnX, panelY + 22, "[Unequip]", {
+              fontFamily: "monospace", fontSize: "13px", color: "#0f172a",
+              backgroundColor: "#ef4444",
+              padding: { left: 8, right: 8, top: 3, bottom: 3 }
+            }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
+            unequipBtn.on("pointerdown", () => {
+              const key = mon.heldItem! as keyof typeof gameState.inventory;
+              gameState.inventory[key] = (gameState.inventory[key] ?? 0) + 1;
+              mon.heldItem = undefined;
+              this.renderTeamScreen();
+              this.showNotification("Item unequipped!", 1200);
+            });
+            this.teamText.push(unequipBtn);
+            itemBtnX += 120;
+          }
+          heldItems.forEach(itemKey => {
+            const info = HELD_ITEMS[itemKey];
+            const equipBtn = this.add.text(itemBtnX, panelY + 22, `[Equip ${info.name}]`, {
+              fontFamily: "monospace", fontSize: "12px", color: "#0f172a",
+              backgroundColor: "#fbbf24",
+              padding: { left: 6, right: 6, top: 3, bottom: 3 }
+            }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
+            equipBtn.on("pointerdown", () => {
+              if (mon.heldItem) {
+                // Return existing held item to inventory
+                const oldKey = mon.heldItem as keyof typeof gameState.inventory;
+                gameState.inventory[oldKey] = (gameState.inventory[oldKey] ?? 0) + 1;
+              }
+              gameState.inventory[itemKey] = Math.max(0, (gameState.inventory[itemKey] ?? 0) - 1);
+              mon.heldItem = itemKey;
+              this.renderTeamScreen();
+              this.showNotification(`${mon.name} is holding ${info.name}!`, 1500);
+            });
+            this.teamText.push(equipBtn);
+            itemBtnX += equipBtn.width + 8;
+          });
+        }
+      }
+    }
+  }
+
+  private renderBoxTab(
+    centerX: number, centerY: number,
+    push: (go: Phaser.GameObjects.GameObject) => void
+  ): void {
+    const selected = this.teamSelectedMon;
+
+    if (gameState.box.length === 0) {
+      push(this.add.text(centerX - 270, centerY - 140,
+        "Your PC Box is empty.\nSend Pokemon here from the TEAM tab.", {
+        fontFamily: "monospace", fontSize: "14px", color: "#6b7280", lineSpacing: 4
+      }));
+      return;
+    }
+
+    // Show up to 20 box Pokemon in a grid (4 columns × 5 rows)
+    const cols = 4;
+    const cellW = 140;
+    const cellH = 54;
+    const gridStartX = centerX - 280;
+    const gridStartY = centerY - 155;
+
+    gameState.box.slice(0, 20).forEach((mon, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const bx = gridStartX + col * cellW;
+      const by = gridStartY + row * cellH;
+      const isSelected = selected?.source === "box" && selected.index === index;
+
+      const bg = this.add.rectangle(bx + cellW / 2 - 4, by + cellH / 2 - 4,
+        cellW - 6, cellH - 6, isSelected ? 0x334155 : 0x1e293b, 0.9)
+        .setScrollFactor(0).setDepth(501).setStrokeStyle(1, isSelected ? 0xfbbf24 : 0x334155)
+        .setInteractive({ useHandCursor: true });
+      bg.on("pointerdown", () => {
+        if (isSelected) {
+          this.teamSelectedMon = null;
+        } else {
+          this.teamSelectedMon = { source: "box", index };
+        }
+        this.renderTeamScreen();
+      });
+      this.teamText.push(bg);
+
+      push(this.add.text(bx, by + 4, `${mon.nickname || mon.name}`, {
+        fontFamily: "monospace", fontSize: "12px", color: "#f8fafc"
+      }));
+      push(this.add.text(bx, by + 20, `Lv${mon.level}  ${mon.types[0]}`, {
+        fontFamily: "monospace", fontSize: "10px", color: "#94a3b8"
+      }));
+    });
+
+    if (gameState.box.length > 20) {
+      push(this.add.text(centerX - 270, centerY + 155,
+        `+${gameState.box.length - 20} more in Box (showing first 20)`, {
+        fontFamily: "monospace", fontSize: "11px", color: "#6b7280"
+      }));
+    }
+
+    // Action panel when a box mon is selected
+    if (selected?.source === "box") {
+      const mon = gameState.box[selected.index];
+      if (mon) {
+        const panelY = centerY + 165;
+        push(this.add.text(centerX - 290, panelY, `Selected: ${mon.name} Lv${mon.level}`, {
+          fontFamily: "monospace", fontSize: "12px", color: "#fbbf24"
+        }));
+
+        // Add to Team button
+        const addBtn = this.add.text(centerX - 70, panelY, "[Add to Team]", {
+          fontFamily: "monospace", fontSize: "12px", color: "#0f172a",
+          backgroundColor: "#22c55e",
+          padding: { left: 8, right: 8, top: 3, bottom: 3 }
+        }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
+        addBtn.on("pointerdown", () => {
+          if (gameState.team.length >= 6) {
+            this.showNotification("Team is full! Send someone to Box first.", 2000);
+            return;
+          }
+          const [removed] = gameState.box.splice(selected.index, 1);
+          gameState.team.push(removed);
+          this.teamSelectedMon = null;
+          this.renderTeamScreen();
+          this.showNotification(`${removed.name} added to team!`, 1500);
+        });
+        this.teamText.push(addBtn);
+      }
+    }
   }
 
   private closeTeamScreen(): void {
     this.teamOpen = false;
+    this.teamSelectedMon = null;
     this.touch?.setVisible(true);
-    if (this.teamOverlay) this.teamOverlay.destroy();
+    if (this.teamOverlay) { this.teamOverlay.destroy(); this.teamOverlay = undefined; }
     this.teamText.forEach((item) => item.destroy());
     this.teamText = [];
   }
@@ -2712,15 +3068,15 @@ export default class Overworld extends Phaser.Scene {
     this.touch?.setVisible(false);
     const centerX = this.scale.width / 2;
     const centerY = this.scale.height / 2;
-    const cardW = 420;
-    const cardH = 380;
+    const cardW = 440;
+    const cardH = 480;
 
     this.martOverlay = this.add.rectangle(centerX, centerY, cardW, cardH, 0x0f172a, 0.95);
     this.martOverlay.setScrollFactor(0).setDepth(950).setStrokeStyle(2, 0xfbbf24);
     this.martElements = [];
 
     // Title
-    const title = this.add.text(centerX, centerY - cardH / 2 + 24, "🛒 Poke Mart", {
+    const title = this.add.text(centerX, centerY - cardH / 2 + 24, "Poke Mart", {
       fontFamily: "monospace",
       fontSize: "22px",
       color: "#fbbf24",
@@ -2736,36 +3092,42 @@ export default class Overworld extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(951);
     this.martElements.push(moneyText);
 
-    const items: Array<{ name: string; key: keyof typeof gameState.inventory; price: number }> = [
+    const items: Array<{ name: string; key: keyof typeof gameState.inventory; price: number; desc?: string }> = [
       { name: "Poke Ball",    key: "pokeball",    price: 100 },
       { name: "Great Ball",   key: "greatball",   price: 300 },
       { name: "Ultra Ball",   key: "ultraball",   price: 600 },
       { name: "Potion",       key: "potion",      price: 80  },
       { name: "Super Potion", key: "superpotion", price: 200 },
-      { name: "Revive",       key: "revive",      price: 500 }
+      { name: "Revive",       key: "revive",      price: 500 },
+      { name: "Oran Berry",   key: "oranberry",   price: 150,  desc: "Held: restore 10 HP <50%" },
+      { name: "Lucky Egg",    key: "luckyegg",    price: 2000, desc: "Held: 1.5x EXP" },
+      { name: "Shell Bell",   key: "shellbell",   price: 1000, desc: "Held: restore 1/8 dmg dealt" }
     ];
 
     const startY = centerY - cardH / 2 + 90;
-    const rowH = 42;
+    const rowH = 38;
 
     items.forEach((item, i) => {
       const rowY = startY + i * rowH;
 
       // Item label
-      const label = this.add.text(centerX - 160, rowY, `${item.name}  ₽${item.price}`, {
+      const labelStr = item.desc
+        ? `${item.name}  ₽${item.price}  (${item.desc})`
+        : `${item.name}  ₽${item.price}`;
+      const label = this.add.text(centerX - 195, rowY, labelStr, {
         fontFamily: "monospace",
-        fontSize: "14px",
+        fontSize: "12px",
         color: "#e2e8f0"
       }).setScrollFactor(0).setDepth(951);
       this.martElements.push(label);
 
       // Buy button
-      const buyBtn = this.add.text(centerX + 130, rowY, "[Buy]", {
+      const buyBtn = this.add.text(centerX + 175, rowY, "[Buy]", {
         fontFamily: "monospace",
-        fontSize: "14px",
+        fontSize: "13px",
         color: "#0f172a",
         backgroundColor: "#fbbf24",
-        padding: { left: 8, right: 8, top: 3, bottom: 3 }
+        padding: { left: 7, right: 7, top: 2, bottom: 2 }
       }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(951).setInteractive({ useHandCursor: true });
 
       buyBtn.on("pointerover", () => buyBtn.setStyle({ backgroundColor: "#f59e0b" }));

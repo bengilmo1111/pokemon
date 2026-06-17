@@ -86,6 +86,9 @@ export default class Battle extends Phaser.Scene {
   private tooltipBg?: Phaser.GameObjects.Rectangle;
   private tooltipText?: Phaser.GameObjects.Text;
 
+  // Held item state (per battle)
+  private usedOranBerry = false;
+
   constructor() {
     super("Battle");
   }
@@ -110,6 +113,8 @@ export default class Battle extends Phaser.Scene {
     // Reset tooltip
     this.tooltipBg = undefined;
     this.tooltipText = undefined;
+    // Reset held item state
+    this.usedOranBerry = false;
   }
 
   create(data: BattleData): void {
@@ -665,10 +670,13 @@ export default class Battle extends Phaser.Scene {
     await this.wait(500);
 
     // Award experience
-    const expGain = calculateExpGain(this.enemyMon.speciesId, this.enemyMon.level, this.isTrainerBattle);
-    const result = gainExp(this.playerMon, expGain);
+    const baseExpGain = calculateExpGain(this.enemyMon.speciesId, this.enemyMon.level, this.isTrainerBattle);
+    const hasLuckyEgg = this.playerMon.heldItem === "luckyegg";
+    const expGain = hasLuckyEgg ? Math.floor(baseExpGain * 1.5) : baseExpGain;
+    const result = gainExp(this.playerMon, baseExpGain); // gainExp applies Lucky Egg internally
 
-    this.setMessage(`${this.playerMon.name} gained ${expGain} EXP!`);
+    const luckyStr = hasLuckyEgg ? " (Lucky Egg!)" : "";
+    this.setMessage(`${this.playerMon.name} gained ${expGain} EXP!${luckyStr}`);
     this.updateHpText();
     await this.wait(600);
 
@@ -1101,6 +1109,31 @@ export default class Battle extends Phaser.Scene {
 
     defender.hp = Math.max(0, defender.hp - result.damage);
     this.updateHpText();
+
+    // ---- Held item effects triggered by damage ----
+
+    // Shell Bell: attacker restores 1/8 of damage dealt (only player-side attacker for simplicity)
+    if (attacker === this.playerMon && attacker.heldItem === "shellbell" && result.damage > 0) {
+      const restore = Math.floor(result.damage / 8);
+      if (restore > 0) {
+        attacker.hp = Math.min(attacker.maxHp, attacker.hp + restore);
+        this.updateHpText();
+        this.setMessage(`Shell Bell restored ${restore} HP!`);
+        await this.wait(400);
+      }
+    }
+
+    // Oran Berry: player mon restores 10 HP when it drops below 50% (once per battle)
+    if (defender === this.playerMon && defender.heldItem === "oranberry" && !this.usedOranBerry) {
+      if (defender.hp > 0 && defender.hp < Math.floor(defender.maxHp / 2)) {
+        this.usedOranBerry = true;
+        const restore = Math.min(10, defender.maxHp - defender.hp);
+        defender.hp += restore;
+        this.updateHpText();
+        this.setMessage(`Oran Berry restored ${restore} HP!`);
+        await this.wait(400);
+      }
+    }
 
     if (result.isCritical) {
       this.setMessage("A critical hit!");

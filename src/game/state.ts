@@ -21,6 +21,7 @@ export interface PokemonInstance {
   stats: { hp: number; atk: number; def: number; spd: number };
   catchRate: number;
   status: StatusEffect;
+  heldItem?: string;
 }
 
 export interface WildPokemon {
@@ -41,6 +42,9 @@ export interface Inventory {
   potion: number;
   superpotion: number;
   revive: number;
+  oranberry: number;
+  luckyegg: number;
+  shellbell: number;
 }
 
 export interface PokedexEntry {
@@ -103,7 +107,17 @@ export interface GameState {
   portalTargetY?: number;  // Target Y position after portal transition
   tutorialSeen: boolean;  // Whether the tutorial overlay has been shown
   money: number;  // Player's current money (Pokedollars)
+  e4Progress: number;  // 0–4: how many E4 trainers have been defeated
+  e4Trainers: NpcTrainer[];  // The four Elite Four trainers
 }
+
+// ---------- Held Items ----------
+
+export const HELD_ITEMS: Record<string, { name: string; desc: string; icon: string }> = {
+  oranberry: { name: "Oran Berry",  desc: "Restores 10 HP when HP drops below 50%", icon: "O" },
+  luckyegg:  { name: "Lucky Egg",   desc: "Holder earns 1.5x EXP from battles",     icon: "E" },
+  shellbell: { name: "Shell Bell",  desc: "Restores 1/8 of damage dealt",            icon: "B" },
+};
 
 export const WORLD_SCALE = 32;
 
@@ -184,13 +198,16 @@ export interface LevelUpResult {
 }
 
 export function gainExp(mon: PokemonInstance, amount: number): LevelUpResult {
+  // Lucky Egg: 1.5× EXP
+  const finalAmount = mon.heldItem === "luckyegg" ? Math.floor(amount * 1.5) : amount;
+
   const result: LevelUpResult = {
     levelsGained: 0,
     newMoves: [],
     evolved: false
   };
 
-  mon.exp += amount;
+  mon.exp += finalAmount;
 
   while (mon.exp >= mon.expToNext && mon.level < 100) {
     mon.exp -= mon.expToNext;
@@ -260,7 +277,10 @@ export function createInitialState(): GameState {
       ultraball: 0,
       potion: 5,
       superpotion: 0,
-      revive: 1
+      revive: 1,
+      oranberry: 0,
+      luckyegg: 0,
+      shellbell: 0
     },
     badges: [],
     defeatedGyms: {},
@@ -277,7 +297,9 @@ export function createInitialState(): GameState {
     isChampion: false,
     xpMultiplier: 1,
     tutorialSeen: false,
-    money: 500
+    money: 500,
+    e4Progress: 0,
+    e4Trainers: []
   };
 }
 
@@ -361,6 +383,7 @@ export function getPokedexCount(state: GameState): { seen: number; caught: numbe
 
 export function generateNpcTrainers(): NpcTrainer[] {
   return [
+    // ---- Original 6 ----
     {
       id: "trainer-1",
       name: "Youngster Joey",
@@ -441,6 +464,152 @@ export function generateNpcTrainers(): NpcTrainer[] {
       ],
       defeated: false,
       dialogue: "Think you can beat an Ace Trainer?"
+    },
+    // ---- 6 New Trainers ----
+    {
+      id: "fisherman-finn",
+      name: "Fisherman Finn",
+      sprite: "trainer-fisherman",
+      x: 18,
+      y: -18,
+      team: [
+        { speciesId: "magikarp", level: 8 },
+        { speciesId: "psyduck", level: 9 }
+      ],
+      defeated: false,
+      dialogue: "The sea holds many secrets!"
+    },
+    {
+      id: "psychic-vera",
+      name: "Psychic Vera",
+      sprite: "trainer-psychic",
+      x: -15,
+      y: 35,
+      team: [
+        { speciesId: "abra", level: 14 },
+        { speciesId: "kadabra", level: 15 }
+      ],
+      defeated: false,
+      dialogue: "I sensed you coming from a mile away."
+    },
+    {
+      id: "hiker-derek",
+      name: "Hiker Derek",
+      sprite: "trainer-hiker",
+      x: 22,
+      y: 38,
+      team: [
+        { speciesId: "geodude", level: 12 },
+        { speciesId: "graveler", level: 14 },
+        { speciesId: "machop", level: 13 }
+      ],
+      defeated: false,
+      dialogue: "My muscles are my greatest weapon!"
+    },
+    {
+      id: "ace-trainer-zara",
+      name: "Ace Trainer Zara",
+      sprite: "trainer-ace",
+      x: -30,
+      y: 40,
+      team: [
+        { speciesId: "raichu", level: 18 },
+        { speciesId: "clefable", level: 19 },
+        { speciesId: "alakazam", level: 20 }
+      ],
+      defeated: false,
+      dialogue: "I trained every single day to get here."
+    },
+    {
+      id: "lass-mia",
+      name: "Lass Mia",
+      sprite: "trainer-lass",
+      x: 5,
+      y: -15,
+      team: [
+        { speciesId: "clefairy", level: 10 },
+        { speciesId: "jigglypuff", level: 11 }
+      ],
+      defeated: false,
+      dialogue: "Let's have a friendly battle!"
+    },
+    {
+      id: "youngster-tim",
+      name: "Youngster Tim",
+      sprite: "trainer-youngster",
+      x: -20,
+      y: 15,
+      team: [
+        { speciesId: "pidgey", level: 7 },
+        { speciesId: "rattata", level: 8 }
+      ],
+      defeated: false,
+      dialogue: "I want to be the very best!"
+    }
+  ];
+}
+
+export function generateEliteFourTrainers(): NpcTrainer[] {
+  return [
+    {
+      id: "e4-1",
+      name: "Elite Lorelei",
+      sprite: "trainer-psychic",
+      x: 0, y: 0,
+      team: [
+        { speciesId: "lapras",   level: 52 },
+        { speciesId: "dewgong",  level: 54 },
+        { speciesId: "clefable", level: 54 },
+        { speciesId: "alakazam", level: 54 },
+        { speciesId: "gengar",   level: 56 }
+      ],
+      dialogue: "No one can get past my Pokemon!",
+      defeated: false
+    },
+    {
+      id: "e4-2",
+      name: "Elite Bruno",
+      sprite: "trainer-hiker",
+      x: 0, y: 0,
+      team: [
+        { speciesId: "geodude",  level: 53 },
+        { speciesId: "machop",   level: 55 },
+        { speciesId: "machoke",  level: 55 },
+        { speciesId: "graveler", level: 56 },
+        { speciesId: "machamp",  level: 58 }
+      ],
+      dialogue: "I have trained here for years!",
+      defeated: false
+    },
+    {
+      id: "e4-3",
+      name: "Elite Agatha",
+      sprite: "trainer-psychic",
+      x: 0, y: 0,
+      team: [
+        { speciesId: "gastly",  level: 54 },
+        { speciesId: "haunter", level: 56 },
+        { speciesId: "gengar",  level: 58 },
+        { speciesId: "haunter", level: 58 },
+        { speciesId: "gengar",  level: 60 }
+      ],
+      dialogue: "Hehehe... you have some spirit!",
+      defeated: false
+    },
+    {
+      id: "e4-4",
+      name: "Champion Lance",
+      sprite: "trainer-lance",
+      x: 0, y: 0,
+      team: [
+        { speciesId: "gyarados",  level: 58 },
+        { speciesId: "dragonair", level: 60 },
+        { speciesId: "dragonair", level: 60 },
+        { speciesId: "alakazam",  level: 62 },
+        { speciesId: "dragonite", level: 65 }
+      ],
+      dialogue: "I am the most powerful trainer alive!",
+      defeated: false
     }
   ];
 }
@@ -582,7 +751,7 @@ export function getRivalTeam(state: GameState, battleNumber: number): { speciesI
         { speciesId: starterForm, level: 40 },
         { speciesId: "pidgeot", level: 38 },
         { speciesId: "alakazam", level: 37 },
-        { speciesId: "arcanine", level: 38 },
+        { speciesId: "golem", level: 38 },
         { speciesId: "gyarados", level: 39 }
       ];
     default:
