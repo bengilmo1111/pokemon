@@ -11,7 +11,8 @@ import {
   applyStatusDamage,
   getStatusDisplayText,
   getStatusColor,
-  tryInflictStatus
+  tryInflictStatus,
+  StatStages
 } from "../game/battle";
 import {
   addToBox,
@@ -89,6 +90,17 @@ export default class Battle extends Phaser.Scene {
   // Held item state (per battle)
   private usedOranBerry = false;
 
+  // Stat stages (per battle, reset on switch)
+  private playerStages: StatStages = { atk: 0, def: 0, spd: 0 };
+  private enemyStages: StatStages = { atk: 0, def: 0, spd: 0 };
+
+  // XP bar graphics
+  private xpBarBg?: Phaser.GameObjects.Rectangle;
+  private xpBarFill?: Phaser.GameObjects.Rectangle;
+  private xpBarX = 0;
+  private xpBarY = 0;
+  private xpBarW = 0;
+
   constructor() {
     super("Battle");
   }
@@ -115,6 +127,12 @@ export default class Battle extends Phaser.Scene {
     this.tooltipText = undefined;
     // Reset held item state
     this.usedOranBerry = false;
+    // Reset stat stages
+    this.playerStages = { atk: 0, def: 0, spd: 0 };
+    this.enemyStages = { atk: 0, def: 0, spd: 0 };
+    // Reset XP bar refs
+    this.xpBarBg = undefined;
+    this.xpBarFill = undefined;
   }
 
   create(data: BattleData): void {
@@ -236,7 +254,7 @@ export default class Battle extends Phaser.Scene {
     this.time.delayedCall(500, () => Sound.playBattleMusic());
 
     // Player Pokemon info box
-    this.add.rectangle(this.scale.width - 220, this.scale.height * 0.6, 200, 80, 0x1e293b, 0.9).setOrigin(0);
+    this.add.rectangle(this.scale.width - 220, this.scale.height * 0.6, 200, 90, 0x1e293b, 0.9).setOrigin(0);
     this.playerHpText = this.add.text(this.scale.width - 210, this.scale.height * 0.61, "", {
       fontFamily: "monospace",
       fontSize: "14px",
@@ -252,6 +270,13 @@ export default class Battle extends Phaser.Scene {
       fontSize: "12px",
       color: "#fbbf24"
     });
+
+    // XP bar (below player info)
+    this.xpBarX = this.scale.width - 210;
+    this.xpBarY = this.scale.height * 0.74;
+    this.xpBarW = 180;
+    this.xpBarBg = this.add.rectangle(this.xpBarX, this.xpBarY, this.xpBarW, 6, 0x1e293b).setOrigin(0);
+    this.xpBarFill = this.add.rectangle(this.xpBarX, this.xpBarY, 0, 6, 0x8b5cf6).setOrigin(0);
 
     // Enemy Pokemon info box
     this.add.rectangle(20, this.scale.height * 0.08, 200, 70, 0x1e293b, 0.9).setOrigin(0);
@@ -663,6 +688,89 @@ export default class Battle extends Phaser.Scene {
     }
   }
 
+  private animateXpBar(fromRatio: number, toRatio: number, onDone: () => void): void {
+    if (!this.xpBarFill) { onDone(); return; }
+    this.xpBarFill.setSize(this.xpBarW * fromRatio, 6);
+    this.tweens.add({
+      targets: this.xpBarFill,
+      displayWidth: this.xpBarW * toRatio,
+      duration: 600,
+      ease: "Linear",
+      onComplete: () => onDone()
+    });
+  }
+
+  private async awardXpWithAnimation(expGain: number): Promise<void> {
+    if (!this.xpBarFill) return;
+
+    const mon = this.playerMon;
+    const expBefore = mon.exp;
+    const expToNext = mon.expToNext;
+    const levelBefore = mon.level;
+
+    const result = gainExp(mon, expGain);
+
+    // Floating XP text
+    if (this.playerSprite) {
+      this.showFloatingText(`+${expGain} XP`, this.playerSprite.x, this.playerSprite.y - 80, "#a78bfa");
+    }
+
+    const playerDisplayName = mon.nickname || mon.name;
+
+    if (result.levelsGained === 0) {
+      // Simple fill animation
+      const fromRatio = expToNext > 0 ? Math.min(1, expBefore / expToNext) : 0;
+      const toRatio = expToNext > 0 ? Math.min(1, mon.exp / mon.expToNext) : 0;
+      await new Promise<void>((resolve) => this.animateXpBar(fromRatio, toRatio, resolve));
+    } else {
+      // Level up: fill to 100% then flash, reset and animate remainder
+      const fromRatio = expToNext > 0 ? Math.min(1, expBefore / expToNext) : 0;
+      await new Promise<void>((resolve) => this.animateXpBar(fromRatio, 1, resolve));
+
+      // Flash bar white
+      if (this.xpBarFill) {
+        await new Promise<void>((resolve) => {
+          this.tweens.add({
+            targets: this.xpBarFill,
+            alpha: 0.3,
+            duration: 200,
+            yoyo: true,
+            onComplete: () => resolve()
+          });
+        });
+      }
+
+      // Reset to 0 then fill to remainder
+      const remainderRatio = mon.expToNext > 0 ? Math.min(1, mon.exp / mon.expToNext) : 0;
+      if (this.xpBarFill) this.xpBarFill.setSize(0, 6);
+      await new Promise<void>((resolve) => this.animateXpBar(0, remainderRatio, resolve));
+
+      Sound.playLevelUp();
+      this.setMessage(`${playerDisplayName} grew to level ${mon.level}!`);
+      await this.showLevelUpAnimation();
+      await this.wait(800);
+
+      // Handle new moves
+      for (const newMoveId of result.newMoves) {
+        const moveName = MOVES[newMoveId]?.name ?? newMoveId;
+        Sound.playMenuSelect();
+        this.setMessage(`${playerDisplayName} learned ${moveName}!`);
+        await this.wait(800);
+      }
+
+      // Handle evolution
+      if (result.evolved && result.newName) {
+        Sound.playEvolution();
+        await this.showEvolutionAnimation(result.oldName!, result.newName);
+        this.updatePlayerSprite();
+        markSeen(gameState, mon.speciesId);
+      }
+    }
+
+    void levelBefore; // suppress unused warning
+    this.updateHpText();
+  }
+
   private async handleEnemyFainted(): Promise<void> {
     // Faint animation - fall down and fade
     await this.showFaintAnimation(this.enemySprite!);
@@ -673,42 +781,20 @@ export default class Battle extends Phaser.Scene {
     const baseExpGain = calculateExpGain(this.enemyMon.speciesId, this.enemyMon.level, this.isTrainerBattle);
     const hasLuckyEgg = this.playerMon.heldItem === "luckyegg";
     const expGain = hasLuckyEgg ? Math.floor(baseExpGain * 1.5) : baseExpGain;
-    const result = gainExp(this.playerMon, baseExpGain); // gainExp applies Lucky Egg internally
 
     const luckyStr = hasLuckyEgg ? " (Lucky Egg!)" : "";
-    this.setMessage(`${this.playerMon.name} gained ${expGain} EXP!${luckyStr}`);
-    this.updateHpText();
-    await this.wait(600);
+    const playerDisplayName = this.playerMon.nickname || this.playerMon.name;
+    this.setMessage(`${playerDisplayName} gained ${expGain} EXP!${luckyStr}`);
 
-    // Handle level up
-    if (result.levelsGained > 0) {
-      Sound.playLevelUp();
-      this.setMessage(`${this.playerMon.name} grew to level ${this.playerMon.level}!`);
-      await this.showLevelUpAnimation();
-      await this.wait(800);
-
-      // Handle new moves
-      for (const newMoveId of result.newMoves) {
-        const moveName = MOVES[newMoveId]?.name ?? newMoveId;
-        Sound.playMenuSelect();
-        this.setMessage(`${this.playerMon.name} learned ${moveName}!`);
-        await this.wait(800);
-      }
-
-      // Handle evolution
-      if (result.evolved && result.newName) {
-        Sound.playEvolution();
-        await this.showEvolutionAnimation(result.oldName!, result.newName);
-        this.updatePlayerSprite();
-        // Mark the new species as caught in pokedex
-        markSeen(gameState, this.playerMon.speciesId);
-      }
-    }
+    // Animated XP gain (calls gainExp internally)
+    await this.awardXpWithAnimation(baseExpGain);
 
     // Check for next enemy
     if (this.enemyIndex < this.enemyTeam.length - 1) {
       this.enemyIndex += 1;
       this.enemyMon = this.enemyTeam[this.enemyIndex];
+      // Reset enemy stat stages on switch
+      this.enemyStages = { atk: 0, def: 0, spd: 0 };
       this.setMessage(`${this.trainerName} sent out ${this.enemyMon.name}!`);
       this.updateEnemySprite();
       await this.showEntranceAnimation(this.enemySprite!, false);
@@ -1069,6 +1155,8 @@ export default class Battle extends Phaser.Scene {
     this.closeSwitchMenu();
     this.playerIndex = index;
     this.playerMon = gameState.team[this.playerIndex];
+    // Reset player stat stages on switch
+    this.playerStages = { atk: 0, def: 0, spd: 0 };
     this.setMessage(`Go ${this.playerMon.nickname || this.playerMon.name}!`);
     this.updatePlayerSprite();
     await this.wait(400);
@@ -1079,6 +1167,39 @@ export default class Battle extends Phaser.Scene {
     this.busy = false;
   }
 
+  private readonly STAT_MOVES: Record<string, { target: "user" | "foe"; stat: "atk" | "def" | "spd"; stages: number }> = {
+    "growl":        { target: "foe",  stat: "atk", stages: -1 },
+    "leer":         { target: "foe",  stat: "def", stages: -1 },
+    "tail-whip":    { target: "foe",  stat: "def", stages: -1 },
+    "string-shot":  { target: "foe",  stat: "spd", stages: -1 },
+    "screech":      { target: "foe",  stat: "def", stages: -2 },
+    "harden":       { target: "user", stat: "def", stages: +1 },
+    "withdraw":     { target: "user", stat: "def", stages: +1 },
+    "defense-curl": { target: "user", stat: "def", stages: +1 },
+    "swords-dance": { target: "user", stat: "atk", stages: +2 },
+    "growth":       { target: "user", stat: "atk", stages: +1 },
+    "agility":      { target: "user", stat: "spd", stages: +2 },
+  };
+
+  private showFloatingText(text: string, x: number, y: number, color = "#ffffff"): void {
+    const ft = this.add.text(x, y, text, {
+      fontFamily: "monospace",
+      fontSize: "16px",
+      color,
+      stroke: "#000000",
+      strokeThickness: 3
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(500);
+
+    this.tweens.add({
+      targets: ft,
+      y: y - 30,
+      alpha: 0,
+      duration: 800,
+      ease: "Quad.easeOut",
+      onComplete: () => ft.destroy()
+    });
+  }
+
   private async executeMove(attacker: PokemonInstance, defender: PokemonInstance, moveId: string): Promise<void> {
     const move = MOVES[moveId];
     if (!move) {
@@ -1087,7 +1208,8 @@ export default class Battle extends Phaser.Scene {
       return;
     }
 
-    this.setMessage(`${attacker.name} used ${move.name}!`);
+    const attackerDisplayName = attacker === this.playerMon ? (attacker.nickname || attacker.name) : attacker.name;
+    this.setMessage(`${attackerDisplayName} used ${move.name}!`);
     await this.wait(450);
 
     if (!rollAccuracy(moveId, attacker)) {
@@ -1097,7 +1219,45 @@ export default class Battle extends Phaser.Scene {
       return;
     }
 
-    const result = calculateDamage(attacker, defender, moveId);
+    // Handle stat-change status moves
+    if (move.category === "status" && this.STAT_MOVES[moveId]) {
+      const statDef = this.STAT_MOVES[moveId];
+      const isPlayer = attacker === this.playerMon;
+      const targetIsPlayer = statDef.target === "user" ? isPlayer : !isPlayer;
+      const stages = targetIsPlayer ? this.playerStages : this.enemyStages;
+      const targetSprite = targetIsPlayer ? this.playerSprite : this.enemySprite;
+      const targetMon = targetIsPlayer ? this.playerMon : this.enemyMon;
+
+      // Apply stage change clamped to [-6, +6]
+      stages[statDef.stat] = Math.max(-6, Math.min(6, stages[statDef.stat] + statDef.stages));
+
+      // Build message
+      const statName = statDef.stat === "atk" ? "Attack" : statDef.stat === "def" ? "Defense" : "Speed";
+      const changeWord = statDef.stages > 1 ? "sharply rose" : statDef.stages === 1 ? "rose" :
+                         statDef.stages < -1 ? "sharply fell" : "fell";
+      const displayName = targetMon.nickname || targetMon.name;
+      this.setMessage(`${displayName}'s ${statName} ${changeWord}!`);
+
+      // Floating text above affected sprite
+      if (targetSprite) {
+        const floatColor = statDef.stages > 0 ? "#22d3ee" : "#f87171";
+        const floatText = statDef.stages > 0 ? `${statName}↑` : `${statName}↓`;
+        this.showFloatingText(floatText, targetSprite.x, targetSprite.y - 60, floatColor);
+      }
+
+      await this.wait(700);
+      return;
+    }
+
+    // For non-stat-change status moves, just show message and skip damage
+    if (move.category === "status") {
+      await this.wait(400);
+      return;
+    }
+
+    const attackerStages = attacker === this.playerMon ? this.playerStages : this.enemyStages;
+    const defenderStages = defender === this.playerMon ? this.playerStages : this.enemyStages;
+    const result = calculateDamage(attacker, defender, moveId, attackerStages, defenderStages);
     const moveType = MOVES[moveId]?.type || "normal";
 
     // Show attack animation with type-based effects
@@ -1508,6 +1668,14 @@ export default class Battle extends Phaser.Scene {
     this.playerStatusText.setText(playerStatusStr);
     if (this.playerMon.status !== "none") {
       this.playerStatusText.setColor(`#${getStatusColor(this.playerMon.status).toString(16)}`);
+    }
+
+    // Update XP bar
+    if (this.xpBarFill) {
+      const expRatio = this.playerMon.expToNext > 0
+        ? Math.min(1, this.playerMon.exp / this.playerMon.expToNext)
+        : 0;
+      this.xpBarFill.setSize(this.xpBarW * expRatio, 6);
     }
 
     this.enemyHpText.setText(

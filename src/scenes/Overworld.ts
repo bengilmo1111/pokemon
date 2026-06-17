@@ -71,7 +71,7 @@ export default class Overworld extends Phaser.Scene {
   private keyL?: Phaser.Input.Keyboard.Key;
   private teamOpen = false;
   private teamOverlay?: Phaser.GameObjects.Rectangle;
-  private teamText: Phaser.GameObjects.GameObject[] = [];
+  private teamText: Phaser.GameObjects.Text[] = [];
   private pokedexOpen = false;
   private pokedexOverlay?: Phaser.GameObjects.Rectangle;
   private pokedexText: Phaser.GameObjects.Text[] = [];
@@ -2584,7 +2584,7 @@ export default class Overworld extends Phaser.Scene {
     const push = (go: Phaser.GameObjects.GameObject) => {
       (go as Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.GameObject).setScrollFactor?.(0);
       (go as Phaser.GameObjects.Components.Depth & Phaser.GameObjects.GameObject).setDepth?.(501);
-      this.teamText.push(go);
+      this.teamText.push(go as Phaser.GameObjects.Text);
     };
 
     // ---- Tabs ----
@@ -2837,6 +2837,36 @@ export default class Overworld extends Phaser.Scene {
     this.teamText = [];
   }
 
+  private makePanel(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    title: string,
+    objs: Phaser.GameObjects.GameObject[],
+    depth = 500
+  ): void {
+    g.fillStyle(0x0f172a, 0.96);
+    g.fillRoundedRect(x, y, w, h, 12);
+    g.lineStyle(2, 0xffffff, 0.15);
+    g.strokeRoundedRect(x, y, w, h, 12);
+    g.fillStyle(0xfbbf24, 0.18);
+    g.fillRoundedRect(x, y, w, 40, 12);
+    g.fillRect(x, y + 20, w, 20);
+    const titleText = this.add
+      .text(x + w / 2, y + 20, title, {
+        fontFamily: "monospace",
+        fontSize: "16px",
+        color: "#ffffff",
+        fontStyle: "bold"
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(depth + 1);
+    objs.push(titleText);
+  }
+
   private openPokedex(): void {
     if (this.pokedexOpen) return;
     this.pokedexOpen = true;
@@ -2845,18 +2875,23 @@ export default class Overworld extends Phaser.Scene {
     const height = 400;
     const centerX = this.scale.width / 2;
     const centerY = this.scale.height / 2;
-    this.pokedexOverlay = this.add.rectangle(centerX, centerY, width, height, 0x0f172a, 0.95);
-    this.pokedexOverlay.setScrollFactor(0);
+    const panelX = centerX - width / 2;
+    const panelY = centerY - height / 2;
+
+    // Use makePanel helper for consistent UI
+    const panelG = this.add.graphics().setScrollFactor(0).setDepth(499);
+    this.makePanel(panelG, panelX, panelY, width, height, "Pokédex", this.pokedexText as unknown as Phaser.GameObjects.GameObject[], 500);
+    // Keep a reference for cleanup (store in pokedexOverlay slot via hack-free approach)
+    this.pokedexOverlay = panelG as unknown as Phaser.GameObjects.Rectangle;
 
     const pokedexCount = getPokedexCount(gameState);
-    const title = this.add.text(centerX - 280, centerY - 180,
-      `Pokedex - Seen: ${pokedexCount.seen} | Caught: ${pokedexCount.caught}`, {
+    const statsStr = `Seen: ${pokedexCount.seen}  |  Caught: ${pokedexCount.caught}`;
+    const statsText = this.add.text(centerX, panelY + 58, statsStr, {
       fontFamily: "monospace",
-      fontSize: "18px",
+      fontSize: "14px",
       color: "#ef4444"
-    });
-    title.setScrollFactor(0);
-    this.pokedexText.push(title);
+    }).setScrollFactor(0).setOrigin(0.5);
+    this.pokedexText.push(statsText);
 
     // Show caught Pokemon
     const entries = Object.entries(gameState.pokedex).filter(([_, data]) => data.caught);
@@ -3032,14 +3067,17 @@ export default class Overworld extends Phaser.Scene {
       cardBg.on("pointerdown", () => {
         Sound.playMenuSelect();
         const mon = makePokemon(starter.id, 5);
-        addToTeam(gameState, mon);
-        markCaught(gameState, starter.id);
         gameState.playerStarter = starter.id;
-        this.closeStarterSelect();
-        this.showNotification(`${name} joined your team!`, 3000);
-        Sound.playOverworldMusic();
-        this.time.delayedCall(500, () => {
-          this.createRivalSprites();
+        this.showStarterNamingPrompt(mon, name, () => {
+          markCaught(gameState, starter.id);
+          addToTeam(gameState, mon);
+          this.closeStarterSelect();
+          const displayName = mon.nickname || mon.name;
+          this.showNotification(`${displayName} joined your team!`, 3000);
+          Sound.playOverworldMusic();
+          this.time.delayedCall(500, () => {
+            this.createRivalSprites();
+          });
         });
       });
     });
@@ -3060,6 +3098,108 @@ export default class Overworld extends Phaser.Scene {
     if (this.starterOverlay) this.starterOverlay.destroy();
     this.starterText.forEach((item) => item.destroy());
     this.starterText = [];
+  }
+
+  private showStarterNamingPrompt(mon: PokemonInstance, speciesName: string, onDone: () => void): void {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const depth = 1100;
+
+    // Dark overlay
+    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.75)
+      .setScrollFactor(0).setDepth(depth);
+
+    const panelW = 360;
+    const panelH = 200;
+    const panelX = W / 2 - panelW / 2;
+    const panelY = H / 2 - panelH / 2;
+
+    const panel = this.add.rectangle(W / 2, H / 2, panelW, panelH, 0x1e293b, 0.98)
+      .setScrollFactor(0).setDepth(depth + 1);
+    panel.setStrokeStyle(2, 0xfbbf24);
+
+    const titleTxt = this.add.text(W / 2, panelY + 28, `What will you name your ${speciesName}?`, {
+      fontFamily: "monospace",
+      fontSize: "15px",
+      color: "#fbbf24",
+      wordWrap: { width: panelW - 32 },
+      align: "center"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2);
+
+    // HTML input element
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 12;
+    input.placeholder = speciesName;
+    input.style.cssText = [
+      "position:fixed",
+      "left:50%",
+      "top:50%",
+      "transform:translate(-50%,-50%)",
+      "background:#1e293b",
+      "color:white",
+      "border:2px solid #fbbf24",
+      "font-family:monospace",
+      "font-size:18px",
+      "padding:8px 16px",
+      "border-radius:6px",
+      "text-align:center",
+      "outline:none",
+      "width:240px",
+      "z-index:9999"
+    ].join(";");
+    document.body.appendChild(input);
+    input.focus();
+
+    const cleanup = () => {
+      overlay.destroy();
+      panel.destroy();
+      titleTxt.destroy();
+      confirmBtn.destroy();
+      skipBtn.destroy();
+      if (document.body.contains(input)) document.body.removeChild(input);
+    };
+
+    const confirm = () => {
+      const val = input.value.trim();
+      mon.nickname = val.length > 0 ? val : speciesName;
+      cleanup();
+      onDone();
+    };
+
+    const skip = () => {
+      mon.nickname = speciesName;
+      cleanup();
+      onDone();
+    };
+
+    const btnY = panelY + panelH - 36;
+
+    const confirmBtn = this.add.text(W / 2 - 60, btnY, "Confirm", {
+      fontFamily: "monospace",
+      fontSize: "15px",
+      color: "#0f172a",
+      backgroundColor: "#fbbf24",
+      padding: { left: 12, right: 12, top: 6, bottom: 6 }
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2).setInteractive({ useHandCursor: true });
+    confirmBtn.on("pointerdown", confirm);
+
+    const skipBtn = this.add.text(W / 2 + 60, btnY, "Skip", {
+      fontFamily: "monospace",
+      fontSize: "15px",
+      color: "#f8fafc",
+      backgroundColor: "#6b7280",
+      padding: { left: 12, right: 12, top: 6, bottom: 6 }
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2).setInteractive({ useHandCursor: true });
+    skipBtn.on("pointerdown", skip);
+
+    // Enter key confirms
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") confirm();
+      else if (e.key === "Escape") skip();
+    });
+
+    void panelX; // suppress unused var
   }
 
   private openMart(): void {
