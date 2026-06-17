@@ -3030,26 +3030,24 @@ export default class Overworld extends Phaser.Scene {
   private openStarterSelect(): void {
     this.starterOpen = true;
     this.touch?.setVisible(false);
-    const centerX = this.scale.width / 2;
-    const centerY = this.scale.height / 2;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const centerX = W / 2;
+    const centerY = H / 2;
 
-    // Main panel background
-    const panelWidth = 520;
-    const panelHeight = 420;
+    // Scale panel to fit the viewport on any screen size
+    const panelWidth = Math.min(520, W - 16);
+    const s = panelWidth / 520; // uniform scale factor
+    const panelHeight = Math.min(Math.round(420 * s), H - 60);
+
     this.starterOverlay = this.add.rectangle(centerX, centerY, panelWidth, panelHeight, 0x0f172a, 0.97);
     this.starterOverlay.setScrollFactor(0);
     this.starterOverlay.setStrokeStyle(3, 0xfbbf24);
 
-    // Decorative border
-    const innerBorder = this.add.rectangle(centerX, centerY, panelWidth - 16, panelHeight - 16, 0x1e293b, 0);
-    innerBorder.setScrollFactor(0);
-    innerBorder.setStrokeStyle(2, 0x334155);
-    this.starterText.push(innerBorder as unknown as Phaser.GameObjects.Text);
-
     // Title
-    const title = this.add.text(centerX, centerY - 175, "Choose Your Partner!", {
+    const title = this.add.text(centerX, centerY - Math.round(175 * s), "Choose Your Partner!", {
       fontFamily: "monospace",
-      fontSize: "24px",
+      fontSize: `${Math.max(14, Math.round(24 * s))}px`,
       color: "#fbbf24",
       fontStyle: "bold"
     });
@@ -3057,9 +3055,9 @@ export default class Overworld extends Phaser.Scene {
     this.starterText.push(title);
 
     // Subtitle
-    const subtitle = this.add.text(centerX, centerY - 145, "Your first Pokemon awaits...", {
+    const subtitle = this.add.text(centerX, centerY - Math.round(145 * s), "Your first Pokemon awaits...", {
       fontFamily: "monospace",
-      fontSize: "14px",
+      fontSize: `${Math.max(10, Math.round(14 * s))}px`,
       color: "#94a3b8"
     });
     subtitle.setScrollFactor(0).setOrigin(0.5);
@@ -3072,11 +3070,16 @@ export default class Overworld extends Phaser.Scene {
       { id: "pikachu", type: "Electric", color: 0xfbbf24, darkColor: 0xd97706 }
     ];
 
-    // 2x2 grid layout
-    const gridStartX = centerX - 115;
-    const gridStartY = centerY - 70;
-    const cellWidth = 230;
-    const cellHeight = 140;
+    // 2x2 grid layout — positions scale with panel
+    const gridStartX = centerX - Math.round(115 * s);
+    const gridStartY = centerY - Math.round(70 * s);
+    const cellWidth = Math.round(230 * s);
+    const cellHeight = Math.round(140 * s);
+    const cardW = Math.round(200 * s);
+    const cardH = Math.round(120 * s);
+    const spriteH = Math.max(48, Math.round(80 * s));
+    const spriteOffX = -Math.round(50 * s);
+    const textOffX = Math.round(30 * s);
 
     starters.forEach((starter, index) => {
       const col = index % 2;
@@ -3086,16 +3089,16 @@ export default class Overworld extends Phaser.Scene {
       const name = SPECIES[starter.id].name;
 
       // Card background
-      const cardBg = this.add.rectangle(x, y, 200, 120, starter.darkColor, 0.3);
+      const cardBg = this.add.rectangle(x, y, cardW, cardH, starter.darkColor, 0.3);
       cardBg.setScrollFactor(0);
       cardBg.setStrokeStyle(2, starter.color);
       this.starterText.push(cardBg as unknown as Phaser.GameObjects.Text);
 
       // Pokemon sprite
       const spriteKey = this.textures.exists(`pokemon-${starter.id}`) ? `pokemon-${starter.id}` : "wild-fallback";
-      const sprite = this.add.sprite(x - 50, y, spriteKey);
+      const sprite = this.add.sprite(x + spriteOffX, y, spriteKey);
       sprite.setScrollFactor(0);
-      this.applyDisplayHeight(sprite, 80);
+      this.applyDisplayHeight(sprite, spriteH);
       this.starterText.push(sprite as unknown as Phaser.GameObjects.Text);
 
       // Add idle animation to sprite
@@ -3109,9 +3112,9 @@ export default class Overworld extends Phaser.Scene {
       });
 
       // Pokemon name
-      const nameText = this.add.text(x + 30, y - 25, name, {
+      const nameText = this.add.text(x + textOffX, y - Math.round(25 * s), name, {
         fontFamily: "monospace",
-        fontSize: "18px",
+        fontSize: `${Math.max(12, Math.round(18 * s))}px`,
         color: "#f8fafc",
         fontStyle: "bold"
       });
@@ -3119,9 +3122,9 @@ export default class Overworld extends Phaser.Scene {
       this.starterText.push(nameText);
 
       // Type badge
-      const typeBadge = this.add.text(x + 30, y + 5, starter.type, {
+      const typeBadge = this.add.text(x + textOffX, y + Math.round(5 * s), starter.type, {
         fontFamily: "monospace",
-        fontSize: "11px",
+        fontSize: `${Math.max(9, Math.round(11 * s))}px`,
         color: "#ffffff",
         backgroundColor: `#${starter.color.toString(16).padStart(6, "0")}`,
         padding: { left: 8, right: 8, top: 3, bottom: 3 }
@@ -3130,9 +3133,9 @@ export default class Overworld extends Phaser.Scene {
       this.starterText.push(typeBadge);
 
       // Level indicator
-      const levelText = this.add.text(x + 30, y + 30, "Lv. 5", {
+      const levelText = this.add.text(x + textOffX, y + Math.round(30 * s), "Lv. 5", {
         fontFamily: "monospace",
-        fontSize: "12px",
+        fontSize: `${Math.max(9, Math.round(12 * s))}px`,
         color: "#94a3b8"
       });
       levelText.setScrollFactor(0).setOrigin(0.5);
@@ -3169,9 +3172,9 @@ export default class Overworld extends Phaser.Scene {
     });
 
     // Bottom hint
-    const hint = this.add.text(centerX, centerY + 175, "Click a Pokemon to begin your adventure!", {
+    const hint = this.add.text(centerX, centerY + Math.round(175 * s), "Click a Pokemon to begin your adventure!", {
       fontFamily: "monospace",
-      fontSize: "13px",
+      fontSize: `${Math.max(10, Math.round(13 * s))}px`,
       color: "#64748b"
     });
     hint.setScrollFactor(0).setOrigin(0.5);
