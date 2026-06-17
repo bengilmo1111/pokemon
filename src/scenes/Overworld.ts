@@ -61,7 +61,7 @@ export default class Overworld extends Phaser.Scene {
   private mapOpen = false;
   private starterOpen = false;
   private starterOverlay?: Phaser.GameObjects.Rectangle;
-  private starterText: Phaser.GameObjects.Text[] = [];
+  private starterText: Phaser.GameObjects.GameObject[] = [];
   private keyE?: Phaser.Input.Keyboard.Key;
   private keyH?: Phaser.Input.Keyboard.Key;
   private keyP?: Phaser.Input.Keyboard.Key;
@@ -3092,14 +3092,14 @@ export default class Overworld extends Phaser.Scene {
       const cardBg = this.add.rectangle(x, y, cardW, cardH, starter.darkColor, 0.3);
       cardBg.setScrollFactor(0);
       cardBg.setStrokeStyle(2, starter.color);
-      this.starterText.push(cardBg as unknown as Phaser.GameObjects.Text);
+      this.starterText.push(cardBg);
 
       // Pokemon sprite
       const spriteKey = this.textures.exists(`pokemon-${starter.id}`) ? `pokemon-${starter.id}` : "wild-fallback";
       const sprite = this.add.sprite(x + spriteOffX, y, spriteKey);
       sprite.setScrollFactor(0);
       this.applyDisplayHeight(sprite, spriteH);
-      this.starterText.push(sprite as unknown as Phaser.GameObjects.Text);
+      this.starterText.push(sprite);
 
       // Add idle animation to sprite
       this.tweens.add({
