@@ -15,7 +15,24 @@ export function getMove(moveId: string): MoveData {
   return MOVES[moveId];
 }
 
-export function calculateDamage(attacker: PokemonInstance, defender: PokemonInstance, moveId: string): DamageResult {
+// Stage multiplier: standard Gen formula — max(2, 2+stage) / max(2, 2-stage)
+export function stageMultiplier(stage: number): number {
+  return Math.max(2, 2 + stage) / Math.max(2, 2 - stage);
+}
+
+export interface StatStages {
+  atk: number;
+  def: number;
+  spd: number;
+}
+
+export function calculateDamage(
+  attacker: PokemonInstance,
+  defender: PokemonInstance,
+  moveId: string,
+  attackerStages?: StatStages,
+  defenderStages?: StatStages
+): DamageResult {
   const move = MOVES[moveId];
   if (!move || move.power <= 0) {
     return { damage: 0, effectivenessText: "", effectiveness: 1, isCritical: false };
@@ -25,8 +42,12 @@ export function calculateDamage(attacker: PokemonInstance, defender: PokemonInst
   const isCritical = Math.random() < 0.0625;
   const critMultiplier = isCritical ? 1.5 : 1;
 
-  const atk = move.category === "special" ? attacker.stats.atk : attacker.stats.atk;
-  const def = move.category === "special" ? defender.stats.def : defender.stats.def;
+  // Apply stat stages to ATK and DEF
+  const atkStage = attackerStages?.atk ?? 0;
+  const defStage = defenderStages?.def ?? 0;
+
+  const atk = Math.floor(attacker.stats.atk * stageMultiplier(atkStage));
+  const def = Math.max(1, Math.floor(defender.stats.def * stageMultiplier(defStage)));
   const levelFactor = (2 * attacker.level) / 5 + 2;
   const base = ((levelFactor * move.power * (atk / def)) / 50) + 2;
 

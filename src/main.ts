@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import Title from "./scenes/Title";
 import Boot from "./scenes/Boot";
 import Preload from "./scenes/Preload";
 import Overworld from "./scenes/Overworld";
@@ -25,7 +26,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false
     }
   },
-  scene: [Boot, Preload, Overworld, Battle]
+  scene: [Title, Boot, Preload, Overworld, Battle]
 };
 
 new Phaser.Game(config);
