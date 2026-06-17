@@ -1,0 +1,2280 @@
+
+/* global TYPES, TYPE_COLORS, getTypeEffectiveness, getEffectivenessText, SpriteManager, POKEMON_SIZES */
+
+const WORLD_SCALE = 25;
+
+const randRange = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+const pickWeighted = (entries) => {
+    const total = entries.reduce((sum, entry) => sum + entry.weight, 0);
+    let roll = Math.random() * total;
+    for (const entry of entries) {
+        roll -= entry.weight;
+        if (roll <= 0) return entry;
+    }
+    return entries[entries.length - 1];
+};
+
+const SIZES = {
+    TINY: { label: 'Tiny', scale: 0.7, hpMod: 0.8 },
+    NORMAL: { label: '', scale: 1.0, hpMod: 1.0 },
+    HUGE: { label: 'Huge', scale: 1.4, hpMod: 1.25 },
+    GMAX: { label: 'G-MAX', scale: 2.0, hpMod: 2.5 }
+};
+
+const TRAINER_SPRITES = [
+    'red',
+    'leaf',
+    'ethan',
+    'lyra',
+    'brendan',
+    'may',
+    'dawn',
+    'lucas',
+    'hilbert',
+    'hilda',
+    'rosa',
+    'serena',
+    'calem'
+];
+
+const ITEMS = {
+    pokeball: { id: 'pokeball', name: 'Poke Ball', type: 'ball', catchMod: 1.0, price: 80 },
+    greatball: { id: 'greatball', name: 'Great Ball', type: 'ball', catchMod: 1.4, price: 160 },
+    ultraball: { id: 'ultraball', name: 'Ultra Ball', type: 'ball', catchMod: 1.8, price: 320 },
+    potion: { id: 'potion', name: 'Potion', type: 'heal', heal: 25, price: 100 },
+    superpotion: { id: 'superpotion', name: 'Super Potion', type: 'heal', heal: 50, price: 250 },
+    antidote: { id: 'antidote', name: 'Antidote', type: 'status', cures: ['poison'], price: 120 },
+    awaken: { id: 'awaken', name: 'Awaken', type: 'status', cures: ['sleep'], price: 120 },
+    ice_stone: { id: 'ice_stone', name: 'Ice Stone', type: 'stone', price: 900 }
+};
+
+const MOVES = {
+    tackle: { name: 'Tackle', type: TYPES.NORMAL, power: 40, accuracy: 0.95, category: 'physical' },
+    quickAttack: { name: 'Quick Attack', type: TYPES.NORMAL, power: 40, accuracy: 1.0, category: 'physical', priority: 1 },
+    ember: { name: 'Ember', type: TYPES.FIRE, power: 40, accuracy: 1.0, category: 'special', status: 'burn', statusChance: 0.1 },
+    flamethrower: { name: 'Flamethrower', type: TYPES.FIRE, power: 90, accuracy: 0.95, category: 'special', status: 'burn', statusChance: 0.1 },
+    waterGun: { name: 'Water Gun', type: TYPES.WATER, power: 40, accuracy: 1.0, category: 'special' },
+    bubbleBeam: { name: 'Bubble Beam', type: TYPES.WATER, power: 65, accuracy: 0.95, category: 'special' },
+    surf: { name: 'Surf', type: TYPES.WATER, power: 90, accuracy: 0.9, category: 'special' },
+    vineWhip: { name: 'Vine Whip', type: TYPES.GRASS, power: 45, accuracy: 1.0, category: 'physical' },
+    razorLeaf: { name: 'Razor Leaf', type: TYPES.GRASS, power: 55, accuracy: 0.95, category: 'physical' },
+    thunderbolt: { name: 'Thunderbolt', type: TYPES.ELECTRIC, power: 90, accuracy: 0.9, category: 'special', status: 'paralyze', statusChance: 0.1 },
+    spark: { name: 'Spark', type: TYPES.ELECTRIC, power: 65, accuracy: 1.0, category: 'physical', status: 'paralyze', statusChance: 0.2 },
+    gust: { name: 'Gust', type: TYPES.FLYING, power: 40, accuracy: 1.0, category: 'special' },
+    wingAttack: { name: 'Wing Attack', type: TYPES.FLYING, power: 60, accuracy: 0.95, category: 'physical' },
+    rockThrow: { name: 'Rock Throw', type: TYPES.ROCK, power: 50, accuracy: 0.9, category: 'physical' },
+    rockSlide: { name: 'Rock Slide', type: TYPES.ROCK, power: 75, accuracy: 0.85, category: 'physical' },
+    iceBeam: { name: 'Ice Beam', type: TYPES.ICE, power: 90, accuracy: 0.9, category: 'special' },
+    shadowBall: { name: 'Shadow Ball', type: TYPES.GHOST, power: 80, accuracy: 0.9, category: 'special' },
+    bite: { name: 'Bite', type: TYPES.DARK, power: 60, accuracy: 1.0, category: 'physical' },
+    dig: { name: 'Dig', type: TYPES.GROUND, power: 70, accuracy: 0.95, category: 'physical' },
+    earthquake: { name: 'Earthquake', type: TYPES.GROUND, power: 100, accuracy: 0.85, category: 'physical' },
+    sleepPowder: { name: 'Sleep Powder', type: TYPES.GRASS, power: 0, accuracy: 0.75, category: 'status', status: 'sleep', statusChance: 1.0 },
+    poisonPowder: { name: 'Poison Powder', type: TYPES.POISON, power: 0, accuracy: 0.8, category: 'status', status: 'poison', statusChance: 1.0 },
+    thunderWave: { name: 'Thunder Wave', type: TYPES.ELECTRIC, power: 0, accuracy: 0.9, category: 'status', status: 'paralyze', statusChance: 1.0 },
+    willOWisp: { name: 'Will-O-Wisp', type: TYPES.FIRE, power: 0, accuracy: 0.85, category: 'status', status: 'burn', statusChance: 1.0 }
+};
+const SPECIES = {
+    bulbasaur: {
+        id: 'bulbasaur',
+        name: 'Bulbasaur',
+        types: [TYPES.GRASS, TYPES.POISON],
+        baseStats: { hp: 45, atk: 49, def: 49, spd: 45 },
+        moves: [MOVES.tackle, MOVES.vineWhip, MOVES.razorLeaf, MOVES.poisonPowder],
+        evolvesTo: 'ivysaur',
+        evolveLevel: 16,
+        catchRate: 45
+    },
+    ivysaur: {
+        id: 'ivysaur',
+        name: 'Ivysaur',
+        types: [TYPES.GRASS, TYPES.POISON],
+        baseStats: { hp: 60, atk: 62, def: 63, spd: 60 },
+        moves: [MOVES.vineWhip, MOVES.razorLeaf, MOVES.poisonPowder],
+        evolvesTo: 'venusaur',
+        evolveLevel: 32,
+        catchRate: 45
+    },
+    venusaur: {
+        id: 'venusaur',
+        name: 'Venusaur',
+        types: [TYPES.GRASS, TYPES.POISON],
+        baseStats: { hp: 80, atk: 82, def: 83, spd: 80 },
+        moves: [MOVES.razorLeaf, MOVES.poisonPowder],
+        evolvesTo: null,
+        catchRate: 45
+    },
+    charmander: {
+        id: 'charmander',
+        name: 'Charmander',
+        types: [TYPES.FIRE],
+        baseStats: { hp: 39, atk: 52, def: 43, spd: 65 },
+        moves: [MOVES.tackle, MOVES.ember, MOVES.willOWisp],
+        evolvesTo: 'charmeleon',
+        evolveLevel: 16,
+        catchRate: 45
+    },
+    charmeleon: {
+        id: 'charmeleon',
+        name: 'Charmeleon',
+        types: [TYPES.FIRE],
+        baseStats: { hp: 58, atk: 64, def: 58, spd: 80 },
+        moves: [MOVES.ember, MOVES.flamethrower, MOVES.dig],
+        evolvesTo: 'charizard',
+        evolveLevel: 36,
+        catchRate: 45
+    },
+    charizard: {
+        id: 'charizard',
+        name: 'Charizard',
+        types: [TYPES.FIRE, TYPES.FLYING],
+        baseStats: { hp: 78, atk: 84, def: 78, spd: 100 },
+        moves: [MOVES.flamethrower, MOVES.wingAttack, MOVES.earthquake],
+        evolvesTo: null,
+        catchRate: 45
+    },
+    squirtle: {
+        id: 'squirtle',
+        name: 'Squirtle',
+        types: [TYPES.WATER],
+        baseStats: { hp: 44, atk: 48, def: 65, spd: 43 },
+        moves: [MOVES.tackle, MOVES.waterGun, MOVES.bubbleBeam],
+        evolvesTo: 'wartortle',
+        evolveLevel: 16,
+        catchRate: 45
+    },
+    wartortle: {
+        id: 'wartortle',
+        name: 'Wartortle',
+        types: [TYPES.WATER],
+        baseStats: { hp: 59, atk: 63, def: 80, spd: 58 },
+        moves: [MOVES.waterGun, MOVES.bubbleBeam, MOVES.surf],
+        evolvesTo: 'blastoise',
+        evolveLevel: 36,
+        catchRate: 45
+    },
+    blastoise: {
+        id: 'blastoise',
+        name: 'Blastoise',
+        types: [TYPES.WATER],
+        baseStats: { hp: 79, atk: 83, def: 100, spd: 78 },
+        moves: [MOVES.surf, MOVES.bubbleBeam, MOVES.iceBeam],
+        evolvesTo: null,
+        catchRate: 45
+    },
+    pikachu: {
+        id: 'pikachu',
+        name: 'Pikachu',
+        types: [TYPES.ELECTRIC],
+        baseStats: { hp: 35, atk: 55, def: 40, spd: 90 },
+        moves: [MOVES.quickAttack, MOVES.spark, MOVES.thunderWave],
+        evolvesTo: null,
+        catchRate: 190
+    },
+    pidgey: {
+        id: 'pidgey',
+        name: 'Pidgey',
+        types: [TYPES.NORMAL, TYPES.FLYING],
+        baseStats: { hp: 40, atk: 45, def: 40, spd: 56 },
+        moves: [MOVES.tackle, MOVES.gust],
+        evolvesTo: 'pidgeotto',
+        evolveLevel: 18,
+        catchRate: 255
+    },
+    pidgeotto: {
+        id: 'pidgeotto',
+        name: 'Pidgeotto',
+        types: [TYPES.NORMAL, TYPES.FLYING],
+        baseStats: { hp: 63, atk: 60, def: 55, spd: 71 },
+        moves: [MOVES.gust, MOVES.wingAttack],
+        evolvesTo: null,
+        catchRate: 120
+    },
+    oddish: {
+        id: 'oddish',
+        name: 'Oddish',
+        types: [TYPES.GRASS, TYPES.POISON],
+        baseStats: { hp: 45, atk: 50, def: 55, spd: 30 },
+        moves: [MOVES.vineWhip, MOVES.sleepPowder, MOVES.poisonPowder],
+        evolvesTo: 'gloom',
+        evolveLevel: 21,
+        catchRate: 255
+    },
+    gloom: {
+        id: 'gloom',
+        name: 'Gloom',
+        types: [TYPES.GRASS, TYPES.POISON],
+        baseStats: { hp: 60, atk: 65, def: 70, spd: 40 },
+        moves: [MOVES.razorLeaf, MOVES.sleepPowder, MOVES.poisonPowder],
+        evolvesTo: null,
+        catchRate: 120
+    },
+    geodude: {
+        id: 'geodude',
+        name: 'Geodude',
+        types: [TYPES.ROCK, TYPES.GROUND],
+        baseStats: { hp: 40, atk: 80, def: 100, spd: 20 },
+        moves: [MOVES.tackle, MOVES.rockThrow],
+        evolvesTo: 'graveler',
+        evolveLevel: 25,
+        catchRate: 255
+    },
+    graveler: {
+        id: 'graveler',
+        name: 'Graveler',
+        types: [TYPES.ROCK, TYPES.GROUND],
+        baseStats: { hp: 55, atk: 95, def: 115, spd: 35 },
+        moves: [MOVES.rockThrow, MOVES.rockSlide],
+        evolvesTo: 'golem',
+        evolveLevel: 40,
+        catchRate: 120
+    },
+    golem: {
+        id: 'golem',
+        name: 'Golem',
+        types: [TYPES.ROCK, TYPES.GROUND],
+        baseStats: { hp: 80, atk: 120, def: 130, spd: 45 },
+        moves: [MOVES.rockSlide, MOVES.earthquake],
+        evolvesTo: null,
+        catchRate: 45
+    },
+    magikarp: {
+        id: 'magikarp',
+        name: 'Magikarp',
+        types: [TYPES.WATER],
+        baseStats: { hp: 20, atk: 10, def: 55, spd: 80 },
+        moves: [MOVES.tackle],
+        evolvesTo: 'gyarados',
+        evolveLevel: 20,
+        catchRate: 255
+    },
+    gyarados: {
+        id: 'gyarados',
+        name: 'Gyarados',
+        types: [TYPES.WATER, TYPES.FLYING],
+        baseStats: { hp: 95, atk: 125, def: 79, spd: 81 },
+        moves: [MOVES.bite, MOVES.surf, MOVES.iceBeam],
+        evolvesTo: null,
+        catchRate: 45
+    },
+    gastly: {
+        id: 'gastly',
+        name: 'Gastly',
+        types: [TYPES.GHOST, TYPES.POISON],
+        baseStats: { hp: 30, atk: 35, def: 30, spd: 80 },
+        moves: [MOVES.shadowBall, MOVES.willOWisp],
+        evolvesTo: 'haunter',
+        evolveLevel: 25,
+        catchRate: 190
+    },
+    haunter: {
+        id: 'haunter',
+        name: 'Haunter',
+        types: [TYPES.GHOST, TYPES.POISON],
+        baseStats: { hp: 45, atk: 50, def: 45, spd: 95 },
+        moves: [MOVES.shadowBall, MOVES.willOWisp],
+        evolvesTo: null,
+        catchRate: 90
+    },
+    sandshrew: {
+        id: 'sandshrew',
+        name: 'Sandshrew',
+        types: [TYPES.GROUND],
+        baseStats: { hp: 50, atk: 75, def: 85, spd: 40 },
+        moves: [MOVES.tackle, MOVES.dig],
+        evolvesTo: 'sandslash',
+        evolveLevel: 22,
+        catchRate: 255
+    },
+    sandslash: {
+        id: 'sandslash',
+        name: 'Sandslash',
+        types: [TYPES.GROUND],
+        baseStats: { hp: 75, atk: 100, def: 110, spd: 65 },
+        moves: [MOVES.dig, MOVES.rockSlide],
+        evolvesTo: null,
+        catchRate: 90
+    },
+    onix: {
+        id: 'onix',
+        name: 'Onix',
+        types: [TYPES.ROCK, TYPES.GROUND],
+        baseStats: { hp: 35, atk: 45, def: 160, spd: 70 },
+        moves: [MOVES.rockThrow, MOVES.earthquake],
+        evolvesTo: null,
+        catchRate: 45
+    },
+    lapras: {
+        id: 'lapras',
+        name: 'Lapras',
+        types: [TYPES.WATER, TYPES.ICE],
+        baseStats: { hp: 130, atk: 85, def: 80, spd: 60 },
+        moves: [MOVES.surf, MOVES.iceBeam],
+        evolvesTo: null,
+        catchRate: 45
+    },
+    eevee: {
+        id: 'eevee',
+        name: 'Eevee',
+        types: [TYPES.NORMAL],
+        baseStats: { hp: 55, atk: 55, def: 50, spd: 55 },
+        moves: [MOVES.tackle, MOVES.quickAttack],
+        evolvesTo: 'glaceon',
+        evolveLevel: 20,
+        evolveItem: 'ice_stone',
+        catchRate: 45
+    },
+    glaceon: {
+        id: 'glaceon',
+        name: 'Glaceon',
+        types: [TYPES.ICE],
+        baseStats: { hp: 65, atk: 60, def: 110, spd: 65 },
+        moves: [MOVES.iceBeam, MOVES.quickAttack],
+        evolvesTo: null,
+        catchRate: 45
+    },
+    magby: {
+        id: 'magby',
+        name: 'Magby',
+        types: [TYPES.FIRE],
+        baseStats: { hp: 45, atk: 75, def: 37, spd: 83 },
+        moves: [MOVES.ember, MOVES.willOWisp],
+        evolvesTo: 'magmar',
+        evolveLevel: 30,
+        catchRate: 45
+    },
+    magmar: {
+        id: 'magmar',
+        name: 'Magmar',
+        types: [TYPES.FIRE],
+        baseStats: { hp: 65, atk: 95, def: 57, spd: 93 },
+        moves: [MOVES.flamethrower, MOVES.dig],
+        evolvesTo: null,
+        catchRate: 45
+    },
+    snorunt: {
+        id: 'snorunt',
+        name: 'Snorunt',
+        types: [TYPES.ICE],
+        baseStats: { hp: 50, atk: 50, def: 50, spd: 50 },
+        moves: [MOVES.iceBeam, MOVES.tackle],
+        evolvesTo: 'glalie',
+        evolveLevel: 28,
+        catchRate: 190
+    },
+    glalie: {
+        id: 'glalie',
+        name: 'Glalie',
+        types: [TYPES.ICE],
+        baseStats: { hp: 80, atk: 80, def: 80, spd: 80 },
+        moves: [MOVES.iceBeam, MOVES.bite],
+        evolvesTo: null,
+        catchRate: 75
+    },
+    slugma: {
+        id: 'slugma',
+        name: 'Slugma',
+        types: [TYPES.FIRE],
+        baseStats: { hp: 40, atk: 40, def: 40, spd: 20 },
+        moves: [MOVES.ember, MOVES.rockThrow],
+        evolvesTo: null,
+        catchRate: 190
+    },
+    ralts: {
+        id: 'ralts',
+        name: 'Ralts',
+        types: [TYPES.PSYCHIC, TYPES.FAIRY],
+        baseStats: { hp: 28, atk: 25, def: 25, spd: 40 },
+        moves: [MOVES.thunderWave, MOVES.quickAttack],
+        evolvesTo: 'kirlia',
+        evolveLevel: 20,
+        catchRate: 235
+    },
+    kirlia: {
+        id: 'kirlia',
+        name: 'Kirlia',
+        types: [TYPES.PSYCHIC, TYPES.FAIRY],
+        baseStats: { hp: 38, atk: 35, def: 35, spd: 50 },
+        moves: [MOVES.thunderWave, MOVES.quickAttack],
+        evolvesTo: null,
+        catchRate: 120
+    }
+};
+
+const STARTERS = ['bulbasaur', 'charmander', 'squirtle', 'pikachu'];
+
+const BIOMES = {
+    plains: {
+        id: 'plains',
+        name: 'Meadow Route',
+        color: '#88c070',
+        weather: 'clear',
+        props: ['TREE', 'TREE_TALL', 'BUSH', 'FLOWER', 'ROCK'],
+        spawns: [
+            { id: 'pidgey', weight: 40, min: 2, max: 5 },
+            { id: 'oddish', weight: 25, min: 2, max: 4 },
+            { id: 'pikachu', weight: 10, min: 4, max: 6 },
+            { id: 'sandshrew', weight: 20, min: 3, max: 6 },
+            { id: 'eevee', weight: 5, min: 6, max: 8 }
+        ]
+    },
+    forest: {
+        id: 'forest',
+        name: 'Verdant Forest',
+        color: '#3f8f5b',
+        weather: 'rain',
+        props: ['TREE', 'TREE', 'TREE_TALL', 'BUSH', 'FLOWER'],
+        spawns: [
+            { id: 'oddish', weight: 35, min: 3, max: 6 },
+            { id: 'bulbasaur', weight: 10, min: 5, max: 8 },
+            { id: 'pidgey', weight: 25, min: 2, max: 5 },
+            { id: 'ralts', weight: 10, min: 6, max: 9 },
+            { id: 'pikachu', weight: 20, min: 5, max: 9 }
+        ]
+    },
+    cave: {
+        id: 'cave',
+        name: 'Crystal Cavern',
+        color: '#665544',
+        weather: 'sand',
+        props: ['ROCK', 'ROCK_SPIRE', 'CRYSTAL'],
+        spawns: [
+            { id: 'geodude', weight: 35, min: 5, max: 9 },
+            { id: 'gastly', weight: 20, min: 6, max: 10 },
+            { id: 'onix', weight: 10, min: 8, max: 12 },
+            { id: 'sandshrew', weight: 20, min: 5, max: 9 },
+            { id: 'magby', weight: 15, min: 8, max: 12 }
+        ]
+    },
+    lake: {
+        id: 'lake',
+        name: 'Mirror Lake',
+        color: '#4a90e2',
+        weather: 'rain',
+        props: ['BUSH', 'TREE', 'ROCK'],
+        spawns: [
+            { id: 'magikarp', weight: 45, min: 3, max: 6 },
+            { id: 'squirtle', weight: 15, min: 6, max: 9 },
+            { id: 'lapras', weight: 5, min: 10, max: 12 },
+            { id: 'pidgey', weight: 20, min: 4, max: 7 },
+            { id: 'eevee', weight: 15, min: 7, max: 10 }
+        ]
+    },
+    mountain: {
+        id: 'mountain',
+        name: 'Highridge Pass',
+        color: '#8899aa',
+        weather: 'wind',
+        props: ['ROCK', 'ROCK', 'ROCK_SPIRE', 'TREE_TALL'],
+        spawns: [
+            { id: 'onix', weight: 20, min: 10, max: 14 },
+            { id: 'pidgeotto', weight: 25, min: 8, max: 12 },
+            { id: 'geodude', weight: 30, min: 7, max: 10 },
+            { id: 'magmar', weight: 10, min: 12, max: 15 },
+            { id: 'sandslash', weight: 15, min: 10, max: 13 }
+        ]
+    },
+    volcano: {
+        id: 'volcano',
+        name: 'Ember Fields',
+        color: '#a04422',
+        weather: 'sun',
+        props: ['ROCK', 'ROCK_SPIRE', 'CRYSTAL'],
+        spawns: [
+            { id: 'slugma', weight: 30, min: 8, max: 12 },
+            { id: 'magby', weight: 25, min: 9, max: 13 },
+            { id: 'magmar', weight: 15, min: 12, max: 16 },
+            { id: 'charmeleon', weight: 10, min: 12, max: 15 },
+            { id: 'geodude', weight: 20, min: 9, max: 13 }
+        ]
+    },
+    snow: {
+        id: 'snow',
+        name: 'Frostwild',
+        color: '#bfe9ff',
+        weather: 'hail',
+        props: ['CRYSTAL', 'ROCK', 'TREE_TALL'],
+        spawns: [
+            { id: 'snorunt', weight: 40, min: 8, max: 12 },
+            { id: 'glaceon', weight: 15, min: 12, max: 16 },
+            { id: 'lapras', weight: 10, min: 12, max: 16 },
+            { id: 'pidgeotto', weight: 20, min: 9, max: 13 },
+            { id: 'eevee', weight: 15, min: 9, max: 12 }
+        ]
+    },
+    ruins: {
+        id: 'ruins',
+        name: 'Echo Ruins',
+        color: '#776655',
+        weather: 'fog',
+        props: ['RUINS', 'ROCK', 'CRYSTAL'],
+        spawns: [
+            { id: 'gastly', weight: 40, min: 10, max: 14 },
+            { id: 'ralts', weight: 25, min: 8, max: 12 },
+            { id: 'haunter', weight: 15, min: 12, max: 15 },
+            { id: 'kirlia', weight: 20, min: 10, max: 13 }
+        ]
+    }
+};
+const REGIONS = [
+    {
+        id: 'aurelia',
+        name: 'Aurelia Region',
+        description: 'Bright routes, ancient ruins, and a rising league.',
+        startTown: 'spruce',
+        towns: [
+            { id: 'spruce', name: 'Spruce Town', x: -40, y: 10, services: ['center', 'mart', 'lab'], description: 'A quiet town of pine roofs and fresh starts.' },
+            { id: 'lumen', name: 'Lumen City', x: -10, y: -5, services: ['center', 'mart', 'gym'], description: 'Neon streets and a buzzing stadium gym.' },
+            { id: 'cinder', name: 'Cinder Town', x: 30, y: -10, services: ['center', 'mart', 'gym'], description: 'A forge town at the edge of the Ember Fields.' }
+        ],
+        gyms: [
+            {
+                id: 'lumen-gym',
+                name: 'Lumen Gym',
+                x: -8,
+                y: -6,
+                type: TYPES.ELECTRIC,
+                badge: 'Spark Badge',
+                leader: 'Iris',
+                puzzle: 'Light the circuit before the battle.',
+                team: [
+                    { species: 'pikachu', level: 14 },
+                    { species: 'pidgeotto', level: 16 }
+                ]
+            },
+            {
+                id: 'ember-gym',
+                name: 'Ember Gym',
+                x: 28,
+                y: -12,
+                type: TYPES.FIRE,
+                badge: 'Blaze Badge',
+                leader: 'Kai',
+                puzzle: 'Control the steam valves to open the arena.',
+                team: [
+                    { species: 'slugma', level: 20 },
+                    { species: 'magby', level: 22 },
+                    { species: 'magmar', level: 24 }
+                ]
+            }
+        ],
+        landmarks: [
+            { id: 'echo-ruins', name: 'Echo Ruins', x: 15, y: -20, biome: 'ruins', description: 'Ancient stonework humming with energy.' }
+        ],
+        villain: {
+            id: 'obsidian-base',
+            name: 'Team Obsidian Base',
+            x: 36,
+            y: -30,
+            description: 'A hidden lab built into black rock.',
+            team: [
+                { species: 'haunter', level: 26 },
+                { species: 'sandslash', level: 27 },
+                { species: 'golem', level: 28 }
+            ],
+            reward: 900
+        },
+        zones: [
+            { id: 'route-1', name: 'Route 1', biome: 'plains', x: -30, y: 5, r: 18 },
+            { id: 'verdant', name: 'Verdant Forest', biome: 'forest', x: -18, y: 20, r: 14 },
+            { id: 'crystal', name: 'Crystal Cavern', biome: 'cave', x: 5, y: 8, r: 12 },
+            { id: 'mirror', name: 'Mirror Lake', biome: 'lake', x: 8, y: -8, r: 12 },
+            { id: 'highridge', name: 'Highridge Pass', biome: 'mountain', x: 28, y: 18, r: 14 },
+            { id: 'ember', name: 'Ember Fields', biome: 'volcano', x: 35, y: -8, r: 12 }
+        ],
+        trainers: [
+            {
+                id: 'rival-1',
+                name: 'Rival Jae',
+                x: -22,
+                y: 2,
+                reward: 120,
+                team: [
+                    { species: 'pidgey', level: 7 },
+                    { species: 'pikachu', level: 9 }
+                ]
+            },
+            {
+                id: 'hiker-1',
+                name: 'Hiker Bram',
+                x: 10,
+                y: 10,
+                reward: 160,
+                team: [
+                    { species: 'geodude', level: 10 },
+                    { species: 'sandshrew', level: 11 }
+                ]
+            }
+        ]
+    },
+    {
+        id: 'frostveil',
+        name: 'Frostveil Isles',
+        description: 'Snow routes, cold seas, and hidden ice caves.',
+        startTown: 'harbor',
+        towns: [
+            { id: 'harbor', name: 'Harbor Town', x: -25, y: -10, services: ['center', 'mart'], description: 'Fishing docks and a salty breeze.' },
+            { id: 'glacier', name: 'Glacier City', x: 10, y: 12, services: ['center', 'mart', 'gym'], description: 'A city carved from ice and light.' }
+        ],
+        gyms: [
+            {
+                id: 'glacier-gym',
+                name: 'Glacier Gym',
+                x: 12,
+                y: 10,
+                type: TYPES.ICE,
+                badge: 'Frost Badge',
+                leader: 'Nari',
+                puzzle: 'Slide the mirrors to open the arena.',
+                team: [
+                    { species: 'snorunt', level: 18 },
+                    { species: 'glalie', level: 21 },
+                    { species: 'glaceon', level: 23 }
+                ]
+            }
+        ],
+        landmarks: [
+            { id: 'ice-shrine', name: 'Ice Shrine', x: 22, y: 22, biome: 'snow', description: 'A shrine that calls to rare ice Pokemon.' }
+        ],
+        villain: null,
+        zones: [
+            { id: 'frost-route', name: 'Frost Route', biome: 'snow', x: -10, y: 8, r: 18 },
+            { id: 'icy-lake', name: 'Icy Bay', biome: 'lake', x: -28, y: -8, r: 14 },
+            { id: 'ice-ruins', name: 'Ice Ruins', biome: 'ruins', x: 20, y: 20, r: 12 }
+        ],
+        trainers: [
+            {
+                id: 'skater-1',
+                name: 'Skater Lio',
+                x: -5,
+                y: 4,
+                reward: 160,
+                team: [
+                    { species: 'snorunt', level: 12 },
+                    { species: 'pidgeotto', level: 13 }
+                ]
+            }
+        ]
+    }
+];
+
+const State = {
+    mode: 'WORLD',
+    regionIdx: 0,
+    teamP: [],
+    box: [],
+    teamE: [],
+    wildMons: [],
+    trainers: [],
+    activeWildId: null,
+    activeTrainerId: null,
+    money: 300,
+    badges: [],
+    inventory: {
+        pokeball: 6,
+        greatball: 2,
+        potion: 3,
+        antidote: 1
+    },
+    pokedex: {
+        seen: new Set(),
+        caught: new Set()
+    },
+    flags: {
+        defeatedTrainers: {},
+        defeatedGyms: {},
+        villainCleared: false
+    },
+    currentZoneId: null,
+    weather: 'clear',
+    starterChosen: false
+};
+
+let mouseX = window.innerWidth / 2;
+let mouseY = window.innerHeight / 2;
+
+const canvas = document.createElement('canvas');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+canvas.style.position = 'absolute';
+canvas.style.top = '0';
+canvas.style.left = '0';
+canvas.style.zIndex = '1';
+document.getElementById('canvas-container').appendChild(canvas);
+const ctx = canvas.getContext('2d');
+
+const Viewport = {
+    world: {
+        x: 0,
+        y: 0,
+        scale: WORLD_SCALE,
+        width: window.innerWidth,
+        height: window.innerHeight
+    }
+};
+
+const WorldObjects = {
+    player: { x: 0, y: 0, sprite: null },
+    props: [],
+    zones: [],
+    towns: [],
+    gyms: [],
+    landmarks: [],
+    trainers: [],
+    villain: null
+};
+
+const BattleObjects = {
+    player: { x: 0, y: 0, sprite: null },
+    enemy: { x: 0, y: 0, sprite: null },
+    ball: { x: 0, y: 0, visible: false }
+};
+
+const slotP = { x: window.innerWidth * 0.25, y: window.innerHeight * 0.38, sprite: null };
+const slotE = { x: window.innerWidth * 0.72, y: window.innerHeight * 0.32, sprite: null };
+const ballObj = BattleObjects.ball;
+
+const keys = { ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false };
+const UI = {
+    toast: (message) => {
+        const toast = document.getElementById('toast');
+        toast.innerText = message;
+        toast.style.opacity = 1;
+        clearTimeout(UI.toastTimer);
+        UI.toastTimer = setTimeout(() => {
+            toast.style.opacity = 0;
+        }, 2200);
+    },
+    setWorldInfo: () => {
+        const region = getRegion();
+        const zone = getZoneAt(WorldObjects.player.x, WorldObjects.player.y);
+        const biome = zone ? BIOMES[zone.biome] : null;
+        document.getElementById('region-name').innerText = region.name;
+        document.getElementById('location-name').innerText = zone ? zone.name : 'Wilderness';
+        document.getElementById('biome-name').innerText = biome ? biome.name : 'Open Trails';
+        document.getElementById('badge-count').innerText = State.badges.length;
+        document.getElementById('money-count').innerText = State.money;
+        const objective = State.badges.length < getRegion().gyms.length
+            ? `Earn the next badge (${State.badges.length + 1}/${getRegion().gyms.length}).`
+            : 'Challenge the league and protect the region.';
+        document.getElementById('objective-text').innerText = `Objective: ${objective}`;
+        const hint = document.getElementById('interaction-hint');
+        if (State.nearbyPoi) {
+            hint.innerText = `Press E to enter ${State.nearbyPoi.name}`;
+        } else {
+            hint.innerText = '';
+        }
+    },
+    blockingOpen: () => {
+        return Pokedex.isOpen || MapUI.isOpen || Interact.isOpen || StarterUI.isOpen;
+    }
+};
+
+const Pokedex = {
+    isOpen: false,
+    selTeam: null,
+    selBox: null,
+    toggle: () => {
+        if (State.mode === 'BATTLE') return;
+        Pokedex.isOpen = !Pokedex.isOpen;
+        document.getElementById('pokedex-overlay').style.display = Pokedex.isOpen ? 'flex' : 'none';
+        if (Pokedex.isOpen) {
+            Pokedex.selTeam = null;
+            Pokedex.selBox = null;
+            Pokedex.render();
+        }
+    },
+    markSeen: (id) => {
+        State.pokedex.seen.add(id);
+    },
+    markCaught: (id) => {
+        State.pokedex.caught.add(id);
+        Pokedex.markSeen(id);
+    },
+    render: () => {
+        const drawSlot = (m) => {
+            const types = m.types.map(t => `<span class="type-chip" style="background:${TYPE_COLORS[t] || '#999'}">${t}</span>`).join('');
+            return `
+                <div class="slot-header">
+                    <span class="tag tag-${m.size.toLowerCase()}">${SIZES[m.size].label}</span>
+                    <span class="mon-name">${m.name}</span>
+                    <span class="mon-level">Lv.${m.level}</span>
+                </div>
+                <div class="slot-types">${types}</div>
+                <span class="mon-hp">${Math.ceil(m.hp)}/${m.maxHp} HP</span>
+            `;
+        };
+        const tList = document.getElementById('list-team');
+        tList.innerHTML = '';
+        State.teamP.forEach((m, i) => {
+            const d = document.createElement('div');
+            d.className = `mon-slot ${Pokedex.selTeam === i ? 'selected' : ''}`;
+            d.innerHTML = drawSlot(m);
+            d.onclick = () => {
+                Pokedex.selTeam = i;
+                Pokedex.checkSwap();
+                Pokedex.render();
+            };
+            tList.appendChild(d);
+        });
+        const bList = document.getElementById('list-box');
+        bList.innerHTML = '';
+        if (State.box.length === 0) {
+            bList.innerHTML = '<div class="empty-note">Box Empty</div>';
+        }
+        State.box.forEach((m, i) => {
+            const d = document.createElement('div');
+            d.className = `mon-slot ${Pokedex.selBox === i ? 'selected' : ''}`;
+            d.innerHTML = drawSlot(m);
+            d.onclick = () => {
+                Pokedex.selBox = i;
+                Pokedex.checkSwap();
+                Pokedex.render();
+            };
+            bList.appendChild(d);
+        });
+        document.getElementById('dex-counts').innerText = `Seen: ${State.pokedex.seen.size} | Caught: ${State.pokedex.caught.size}`;
+    },
+    checkSwap: () => {
+        if (Pokedex.selTeam !== null && Pokedex.selBox !== null) {
+            const t = State.teamP[Pokedex.selTeam];
+            State.teamP[Pokedex.selTeam] = State.box[Pokedex.selBox];
+            State.box[Pokedex.selBox] = t;
+            Pokedex.selTeam = null;
+            Pokedex.selBox = null;
+        }
+    }
+};
+
+const MapUI = {
+    isOpen: false,
+    toggle: () => {
+        if (State.mode === 'BATTLE') return;
+        MapUI.isOpen = !MapUI.isOpen;
+        document.getElementById('map-overlay').style.display = MapUI.isOpen ? 'flex' : 'none';
+        if (MapUI.isOpen) MapUI.render();
+    },
+    render: () => {
+        const regionsList = document.getElementById('map-regions');
+        const locationsList = document.getElementById('map-locations');
+        regionsList.innerHTML = '';
+        locationsList.innerHTML = '';
+        REGIONS.forEach((region, idx) => {
+            const btn = document.createElement('button');
+            btn.className = `btn ${idx === State.regionIdx ? 'selected' : ''}`;
+            btn.innerText = region.name;
+            btn.onclick = () => {
+                loadRegion(idx, true);
+                MapUI.render();
+            };
+            regionsList.appendChild(btn);
+        });
+        const region = getRegion();
+        const locations = [...region.towns, ...region.landmarks];
+        locations.forEach((loc) => {
+            const btn = document.createElement('button');
+            btn.className = 'btn secondary';
+            btn.innerText = loc.name;
+            btn.onclick = () => {
+                WorldObjects.player.x = loc.x;
+                WorldObjects.player.y = loc.y;
+                MapUI.toggle();
+            };
+            locationsList.appendChild(btn);
+        });
+    }
+};
+const Interact = {
+    isOpen: false,
+    active: null,
+    mode: 'main',
+    open: (poi) => {
+        Interact.active = poi;
+        Interact.mode = 'main';
+        Interact.isOpen = true;
+        Interact.render();
+        document.getElementById('interaction-overlay').style.display = 'flex';
+    },
+    close: () => {
+        Interact.isOpen = false;
+        Interact.active = null;
+        document.getElementById('interaction-overlay').style.display = 'none';
+    },
+    render: () => {
+        if (!Interact.active) return;
+        const title = document.getElementById('interaction-title');
+        const desc = document.getElementById('interaction-desc');
+        const actions = document.getElementById('interaction-actions');
+        actions.innerHTML = '';
+        title.innerText = Interact.active.name;
+        desc.innerText = Interact.active.description || 'A lively spot in the region.';
+        if (Interact.mode === 'shop') {
+            Interact.renderShop(actions);
+            return;
+        }
+        if (Interact.active.type === 'town') {
+            if (Interact.active.services.includes('center')) {
+                actions.appendChild(Interact.makeAction('Pokemon Center', () => {
+                    healTeam();
+                    UI.toast('Your team is fully healed.');
+                }));
+            }
+            if (Interact.active.services.includes('mart')) {
+                actions.appendChild(Interact.makeAction('Poke Mart', () => {
+                    Interact.mode = 'shop';
+                    Interact.render();
+                }));
+            }
+            const gym = getRegion().gyms.find(g => g.x === Interact.active.x && g.y === Interact.active.y) || getGymByTown(Interact.active.id);
+            if (gym) {
+                const cleared = State.flags.defeatedGyms[gym.id];
+                actions.appendChild(Interact.makeAction(cleared ? 'Gym Cleared' : `Challenge ${gym.name}`, () => {
+                    if (cleared) {
+                        UI.toast('You already earned this badge.');
+                    } else {
+                        Interact.close();
+                        Battle.startTrainer({
+                            name: gym.leader,
+                            team: gym.team,
+                            isGym: true,
+                            reward: 350,
+                            badge: gym.badge,
+                            gymId: gym.id,
+                            weather: 'clear'
+                        });
+                    }
+                }, cleared));
+            }
+        }
+        if (Interact.active.type === 'landmark') {
+            actions.appendChild(Interact.makeAction('Explore', () => {
+                Interact.close();
+                const biome = BIOMES[Interact.active.biome];
+                const entry = pickWeighted(biome.spawns);
+                const level = randRange(entry.min, entry.max + 2);
+                const wild = makePokemon(entry.id, level, 'HUGE', 'wild');
+                Battle.startWild(wild, biome.weather);
+            }));
+        }
+        if (Interact.active.type === 'villain') {
+            actions.appendChild(Interact.makeAction('Challenge Team Obsidian', () => {
+                if (State.badges.length < 2) {
+                    UI.toast('You need more badges to face them.');
+                    return;
+                }
+                Interact.close();
+                Battle.startTrainer({
+                    name: 'Team Obsidian',
+                    team: Interact.active.team,
+                    reward: Interact.active.reward,
+                    isGym: false,
+                    badge: null,
+                    weather: 'sand'
+                });
+            }));
+        }
+        actions.appendChild(Interact.makeAction('Leave', () => Interact.close()));
+    },
+    renderShop: (actions) => {
+        const shopItems = ['pokeball', 'greatball', 'potion', 'superpotion', 'antidote', 'awaken', 'ice_stone'];
+        shopItems.forEach((id) => {
+            const item = ITEMS[id];
+            actions.appendChild(Interact.makeAction(`${item.name} - ${item.price}`, () => {
+                if (State.money < item.price) {
+                    UI.toast('Not enough money.');
+                    return;
+                }
+                State.money -= item.price;
+                State.inventory[id] = (State.inventory[id] || 0) + 1;
+                UI.toast(`${item.name} added to bag.`);
+                UI.setWorldInfo();
+            }));
+        });
+        actions.appendChild(Interact.makeAction('Back', () => {
+            Interact.mode = 'main';
+            Interact.render();
+        }));
+    },
+    makeAction: (label, action, disabled = false) => {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.innerText = label;
+        if (disabled) btn.disabled = true;
+        else btn.onclick = action;
+        return btn;
+    }
+};
+
+const StarterUI = {
+    isOpen: true,
+    init: () => {
+        const list = document.getElementById('starter-list');
+        document.getElementById('starter-overlay').style.display = 'flex';
+        list.innerHTML = '';
+        STARTERS.forEach((id) => {
+            const mon = SPECIES[id];
+            const card = document.createElement('button');
+            card.className = 'starter-card';
+            const sprite = SpriteManager.getSprite(id);
+            if (sprite) {
+                const img = document.createElement('img');
+                img.src = sprite.src || sprite.toDataURL();
+                img.alt = mon.name;
+                card.appendChild(img);
+            }
+            const label = document.createElement('div');
+            label.innerText = mon.name;
+            card.appendChild(label);
+            card.onclick = () => {
+                State.teamP = [makePokemon(id, 5, 'NORMAL')];
+                State.starterChosen = true;
+                Pokedex.markCaught(id);
+                StarterUI.close();
+                UI.toast(`${mon.name} joined your team.`);
+            };
+            list.appendChild(card);
+        });
+    },
+    close: () => {
+        StarterUI.isOpen = false;
+        document.getElementById('starter-overlay').style.display = 'none';
+    }
+};
+
+const Evolution = {
+    checkEvolution: (pokemon) => {
+        if (!pokemon.evolvesTo || !pokemon.evolveLevel) return false;
+        return pokemon.level >= pokemon.evolveLevel;
+    },
+    evolve: async (pokemon, index) => {
+        const newSpecies = SPECIES[pokemon.evolvesTo];
+        if (!newSpecies) return false;
+        const oldName = pokemon.name;
+        const evolved = makePokemon(newSpecies.id, pokemon.level, pokemon.size, pokemon.source);
+        evolved.exp = pokemon.exp;
+        evolved.hp = Math.min(pokemon.hp, evolved.maxHp);
+        State.teamP[index] = evolved;
+        if (State.mode === 'BATTLE') {
+            Battle.log(`What? ${oldName} is evolving!`, 'new');
+            await Battle.wait(800);
+            Battle.log(`Congratulations! ${oldName} evolved into ${evolved.name}!`, 'new');
+            await Battle.wait(1200);
+            Battle.renderMon();
+            Battle.updateHUD();
+        } else {
+            UI.toast(`${oldName} evolved into ${evolved.name}!`);
+        }
+        return true;
+    },
+    gainExp: async (pokemon, expGain, index) => {
+        pokemon.exp += expGain;
+        const expNeeded = Math.floor(20 + pokemon.level * 12);
+        if (pokemon.exp >= expNeeded) {
+            pokemon.exp -= expNeeded;
+            pokemon.level++;
+            const stats = calculateStats(SPECIES[pokemon.id], pokemon.level, pokemon.size);
+            pokemon.maxHp = stats.hp;
+            pokemon.stats = stats;
+            pokemon.hp = Math.min(pokemon.hp + Math.floor(stats.hp * 0.2), stats.hp);
+            if (State.mode === 'BATTLE') {
+                Battle.log(`${pokemon.name} grew to level ${pokemon.level}!`, 'new');
+                await Battle.wait(800);
+            }
+            if (Evolution.checkEvolution(pokemon)) {
+                await Evolution.evolve(pokemon, index);
+            }
+        }
+    }
+};
+const Battle = {
+    pIdx: 0,
+    eIdx: 0,
+    locked: false,
+    aiming: false,
+    selectedBall: 'pokeball',
+    canCatch: true,
+    weather: 'clear',
+    startWild: (wild, weather = 'clear') => {
+        Battle.canCatch = true;
+        Battle.weather = weather;
+        Battle.init({
+            type: 'WILD',
+            name: wild.name,
+            team: [wild]
+        });
+    },
+    startTrainer: (trainer) => {
+        Battle.canCatch = false;
+        Battle.weather = trainer.weather || 'clear';
+        Battle.init({
+            type: trainer.isGym ? 'GYM' : 'TRAINER',
+            name: trainer.name,
+            team: trainer.team,
+            reward: trainer.reward || 150,
+            badge: trainer.badge || null
+        });
+    },
+    init: (battle) => {
+        Battle.pIdx = State.teamP.findIndex(p => p.hp > 0);
+        if (Battle.pIdx === -1) return alert('Reset Required.');
+        State.mode = 'BATTLE';
+        Battle.eIdx = 0;
+        Battle.locked = false;
+        State.teamE = battle.team.map(entry => {
+            if (entry.id) return entry;
+            return makePokemon(entry.species, entry.level || 5, entry.size || 'NORMAL', 'trainer');
+        });
+        Battle.renderMon();
+        Battle.log(`${battle.name} appeared!`, battle.type === 'GYM' ? 'new' : '');
+        if (Battle.weather !== 'clear') {
+            Battle.log(`Weather shifted to ${Battle.weather}.`, 'new');
+        }
+        Battle.updateHUD();
+        Battle.menu('root');
+        document.getElementById('world-ui').style.display = 'none';
+        document.getElementById('battle-ui').style.display = 'flex';
+        Battle.battleContext = battle;
+    },
+    renderMon: async () => {
+        const p = State.teamP[Battle.pIdx];
+        const e = State.teamE[Battle.eIdx];
+        const pSprite = await SpriteManager.loadSprite(p.id);
+        const eSprite = await SpriteManager.loadSprite(e.id);
+        slotP.sprite = pSprite;
+        slotE.sprite = eSprite;
+        slotP.scale = (POKEMON_SIZES[p.id] || 0.7) * SIZES[p.size].scale;
+        slotE.scale = (POKEMON_SIZES[e.id] || 0.7) * SIZES[e.size].scale;
+    },
+    startAiming: (ballId = 'pokeball') => {
+        if (!Battle.canCatch) {
+            UI.toast('You cannot catch trainer Pokemon.');
+            return;
+        }
+        if (!State.inventory[ballId]) {
+            UI.toast('No balls left.');
+            return;
+        }
+        Battle.selectedBall = ballId;
+        Battle.aiming = true;
+        Battle.menu('msg');
+        document.getElementById('aim-layer').style.display = 'block';
+        document.getElementById('aim-msg').innerText = `Aim for the center! Throw ${ITEMS[ballId].name}!`;
+        mouseX = window.innerWidth / 2;
+        mouseY = window.innerHeight / 2;
+    },
+    throwBall: async () => {
+        if (!Battle.aiming) return;
+        Battle.aiming = false;
+        document.getElementById('aim-layer').style.display = 'none';
+        const e = State.teamE[Battle.eIdx];
+        const enemyX = slotE.x;
+        const enemyY = slotE.y;
+        const dist = Math.hypot(mouseX - enemyX, mouseY - enemyY);
+        const hitRadius = e.size === 'GMAX' ? 160 : (e.size === 'HUGE' ? 90 : 70);
+        const hit = dist < hitRadius;
+        const ballId = Battle.selectedBall;
+        State.inventory[ballId] = Math.max(0, (State.inventory[ballId] || 0) - 1);
+        Battle.log(`Throwing ${ITEMS[ballId].name}...`, 'aim');
+        ballObj.visible = true;
+        ballObj.x = slotP.x;
+        ballObj.y = slotP.y;
+        let f = 0;
+        const targetX = slotE.x;
+        const targetY = slotE.y;
+        await new Promise(r => {
+            function step() {
+                f++;
+                const progress = f / 20;
+                ballObj.x = slotP.x + (targetX - slotP.x) * progress;
+                ballObj.y = slotP.y + (targetY - slotP.y) * progress + Math.sin(f * 0.2) * 30;
+                if (f < 20) requestAnimationFrame(step);
+                else r();
+            }
+            step();
+        });
+        if (hit) {
+            const ballMod = ITEMS[ballId].catchMod;
+            const hpFactor = 1 - (e.hp / e.maxHp);
+            const statusBonus = e.status ? 0.2 : 0;
+            const catchRate = (0.2 + hpFactor * 0.8 + statusBonus) * ballMod;
+            if (Math.random() < catchRate) {
+                slotE.sprite = null;
+                ballObj.visible = false;
+                Battle.log('Caught!', 'new');
+                const caught = { ...e };
+                if (State.teamP.length < 6) State.teamP.push(caught);
+                else State.box.push(caught);
+                Pokedex.markCaught(caught.id);
+                await Battle.wait(1200);
+                App.endBattle(true, Battle.battleContext);
+                return;
+            }
+            ballObj.visible = false;
+            Battle.log('Broke free!', 'new');
+            await Battle.wait(900);
+            await Battle.enemyTurn();
+        } else {
+            ballObj.visible = false;
+            Battle.log('Missed!', 'new');
+            await Battle.wait(900);
+            await Battle.enemyTurn();
+        }
+    },
+    updateHUD: () => {
+        const p = State.teamP[Battle.pIdx];
+        const e = State.teamE[Battle.eIdx];
+        const pStatus = p.status ? ` [${p.status.type.toUpperCase()}]` : '';
+        const eStatus = e.status ? ` [${e.status.type.toUpperCase()}]` : '';
+        document.getElementById('player-name').innerText = `${p.name} Lv.${p.level}${pStatus}`;
+        document.getElementById('enemy-name').innerText = `${e.name} Lv.${e.level}${eStatus}`;
+        const pPercent = clamp((p.hp / p.maxHp) * 100, 0, 100);
+        const ePercent = clamp((e.hp / e.maxHp) * 100, 0, 100);
+        const pHpBar = document.getElementById('player-hp-bar');
+        const eHpBar = document.getElementById('enemy-hp-bar');
+        pHpBar.style.width = pPercent + '%';
+        eHpBar.style.width = ePercent + '%';
+        pHpBar.className = 'hp-fill' + (pPercent > 50 ? '' : (pPercent > 25 ? ' yellow' : ' red'));
+        eHpBar.className = 'hp-fill' + (ePercent > 50 ? '' : (ePercent > 25 ? ' yellow' : ' red'));
+        document.getElementById('player-hp-text').innerText = `${Math.ceil(p.hp)}/${p.maxHp}`;
+    },
+    log: (msg, type = '') => {
+        const l = document.getElementById('log');
+        const d = document.createElement('div');
+        d.className = `entry ${type}`;
+        d.innerText = `> ${msg}`;
+        l.appendChild(d);
+        l.scrollTop = l.scrollHeight;
+    },
+    wait: (ms) => new Promise(r => setTimeout(r, ms)),
+    menu: (id) => {
+        ['menu-root', 'menu-moves', 'menu-switch', 'menu-bag', 'menu-msg'].forEach(m => {
+            document.getElementById(m).style.display = 'none';
+        });
+        document.getElementById(id === 'msg' ? 'menu-msg' : `menu-${id}`).style.display =
+            id === 'msg' ? 'block' : (id === 'switch' ? 'block' : 'grid');
+    },
+    toMoves: () => {
+        const c = document.getElementById('menu-moves');
+        c.innerHTML = '';
+        State.teamP[Battle.pIdx].moves.forEach(m => {
+            const b = document.createElement('button');
+            b.className = 'btn';
+            b.innerText = m.name;
+            b.onclick = () => Battle.runTurn(m);
+            c.appendChild(b);
+        });
+        const b = document.createElement('button');
+        b.className = 'btn';
+        b.innerText = 'BACK';
+        b.onclick = () => Battle.menu('root');
+        c.appendChild(b);
+        Battle.menu('moves');
+    },
+    toBag: () => {
+        const c = document.getElementById('menu-bag');
+        c.innerHTML = '';
+        const bagItems = Object.keys(State.inventory).filter(id => State.inventory[id] > 0);
+        if (bagItems.length === 0) {
+            const d = document.createElement('div');
+            d.className = 'bag-empty';
+            d.innerText = 'Bag is empty.';
+            c.appendChild(d);
+        } else {
+            bagItems.forEach(id => {
+                const item = ITEMS[id];
+                if (!item) return;
+                const b = document.createElement('button');
+                b.className = 'btn';
+                b.innerText = `${item.name} x${State.inventory[id]}`;
+                if (item.type === 'ball' && !Battle.canCatch) {
+                    b.disabled = true;
+                } else {
+                    b.onclick = () => Battle.useItem(id);
+                }
+                c.appendChild(b);
+            });
+        }
+        const back = document.createElement('button');
+        back.className = 'btn';
+        back.innerText = 'BACK';
+        back.onclick = () => Battle.menu('root');
+        c.appendChild(back);
+        Battle.menu('bag');
+    },
+    toSwitch: () => {
+        const c = document.getElementById('menu-switch');
+        c.innerHTML = '';
+        State.teamP.forEach((p, i) => {
+            const b = document.createElement('button');
+            b.className = 'btn';
+            b.innerText = `${p.name} (${Math.ceil(p.hp)})`;
+            if (i === Battle.pIdx || p.hp <= 0) b.disabled = true;
+            else b.onclick = () => Battle.runSwitch(i);
+            c.appendChild(b);
+        });
+        const b = document.createElement('button');
+        b.className = 'btn';
+        b.innerText = 'BACK';
+        b.onclick = () => Battle.menu('root');
+        c.appendChild(b);
+        Battle.menu('switch');
+    },
+    useItem: async (itemId) => {
+        const item = ITEMS[itemId];
+        if (!item || !State.inventory[itemId]) return;
+        if (item.type === 'ball') {
+            Battle.startAiming(itemId);
+            return;
+        }
+        if (item.type === 'heal') {
+            const p = State.teamP[Battle.pIdx];
+            p.hp = Math.min(p.maxHp, p.hp + item.heal);
+            State.inventory[itemId]--;
+            Battle.log(`${p.name} healed with ${item.name}!`, 'new');
+            Battle.updateHUD();
+            await Battle.wait(700);
+            await Battle.enemyTurn();
+            return;
+        }
+        if (item.type === 'status') {
+            const p = State.teamP[Battle.pIdx];
+            if (p.status && item.cures.includes(p.status.type)) {
+                p.status = null;
+                State.inventory[itemId]--;
+                Battle.log(`${p.name} recovered with ${item.name}!`, 'new');
+                Battle.updateHUD();
+                await Battle.wait(700);
+                await Battle.enemyTurn();
+                return;
+            }
+            UI.toast('Nothing happened.');
+        }
+        if (item.type === 'stone') {
+            UI.toast('Evolution stones can only be used from town.');
+        }
+    },
+    tryRun: () => {
+        if (Battle.canCatch) {
+            Battle.log('Escaped.');
+            setTimeout(() => App.endBattle(false, Battle.battleContext), 800);
+        } else {
+            Battle.log('Cannot run from a trainer battle!');
+        }
+    },
+    runTurn: async (pMove) => {
+        if (Battle.locked) return;
+        Battle.locked = true;
+        Battle.menu('msg');
+        const p = State.teamP[Battle.pIdx];
+        const e = State.teamE[Battle.eIdx];
+        const eMove = Battle.pickMove(e);
+        const first = Battle.compareSpeed(p, e, pMove, eMove) ? 'player' : 'enemy';
+        const order = first === 'player' ? [
+            { attacker: p, defender: e, move: pMove, isPlayer: true },
+            { attacker: e, defender: p, move: eMove, isPlayer: false }
+        ] : [
+            { attacker: e, defender: p, move: eMove, isPlayer: false },
+            { attacker: p, defender: e, move: pMove, isPlayer: true }
+        ];
+        for (const step of order) {
+            if (step.attacker.hp <= 0 || step.defender.hp <= 0) continue;
+            const acted = await Battle.executeMove(step.attacker, step.defender, step.move, step.isPlayer);
+            if (!acted) continue;
+            if (step.defender.hp <= 0) {
+                await Battle.handleFaint(step.defender, step.isPlayer ? 'enemy' : 'player');
+                if (State.mode !== 'BATTLE') return;
+                if (step.isPlayer && State.teamE[Battle.eIdx]?.hp <= 0) break;
+            }
+        }
+        await Battle.applyStatusEndTurn();
+        if (State.mode !== 'BATTLE') return;
+        if (State.teamP[Battle.pIdx].hp <= 0) return;
+        Battle.locked = false;
+        Battle.menu('root');
+    },
+    executeMove: async (attacker, defender, move, isPlayer) => {
+        if (!Battle.canAct(attacker)) {
+            Battle.log(`${attacker.name} is unable to move!`);
+            await Battle.wait(600);
+            return false;
+        }
+        Battle.log(`${attacker.name} used ${move.name}!`);
+        await Battle.animLunge(isPlayer ? slotP : slotE, isPlayer);
+        if (Math.random() > move.accuracy) {
+            Battle.log('The move missed!');
+            await Battle.wait(400);
+            return true;
+        }
+        if (move.power > 0) {
+            const result = Battle.calculateDamage(attacker, defender, move);
+            defender.hp = Math.max(0, defender.hp - result.damage);
+            Battle.updateHUD();
+            await Battle.animShake(isPlayer ? slotE : slotP);
+            if (result.effectText) Battle.log(result.effectText, 'new');
+        }
+        if (move.status && Math.random() < move.statusChance) {
+            Battle.applyStatus(defender, move.status);
+        }
+        return true;
+    },
+    pickMove: (mon) => {
+        return mon.moves[Math.floor(Math.random() * mon.moves.length)];
+    },
+    compareSpeed: (p, e, pMove, eMove) => {
+        const pSpeed = Battle.getSpeed(p) + (pMove.priority || 0);
+        const eSpeed = Battle.getSpeed(e) + (eMove.priority || 0);
+        if (pSpeed === eSpeed) return Math.random() > 0.5;
+        return pSpeed > eSpeed;
+    },
+    getSpeed: (mon) => {
+        const base = mon.stats.spd;
+        if (mon.status && mon.status.type === 'paralyze') return Math.floor(base * 0.5);
+        return base;
+    },
+    canAct: (mon) => {
+        if (mon.status && mon.status.type === 'sleep') {
+            mon.status.turns--;
+            if (mon.status.turns <= 0) {
+                mon.status = null;
+                Battle.log(`${mon.name} woke up!`);
+                return true;
+            }
+            Battle.log(`${mon.name} is asleep.`);
+            return false;
+        }
+        if (mon.status && mon.status.type === 'paralyze') {
+            if (Math.random() < 0.25) {
+                Battle.log(`${mon.name} is paralyzed!`);
+                return false;
+            }
+        }
+        return true;
+    },
+    calculateDamage: (attacker, defender, move) => {
+        const levelFactor = (2 * attacker.level) / 5 + 2;
+        const atk = attacker.stats.atk;
+        const def = defender.stats.def;
+        const base = ((levelFactor * move.power * (atk / def)) / 50) + 2;
+        let modifier = 1;
+        if (attacker.types.includes(move.type)) modifier *= 1.2;
+        const effectiveness = getTypeEffectiveness(move.type, defender.types);
+        modifier *= effectiveness;
+        modifier *= Battle.weatherModifier(move.type);
+        let crit = false;
+        if (Math.random() < 0.0625) {
+            modifier *= 1.5;
+            crit = true;
+        }
+        modifier *= (0.9 + Math.random() * 0.2);
+        const damage = Math.max(1, Math.floor(base * modifier));
+        let effectText = getEffectivenessText(effectiveness);
+        if (crit) effectText = effectText ? `${effectText} Critical hit!` : 'Critical hit!';
+        return { damage, effectText };
+    },
+    weatherModifier: (moveType) => {
+        if (Battle.weather === 'rain') {
+            if (moveType === TYPES.WATER) return 1.2;
+            if (moveType === TYPES.FIRE) return 0.8;
+        }
+        if (Battle.weather === 'sun') {
+            if (moveType === TYPES.FIRE) return 1.2;
+            if (moveType === TYPES.WATER) return 0.8;
+        }
+        if (Battle.weather === 'hail') {
+            if (moveType === TYPES.ICE) return 1.1;
+        }
+        if (Battle.weather === 'sand') {
+            if (moveType === TYPES.ROCK) return 1.1;
+        }
+        return 1.0;
+    },
+    applyStatus: (target, status) => {
+        if (target.status) return;
+        if (status === 'sleep') {
+            target.status = { type: 'sleep', turns: randRange(1, 3) };
+        } else {
+            target.status = { type: status };
+        }
+        Battle.log(`${target.name} is now ${status}!`, 'new');
+    },
+    applyStatusEndTurn: async () => {
+        const mons = [State.teamP[Battle.pIdx], State.teamE[Battle.eIdx]];
+        for (const mon of mons) {
+            if (!mon || mon.hp <= 0 || !mon.status) continue;
+            if (mon.status.type === 'burn' || mon.status.type === 'poison') {
+                const dmg = Math.max(1, Math.floor(mon.maxHp * 0.06));
+                mon.hp = Math.max(0, mon.hp - dmg);
+                Battle.log(`${mon.name} is hurt by ${mon.status.type}.`, 'new');
+                Battle.updateHUD();
+                if (mon.hp <= 0) {
+                    const side = mon === State.teamP[Battle.pIdx] ? 'player' : 'enemy';
+                    await Battle.handleFaint(mon, side);
+                    if (State.mode !== 'BATTLE') return;
+                }
+            }
+        }
+        Battle.updateHUD();
+    },
+    handleFaint: async (fainted, faintedSide) => {
+        Battle.log(`${fainted.name} fainted!`);
+        await Battle.animFaint(faintedSide === 'player' ? slotP : slotE);
+        if (faintedSide === 'enemy') {
+            const expGain = Math.floor(fainted.level * 20 + fainted.maxHp * 0.2);
+            await Evolution.gainExp(State.teamP[Battle.pIdx], expGain, Battle.pIdx);
+            const next = State.teamE.findIndex(x => x.hp > 0);
+            if (next === -1) {
+                Battle.log('Victory!', 'new');
+                await Battle.wait(1200);
+                App.endBattle(true, Battle.battleContext);
+                return;
+            }
+            Battle.eIdx = next;
+            await Battle.renderMon();
+            Battle.updateHUD();
+        } else {
+            if (State.teamP.every(x => x.hp <= 0)) {
+                Battle.log('Defeated...', 'new');
+                await Battle.wait(1600);
+                location.reload();
+                return;
+            }
+            Battle.locked = false;
+            Battle.toSwitch();
+        }
+    },
+    enemyTurn: async () => {
+        const p = State.teamP[Battle.pIdx];
+        const e = State.teamE[Battle.eIdx];
+        await Battle.wait(500);
+        const eMove = Battle.pickMove(e);
+        await Battle.executeMove(e, p, eMove, false);
+        if (p.hp <= 0) {
+            await Battle.handleFaint(p, 'player');
+            return;
+        }
+        Battle.locked = false;
+        Battle.menu('root');
+    },
+    runSwitch: async (idx) => {
+        Battle.locked = true;
+        Battle.menu('msg');
+        Battle.log(`Go ${State.teamP[idx].name}!`);
+        await Battle.wait(700);
+        Battle.pIdx = idx;
+        await Battle.renderMon();
+        Battle.updateHUD();
+        if (State.teamE[Battle.eIdx].hp > 0) {
+            Battle.log('Enemy takes a free hit!');
+            await Battle.animLunge(slotE, false);
+            State.teamP[Battle.pIdx].hp = Math.max(0, State.teamP[Battle.pIdx].hp - 10);
+            Battle.updateHUD();
+            await Battle.animShake(slotP);
+        }
+        Battle.locked = false;
+        Battle.menu('root');
+    },
+    animLunge: (slot, isP) => new Promise(r => {
+        let f = 0;
+        const d = isP ? -30 : 30;
+        const startX = slot.x;
+        function s() {
+            f++;
+            if (f < 10) slot.x += d;
+            else if (f < 20) slot.x -= d;
+            else {
+                slot.x = startX;
+                r();
+                return;
+            }
+            requestAnimationFrame(s);
+        }
+        s();
+    }),
+    animShake: (slot) => new Promise(r => {
+        let f = 0;
+        const sx = slot.x;
+        function s() {
+            f++;
+            slot.x = sx + Math.sin(f * 2) * 5;
+            if (f > 20) {
+                slot.x = sx;
+                r();
+                return;
+            }
+            requestAnimationFrame(s);
+        }
+        s();
+    }),
+    animFaint: () => new Promise(r => {
+        let scale = 1.0;
+        function s() {
+            scale -= 0.05;
+            if (scale <= 0.1) {
+                r();
+                return;
+            }
+            requestAnimationFrame(s);
+        }
+        s();
+    })
+};
+const App = {
+    updateBattleSlots: () => {
+        const uiWidth = 360;
+        const sceneWidth = Math.max(200, window.innerWidth - uiWidth);
+        const offsetX = uiWidth;
+        slotP.x = offsetX + sceneWidth * 0.28;
+        slotP.y = window.innerHeight * 0.38;
+        slotE.x = offsetX + sceneWidth * 0.72;
+        slotE.y = window.innerHeight * 0.32;
+    },
+    init: async () => {
+        const allPokemonIds = Object.keys(SPECIES);
+        await SpriteManager.loadAllSprites(allPokemonIds);
+        await loadTrainerSprite();
+        StarterUI.init();
+        loadRegion(0, true);
+        App.updateBattleSlots();
+        window.addEventListener('keydown', e => {
+            const k = e.key;
+            if (keys[k] !== undefined) {
+                keys[k] = true;
+                e.preventDefault();
+            }
+            if (k.toLowerCase() === 'i' && State.mode === 'WORLD') Pokedex.toggle();
+            if (k.toLowerCase() === 'm' && State.mode === 'WORLD') MapUI.toggle();
+            if (k.toLowerCase() === 'e' && State.mode === 'WORLD' && State.nearbyPoi) {
+                Interact.open(State.nearbyPoi);
+            }
+        });
+        window.addEventListener('keyup', e => {
+            const k = e.key;
+            if (keys[k] !== undefined) keys[k] = false;
+        });
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            App.updateBattleSlots();
+        });
+        window.addEventListener('mousemove', e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            if (Battle.aiming) {
+                const ch = document.getElementById('crosshair');
+                ch.style.left = mouseX + 'px';
+                ch.style.top = mouseY + 'px';
+            }
+        });
+        window.addEventListener('mousedown', () => {
+            if (Battle.aiming) Battle.throwBall();
+        });
+        App.loop();
+    },
+    endBattle: async (victory, battle) => {
+        State.mode = 'WORLD';
+        document.getElementById('battle-ui').style.display = 'none';
+        document.getElementById('world-ui').style.display = 'block';
+        if (battle.type === 'WILD' && State.activeWildId !== null) {
+            const idx = State.wildMons.findIndex(m => m.id === State.activeWildId);
+            if (idx !== -1) State.wildMons.splice(idx, 1);
+        }
+        if (battle.type !== 'WILD' && victory) {
+            State.money += battle.reward || 0;
+            if (battle.badge && !State.badges.includes(battle.badge)) {
+                State.badges.push(battle.badge);
+                UI.toast(`You earned the ${battle.badge}!`);
+            }
+            if (battle.gymId) {
+                State.flags.defeatedGyms[battle.gymId] = true;
+            }
+            if (battle.type === 'TRAINER' && State.activeTrainerId) {
+                State.flags.defeatedTrainers[State.activeTrainerId] = true;
+            }
+        }
+        State.activeWildId = null;
+        State.activeTrainerId = null;
+        State.teamP.forEach((p, i) => {
+            if (p.hp > 0) {
+                p.hp = Math.min(p.maxHp, p.hp + 10);
+                if (p.evolvesTo && p.level >= p.evolveLevel) {
+                    Evolution.evolve(p, i).catch(() => {});
+                }
+            }
+        });
+        UI.setWorldInfo();
+    },
+    updateWorld: () => {
+        if (!State.starterChosen) return;
+        if (UI.blockingOpen()) return;
+        const s = 0.15;
+        const prevX = WorldObjects.player.x;
+        const prevY = WorldObjects.player.y;
+        if (keys.ArrowUp) WorldObjects.player.y -= s;
+        if (keys.ArrowDown) WorldObjects.player.y += s;
+        if (keys.ArrowLeft) WorldObjects.player.x -= s;
+        if (keys.ArrowRight) WorldObjects.player.x += s;
+        if (!isOnLand(WorldObjects.player.x, WorldObjects.player.y)) {
+            WorldObjects.player.x = prevX;
+            WorldObjects.player.y = prevY;
+        }
+        Viewport.world.x = WorldObjects.player.x * WORLD_SCALE - window.innerWidth / 2;
+        Viewport.world.y = WorldObjects.player.y * WORLD_SCALE - window.innerHeight / 2;
+        State.nearbyPoi = getNearbyPoi(WorldObjects.player.x, WorldObjects.player.y);
+        UI.setWorldInfo();
+        if (State.nearbyPoi && State.nearbyPoi.type === 'trainer' && !State.flags.defeatedTrainers[State.nearbyPoi.id]) {
+            State.activeTrainerId = State.nearbyPoi.id;
+            Battle.startTrainer({
+                name: State.nearbyPoi.name,
+                team: State.nearbyPoi.team,
+                reward: State.nearbyPoi.reward,
+                isGym: false,
+                badge: null,
+                weather: 'clear'
+            });
+            return;
+        }
+        for (const m of State.wildMons) {
+            const zone = getRegion().zones.find(z => z.id === m.zoneId);
+            if (zone) {
+                const jitter = 0.004;
+                m.vx += (Math.random() - 0.5) * jitter;
+                m.vy += (Math.random() - 0.5) * jitter;
+                const speed = Math.hypot(m.vx, m.vy) || 0.0001;
+                const maxSpeed = 0.035;
+                if (speed > maxSpeed) {
+                    m.vx = (m.vx / speed) * maxSpeed;
+                    m.vy = (m.vy / speed) * maxSpeed;
+                }
+                const dx = m.x - zone.x;
+                const dy = m.y - zone.y;
+                const dist = Math.hypot(dx, dy) || 0.0001;
+                if (dist > zone.r - 1) {
+                    m.vx -= (dx / dist) * 0.01;
+                    m.vy -= (dy / dist) * 0.01;
+                }
+                m.x += m.vx;
+                m.y += m.vy;
+            }
+            if (Math.hypot(WorldObjects.player.x - m.x, WorldObjects.player.y - m.y) < 2) {
+                State.activeWildId = m.id;
+                Pokedex.markSeen(m.species.id);
+                Battle.startWild(m.species, BIOMES[m.biome].weather);
+                return;
+            }
+        }
+    },
+    renderWorld: () => {
+        const sky = '#87bdf0';
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(-Viewport.world.x, -Viewport.world.y);
+        ctx.scale(WORLD_SCALE, WORLD_SCALE);
+        getRegion().zones.forEach(zone => {
+            const biome = BIOMES[zone.biome];
+            if (zone.polygon && zone.polygon.length) {
+                ctx.fillStyle = biome.color;
+                ctx.beginPath();
+                ctx.moveTo(zone.polygon[0].x, zone.polygon[0].y);
+                zone.polygon.slice(1).forEach(point => ctx.lineTo(point.x, point.y));
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                ctx.lineWidth = 0.1;
+                ctx.stroke();
+            }
+        });
+        WorldObjects.props.forEach(prop => {
+            if (prop.type === 'TREE') {
+                ctx.fillStyle = '#8b5a2b';
+                ctx.fillRect(prop.x - 0.3, prop.y, 0.6, 1.2);
+                ctx.fillStyle = '#2ecc71';
+                ctx.beginPath();
+                ctx.arc(prop.x, prop.y - 0.4, 1.2, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (prop.type === 'TREE_TALL') {
+                ctx.fillStyle = '#7a4a21';
+                ctx.fillRect(prop.x - 0.25, prop.y - 0.2, 0.5, 1.6);
+                ctx.fillStyle = '#1f9f5a';
+                ctx.beginPath();
+                ctx.arc(prop.x, prop.y - 0.8, 1.4, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (prop.type === 'BUSH') {
+                ctx.fillStyle = '#2dbd6e';
+                ctx.beginPath();
+                ctx.arc(prop.x, prop.y - 0.2, 0.9, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (prop.type === 'FLOWER') {
+                ctx.fillStyle = '#ff6fae';
+                ctx.beginPath();
+                ctx.arc(prop.x, prop.y - 0.1, 0.35, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ffd54f';
+                ctx.beginPath();
+                ctx.arc(prop.x, prop.y - 0.1, 0.15, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (prop.type === 'CRYSTAL') {
+                ctx.fillStyle = '#bfe9ff';
+                ctx.beginPath();
+                ctx.moveTo(prop.x, prop.y - 1.5);
+                ctx.lineTo(prop.x - 0.8, prop.y + 0.2);
+                ctx.lineTo(prop.x + 0.8, prop.y + 0.2);
+                ctx.closePath();
+                ctx.fill();
+            } else if (prop.type === 'ROCK_SPIRE') {
+                ctx.fillStyle = '#7b6b5b';
+                ctx.beginPath();
+                ctx.moveTo(prop.x, prop.y - 1.2);
+                ctx.lineTo(prop.x - 0.7, prop.y + 0.6);
+                ctx.lineTo(prop.x + 0.7, prop.y + 0.6);
+                ctx.closePath();
+                ctx.fill();
+            } else if (prop.type === 'RUINS') {
+                ctx.fillStyle = '#5a4a3a';
+                ctx.fillRect(prop.x - 0.8, prop.y - 0.5, 1.6, 1.0);
+            } else {
+                ctx.fillStyle = '#665544';
+                ctx.fillRect(prop.x - 1, prop.y - 1, 2, 2);
+            }
+        });
+        WorldObjects.towns.forEach(town => {
+            ctx.fillStyle = '#223344';
+            ctx.fillRect(town.x - 1.2, town.y - 1, 2.4, 2);
+            ctx.fillStyle = '#f4d03f';
+            ctx.fillRect(town.x - 1.2, town.y - 1.4, 2.4, 0.4);
+        });
+        WorldObjects.gyms.forEach(gym => {
+            ctx.fillStyle = '#ff4455';
+            ctx.fillRect(gym.x - 1.2, gym.y - 1.2, 2.4, 2.4);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(gym.x - 0.4, gym.y - 0.4, 0.8, 0.8);
+        });
+        WorldObjects.landmarks.forEach(lm => {
+            ctx.fillStyle = '#6b5b4b';
+            ctx.beginPath();
+            ctx.moveTo(lm.x, lm.y - 1.4);
+            ctx.lineTo(lm.x - 1.2, lm.y + 1.2);
+            ctx.lineTo(lm.x + 1.2, lm.y + 1.2);
+            ctx.closePath();
+            ctx.fill();
+        });
+        if (WorldObjects.villain) {
+            const v = WorldObjects.villain;
+            ctx.fillStyle = '#111111';
+            ctx.fillRect(v.x - 1.4, v.y - 1.2, 2.8, 2.4);
+            ctx.fillStyle = '#ff0055';
+            ctx.fillRect(v.x - 0.6, v.y - 0.6, 1.2, 1.2);
+        }
+        WorldObjects.trainers.forEach(tr => {
+            if (State.flags.defeatedTrainers[tr.id]) return;
+            ctx.fillStyle = '#3b4cca';
+            ctx.fillRect(tr.x - 0.4, tr.y - 0.3, 0.8, 1.2);
+        });
+        const t = Date.now() * 0.002;
+        State.wildMons.forEach(m => {
+            const sprite = SpriteManager.getSprite(m.species.id);
+            if (sprite) {
+                const scale = (POKEMON_SIZES[m.species.id] || 0.7) * 0.04 * SIZES[m.size].scale;
+                const size = scale * 80;
+                const bob = Math.sin(t * (m.animSpeed || 1) + (m.animPhase || 0)) * 0.2;
+                ctx.drawImage(sprite, m.x - size / 2, m.y - size / 2 + bob, size, size);
+            }
+        });
+        if (WorldObjects.player.sprite) {
+            const size = 1.6;
+            ctx.drawImage(
+                WorldObjects.player.sprite,
+                WorldObjects.player.x - size / 2,
+                WorldObjects.player.y - size,
+                size,
+                size
+            );
+        } else {
+            ctx.fillStyle = '#3b4cca';
+            ctx.fillRect(WorldObjects.player.x - 0.4, WorldObjects.player.y - 0.3, 0.8, 1.2);
+            ctx.fillStyle = '#ffccaa';
+            ctx.beginPath();
+            ctx.arc(WorldObjects.player.x, WorldObjects.player.y - 0.5, 0.4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    },
+    renderBattle: () => {
+        const regionId = getRegion().id;
+        const backdrop = regionId === 'frostveil'
+            ? { top: '#cfe9ff', mid: '#6aaed6', ground: '#1c2b3a' }
+            : { top: '#f6c27a', mid: '#87CEEB', ground: '#223344' };
+        const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.7);
+        skyGradient.addColorStop(0, backdrop.top);
+        skyGradient.addColorStop(1, backdrop.mid);
+        ctx.fillStyle = skyGradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (regionId === 'frostveil') {
+            ctx.fillStyle = 'rgba(255,255,255,0.15)';
+            for (let i = 0; i < 10; i++) {
+                const x = (i / 9) * canvas.width;
+                ctx.beginPath();
+                ctx.moveTo(x, canvas.height * 0.55);
+                ctx.lineTo(x + 80, canvas.height * 0.35);
+                ctx.lineTo(x + 160, canvas.height * 0.55);
+                ctx.closePath();
+                ctx.fill();
+            }
+        } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.08)';
+            for (let i = 0; i < 12; i++) {
+                const x = (i / 12) * canvas.width;
+                const y = (Math.sin(i * 1.3 + Date.now() * 0.0003) + 1) * 40 + 40;
+                ctx.beginPath();
+                ctx.arc(x, y, 18, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        ctx.fillStyle = backdrop.ground;
+        ctx.fillRect(0, canvas.height - 200, canvas.width, 200);
+        if (Battle.weather === 'rain') {
+            ctx.strokeStyle = 'rgba(200,220,255,0.25)';
+            for (let i = 0; i < 60; i++) {
+                const x = (i * 37) % canvas.width;
+                const y = (Date.now() * 0.3 + i * 60) % canvas.height;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + 6, y + 12);
+                ctx.stroke();
+            }
+        } else if (Battle.weather === 'hail') {
+            ctx.fillStyle = 'rgba(230,245,255,0.5)';
+            for (let i = 0; i < 40; i++) {
+                const x = (i * 53) % canvas.width;
+                const y = (Date.now() * 0.2 + i * 40) % canvas.height;
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (Battle.weather === 'sand') {
+            ctx.strokeStyle = 'rgba(120,80,30,0.25)';
+            for (let i = 0; i < 8; i++) {
+                const y = canvas.height - 180 + i * 16;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y + 10);
+                ctx.stroke();
+            }
+        }
+        const t = Date.now() * 0.002;
+        const baseSize = 380;
+        if (slotP.sprite) {
+            const scale = slotP.scale || 0.6;
+            const size = baseSize * scale;
+            const offsetY = Math.sin(t) * 5;
+            ctx.save();
+            ctx.translate(slotP.x, slotP.y + offsetY);
+            ctx.shadowColor = '#3b4cca';
+            ctx.shadowBlur = 20;
+            ctx.drawImage(slotP.sprite, -size / 2, -size / 2, size, size);
+            ctx.restore();
+        }
+        if (slotE.sprite) {
+            const scale = slotE.scale || 0.6;
+            const size = baseSize * scale;
+            const offsetY = Math.sin(t + Math.PI) * 5;
+            ctx.save();
+            ctx.translate(slotE.x, slotE.y + offsetY);
+            ctx.shadowColor = '#ff0000';
+            ctx.shadowBlur = 20;
+            ctx.drawImage(slotE.sprite, -size / 2, -size / 2, size, size);
+            ctx.restore();
+            if (Battle.aiming) {
+                const ring = document.getElementById('target-ring');
+                if (ring) {
+                    ring.style.left = slotE.x + 'px';
+                    ring.style.top = slotE.y + 'px';
+                }
+            }
+        }
+        const drawHpBar = (mon, x, y) => {
+            if (!mon) return;
+            const barWidth = 120;
+            const barHeight = 10;
+            const percent = clamp((mon.hp / mon.maxHp) * 100, 0, 100);
+            const fill = percent > 50 ? '#4ade80' : (percent > 25 ? '#fbbf24' : '#ef4444');
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(x - barWidth / 2, y - barHeight / 2, barWidth, barHeight);
+            ctx.fillStyle = fill;
+            ctx.fillRect(x - barWidth / 2, y - barHeight / 2, barWidth * (percent / 100), barHeight);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x - barWidth / 2, y - barHeight / 2, barWidth, barHeight);
+        };
+        drawHpBar(State.teamP[Battle.pIdx], slotP.x, slotP.y - 90);
+        drawHpBar(State.teamE[Battle.eIdx], slotE.x, slotE.y - 90);
+        if (ballObj.visible) {
+            ctx.fillStyle = '#ff0000';
+            ctx.beginPath();
+            ctx.arc(ballObj.x, ballObj.y, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(ballObj.x, ballObj.y - 5, 10, 0, Math.PI);
+            ctx.fill();
+        }
+    },
+    loop: () => {
+        requestAnimationFrame(App.loop);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (State.mode === 'WORLD') {
+            App.updateWorld();
+            App.renderWorld();
+        } else {
+            App.renderBattle();
+        }
+    }
+};
+function calculateStats(species, level, sizeKey) {
+    const scale = 1 + (level - 1) * 0.08;
+    const sizeMod = SIZES[sizeKey].hpMod;
+    return {
+        hp: Math.floor(species.baseStats.hp * scale * sizeMod + 10),
+        atk: Math.floor(species.baseStats.atk * scale),
+        def: Math.floor(species.baseStats.def * scale),
+        spd: Math.floor(species.baseStats.spd * scale)
+    };
+}
+
+function makePokemon(speciesId, level, sizeKey = 'NORMAL', source = 'wild') {
+    const species = SPECIES[speciesId];
+    const stats = calculateStats(species, level, sizeKey);
+    return {
+        id: species.id,
+        name: species.name,
+        types: species.types,
+        level: level,
+        exp: 0,
+        size: sizeKey,
+        moves: species.moves,
+        maxHp: stats.hp,
+        hp: stats.hp,
+        stats: stats,
+        evolvesTo: species.evolvesTo,
+        evolveLevel: species.evolveLevel,
+        evolveItem: species.evolveItem,
+        catchRate: species.catchRate,
+        status: null,
+        source: source
+    };
+}
+
+function makeWildPokemon(speciesId, level, sizeKey, biomeId) {
+    const size = sizeKey || pick(['TINY', 'NORMAL', 'NORMAL', 'HUGE']);
+    const mon = makePokemon(speciesId, level, size, 'wild');
+    return {
+        id: Date.now() + Math.random(),
+        species: mon,
+        size: size,
+        x: 0,
+        y: 0,
+        rotation: 0,
+        vx: 0,
+        vy: 0,
+        animPhase: Math.random() * Math.PI * 2,
+        animSpeed: 0.8 + Math.random() * 0.6,
+        zoneId: null,
+        biome: biomeId
+    };
+}
+
+function getRegion() {
+    return REGIONS[State.regionIdx];
+}
+
+function getGymByTown(townId) {
+    return getRegion().gyms.find(gym => {
+        const town = getRegion().towns.find(t => t.id === townId);
+        return town && Math.hypot(gym.x - town.x, gym.y - town.y) < 3;
+    });
+}
+
+function getZoneAt(x, y) {
+    return getRegion().zones.find(zone => {
+        if (zone.polygon && zone.polygon.length) {
+            return pointInPolygon({ x, y }, zone.polygon);
+        }
+        return Math.hypot(x - zone.x, y - zone.y) < zone.r;
+    });
+}
+
+function getNearbyPoi(x, y) {
+    const region = getRegion();
+    const candidates = [];
+    region.towns.forEach(town => candidates.push({ ...town, type: 'town' }));
+    region.landmarks.forEach(lm => candidates.push({ ...lm, type: 'landmark' }));
+    region.trainers.forEach(tr => candidates.push({ ...tr, type: 'trainer' }));
+    if (region.villain) candidates.push({ ...region.villain, type: 'villain' });
+    let nearest = null;
+    let bestDist = 3.5;
+    for (const poi of candidates) {
+        const dist = Math.hypot(x - poi.x, y - poi.y);
+        if (dist < bestDist) {
+            bestDist = dist;
+            nearest = poi;
+        }
+    }
+    return nearest;
+}
+
+function hashString(input) {
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+        hash = (hash * 31 + input.charCodeAt(i)) % 1000003;
+    }
+    return hash;
+}
+
+function seededRng(seed) {
+    let value = seed % 2147483647;
+    if (value <= 0) value += 2147483646;
+    return () => {
+        value = (value * 48271) % 2147483647;
+        return (value - 1) / 2147483646;
+    };
+}
+
+function createZonePolygon(zone) {
+    const points = [];
+    const count = 10;
+    const rng = seededRng(hashString(zone.id));
+    for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count;
+        const radius = zone.r * (0.75 + rng() * 0.35);
+        points.push({
+            x: zone.x + Math.cos(angle) * radius,
+            y: zone.y + Math.sin(angle) * radius
+        });
+    }
+    return points;
+}
+
+function pointInPolygon(point, polygon) {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].x;
+        const yi = polygon[i].y;
+        const xj = polygon[j].x;
+        const yj = polygon[j].y;
+        const intersect = ((yi > point.y) !== (yj > point.y)) &&
+            (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
+function corridorPolygon(a, b, width) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const w = width / 2;
+    return [
+        { x: a.x + nx * w, y: a.y + ny * w },
+        { x: a.x - nx * w, y: a.y - ny * w },
+        { x: b.x - nx * w, y: b.y - ny * w },
+        { x: b.x + nx * w, y: b.y + ny * w }
+    ];
+}
+
+function randomPointInZone(zone) {
+    const tries = 30;
+    for (let i = 0; i < tries; i++) {
+        const x = zone.x + (Math.random() * 2 - 1) * zone.r;
+        const y = zone.y + (Math.random() * 2 - 1) * zone.r;
+        if (!zone.polygon || pointInPolygon({ x, y }, zone.polygon)) {
+            return { x, y };
+        }
+    }
+    return { x: zone.x, y: zone.y };
+}
+
+function isOnLand(x, y) {
+    const region = getRegion();
+    const onZone = (region.landPolygons || []).some(poly => pointInPolygon({ x, y }, poly.points));
+    if (onZone) return true;
+    const poi = [...region.towns, ...region.landmarks, ...region.gyms];
+    return poi.some(item => Math.hypot(x - item.x, y - item.y) < 3);
+}
+
+function healTeam() {
+    State.teamP.forEach(mon => {
+        mon.hp = mon.maxHp;
+        mon.status = null;
+    });
+}
+
+function loadTrainerSprite() {
+    return new Promise((resolve) => {
+        const name = pick(TRAINER_SPRITES);
+        const img = new Image();
+        img.onload = () => {
+            WorldObjects.player.sprite = img;
+            resolve();
+        };
+        img.onerror = () => {
+            WorldObjects.player.sprite = null;
+            resolve();
+        };
+        img.src = `https://play.pokemonshowdown.com/sprites/trainers/${name}.png`;
+    });
+}
+
+function loadRegion(idx, resetPlayer) {
+    State.regionIdx = idx;
+    const region = getRegion();
+    region.zones.forEach(zone => {
+        zone.polygon = createZonePolygon(zone);
+    });
+    WorldObjects.props = [];
+    WorldObjects.towns = region.towns;
+    WorldObjects.gyms = region.gyms;
+    WorldObjects.landmarks = region.landmarks;
+    WorldObjects.trainers = region.trainers;
+    WorldObjects.villain = region.villain;
+    State.wildMons = [];
+    region.zones.forEach(zone => {
+        const biome = BIOMES[zone.biome];
+        const count = 6;
+        for (let i = 0; i < count; i++) {
+            const entry = pickWeighted(biome.spawns);
+            const level = randRange(entry.min, entry.max);
+            const mon = makeWildPokemon(entry.id, level, null, zone.biome);
+            const point = randomPointInZone(zone);
+            mon.x = point.x;
+            mon.y = point.y;
+            mon.vx = (Math.random() - 0.5) * 0.03;
+            mon.vy = (Math.random() - 0.5) * 0.03;
+            mon.zoneId = zone.id;
+            State.wildMons.push(mon);
+        }
+        for (let i = 0; i < 8; i++) {
+            const point = randomPointInZone(zone);
+            const propType = Array.isArray(biome.props) ? pick(biome.props) : biome.props;
+            WorldObjects.props.push({
+                x: point.x,
+                y: point.y,
+                type: propType
+            });
+        }
+    });
+    if (resetPlayer) {
+        const startTown = region.towns.find(t => t.id === region.startTown) || region.towns[0];
+        WorldObjects.player.x = startTown.x;
+        WorldObjects.player.y = startTown.y;
+    }
+    UI.setWorldInfo();
+}
+
+App.init();
+
+
+

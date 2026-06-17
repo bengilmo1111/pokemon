@@ -1,0 +1,2688 @@
+import Phaser from "phaser";
+import { BIOMES } from "../data/biomes";
+import { SPECIES } from "../data/species";
+import type { LandmarkData, RegionData, TownData, PortalData } from "../data/regions";
+import { gameState } from "../game/store";
+import {
+  WORLD_SCALE,
+  addToTeam,
+  getRegion,
+  healTeam,
+  makePokemon,
+  makeWildPokemon,
+  randomLevel,
+  usePotion,
+  useRevive,
+  generateNpcTrainers,
+  generateHiddenItems,
+  collectItem,
+  checkItemRespawns,
+  getPokedexCount,
+  NpcTrainer,
+  HiddenItem,
+  RivalEncounter,
+  markCaught,
+  generateRivalEncounters,
+  getRivalTeam
+} from "../game/state";
+import { pickWeighted } from "../game/utils";
+import * as Sound from "../game/sound";
+import { saveGame, loadGame } from "../game/persistence";
+import { TouchControls } from "../game/touch";
+
+type WildSprite = Phaser.Physics.Arcade.Sprite & { wildId: string };
+
+export default class Overworld extends Phaser.Scene {
+  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private player!: Phaser.Physics.Arcade.Sprite;
+  private zoneGraphics!: Phaser.GameObjects.Graphics;
+  private routeGraphics!: Phaser.GameObjects.Graphics;
+  private poiGraphics!: Phaser.GameObjects.Graphics;
+  private propGraphics!: Phaser.GameObjects.Graphics;
+  private propBodies!: Phaser.Physics.Arcade.StaticGroup;
+  private hudText!: Phaser.GameObjects.Text;
+  private mapContainer?: Phaser.GameObjects.Container;
+  private mapGraphics?: Phaser.GameObjects.Graphics;
+  private mapPlayerMarker?: Phaser.GameObjects.Arc;
+  private mapText!: Phaser.GameObjects.Text;
+  private wildSprites: Map<string, WildSprite> = new Map();
+  private trainerSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
+  private itemSprites: Map<string, Phaser.GameObjects.Arc> = new Map();
+  private rivalSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
+  private rivalEncounters: RivalEncounter[] = [];
+  private encounterCooldown = 0;
+  private props: Array<{ x: number; y: number; type: string; variant: number; scale: number }> = [];
+  private mapOpen = false;
+  private starterOpen = false;
+  private starterOverlay?: Phaser.GameObjects.Rectangle;
+  private starterText: Phaser.GameObjects.Text[] = [];
+  private keyE?: Phaser.Input.Keyboard.Key;
+  private keyH?: Phaser.Input.Keyboard.Key;
+  private keyP?: Phaser.Input.Keyboard.Key;
+  private keyT?: Phaser.Input.Keyboard.Key;
+  private keyD?: Phaser.Input.Keyboard.Key;
+  private keyR?: Phaser.Input.Keyboard.Key;
+  private keyL?: Phaser.Input.Keyboard.Key;
+  private teamOpen = false;
+  private teamOverlay?: Phaser.GameObjects.Rectangle;
+  private teamText: Phaser.GameObjects.Text[] = [];
+  private pokedexOpen = false;
+  private pokedexOverlay?: Phaser.GameObjects.Rectangle;
+  private pokedexText: Phaser.GameObjects.Text[] = [];
+  private notificationText?: Phaser.GameObjects.Text;
+  private notificationTimer = 0;
+  private xpBoostActive = false;
+  private xpBoostTimer = 0;
+  private powerSpotCooldowns: Map<string, number> = new Map();
+  private powerSpotEffects: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
+  private ambientParticles: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
+  private isPaused = false;
+  private pauseOverlay?: Phaser.GameObjects.Rectangle;
+  private pauseText: Phaser.GameObjects.Text[] = [];
+  private portalSprites: Map<string, Phaser.GameObjects.Container> = new Map();
+  private portalTransitioning = false;
+  private touch!: TouchControls;
+  private interactPressed = false;
+  private playerShadow!: Phaser.GameObjects.Ellipse;
+  private battleStarting = false;
+  private walkTime = 0;
+  private playerBaseScale = 1;
+  private vignette?: Phaser.GameObjects.Graphics;
+
+  constructor() {
+    super("Overworld");
+  }
+
+  create(): void {
+    const region = getRegion(gameState);
+    const bounds = this.getWorldBounds(region);
+
+    this.physics.world.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
+    this.cameras.main.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
+
+    this.zoneGraphics = this.add.graphics();
+    this.routeGraphics = this.add.graphics();
+    this.poiGraphics = this.add.graphics();
+    this.propGraphics = this.add.graphics();
+    this.propBodies = this.physics.add.staticGroup();
+    this.drawZones(region);
+    this.drawRoutes(region);
+    this.drawPointsOfInterest(region);
+
+    if (gameState.wildMons.length === 0) {
+      this.spawnWildMons(region);
+    }
+    if (this.props.length === 0) {
+      this.spawnProps(region);
+    }
+
+    // Initialize NPC trainers if not already done
+    if (gameState.npcTrainers.length === 0) {
+      gameState.npcTrainers = generateNpcTrainers();
+    }
+
+    // Initialize hidden items if not already done
+    if (gameState.hiddenItems.length === 0) {
+      gameState.hiddenItems = generateHiddenItems();
+    }
+
+    // Initialize rival encounters
+    this.rivalEncounters = generateRivalEncounters();
+
+    // Create ambient particle effects for each zone
+    this.createAmbientEffects(region);
+
+    const startZone = region.zones[0];
+    const startX = startZone.x * WORLD_SCALE;
+    const startY = startZone.y * WORLD_SCALE;
+    // Fixed depths for the ground layers so entities (depth = y) always sort above them
+    this.zoneGraphics.setDepth(-100);
+    this.routeGraphics.setDepth(-90);
+    this.poiGraphics.setDepth(-80);
+    this.propGraphics.setDepth(-70);
+
+    const playerTexture = this.textures.exists("trainer-ash") ? "trainer-ash" : "player-fallback";
+    this.playerShadow = this.add.ellipse(startX, startY, 40, 14, 0x000000, 0.28);
+    this.player = this.physics.add.sprite(startX, startY, playerTexture);
+    this.applyDisplayHeight(this.player, 64);
+    this.playerBaseScale = this.player.scaleY;
+    this.player.setCollideWorldBounds(true);
+    this.physics.add.collider(this.player, this.propBodies);
+
+    this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+    this.setupCameraZoom();
+    this.scale.on("resize", this.setupCameraZoom, this);
+    this.createVignette();
+    this.scale.on("resize", this.createVignette, this);
+
+    this.cursors = this.input.keyboard!.createCursorKeys();
+    this.keyE = this.input.keyboard!.addKey("E");
+    this.keyH = this.input.keyboard!.addKey("H");
+    this.keyP = this.input.keyboard!.addKey("P");
+    this.keyT = this.input.keyboard!.addKey("T");
+    this.keyD = this.input.keyboard!.addKey("D");
+    this.keyR = this.input.keyboard!.addKey("R");
+    this.keyL = this.input.keyboard!.addKey("L");
+
+    this.hudText = this.add.text(16, 16, "", {
+      fontFamily: "monospace",
+      fontSize: "14px",
+      color: "#e8e8e8",
+      backgroundColor: "#0f172a80",
+      padding: { left: 8, right: 8, top: 4, bottom: 4 }
+    });
+    this.hudText.setScrollFactor(0);
+
+    // Notification text for item pickups etc.
+    this.notificationText = this.add.text(this.scale.width / 2, 80, "", {
+      fontFamily: "monospace",
+      fontSize: "18px",
+      color: "#fbbf24",
+      backgroundColor: "#0f172a",
+      padding: { left: 12, right: 12, top: 8, bottom: 8 }
+    });
+    this.notificationText.setScrollFactor(0).setOrigin(0.5).setVisible(false);
+
+    // On-screen touch controls (only created on touch / coarse-pointer devices)
+    this.touch = new TouchControls(this, [
+      { id: "interact", label: "A", primary: true, color: 0x16a34a },
+      { id: "item", label: "+", color: 0x0ea5e9 },
+      { id: "team", label: "T", color: 0x7c3aed },
+      { id: "map", label: "M", color: 0xb45309 },
+      { id: "menu", label: "☰", color: 0x334155 }
+    ]);
+
+    // Hide controls whenever the scene is paused (e.g. a battle launches) and
+    // restore them when it resumes.
+    this.events.on(Phaser.Scenes.Events.PAUSE, () => this.touch?.setVisible(false));
+    this.events.on(Phaser.Scenes.Events.RESUME, () => {
+      if (!this.starterOpen && !this.isPaused) this.touch?.setVisible(true);
+    });
+
+    this.input.keyboard!.on("keydown-M", () => {
+      if (this.teamOpen || this.pokedexOpen || this.starterOpen) return;
+      this.mapOpen = !this.mapOpen;
+      if (this.mapOpen) {
+        this.openVisualMap();
+      } else {
+        this.closeVisualMap();
+      }
+    });
+    this.input.keyboard!.on("keydown-T", () => {
+      if (this.mapOpen || this.pokedexOpen || this.starterOpen) return;
+      if (this.teamOpen) {
+        this.closeTeamScreen();
+      } else {
+        this.openTeamScreen();
+      }
+    });
+    this.input.keyboard!.on("keydown-D", () => {
+      if (this.mapOpen || this.teamOpen || this.starterOpen) return;
+      if (this.pokedexOpen) {
+        this.closePokedex();
+      } else {
+        this.openPokedex();
+      }
+    });
+    this.input.keyboard!.on("keydown-ESC", () => {
+      if (this.starterOpen) return;
+      this.togglePause();
+    });
+    this.input.keyboard!.on("keydown-S", () => {
+      if (this.starterOpen || this.mapOpen || this.teamOpen || this.pokedexOpen) return;
+      if (saveGame()) {
+        Sound.playMenuSelect();
+        this.showNotification("Game Saved!", 1500);
+      } else {
+        this.showNotification("Save Failed!", 1500);
+      }
+    });
+    this.input.keyboard!.on("keydown-F1", () => {
+      if (this.starterOpen) return;
+      if (loadGame()) {
+        Sound.playMenuSelect();
+        this.showNotification("Game Loaded!", 1500);
+        this.time.delayedCall(500, () => {
+          this.scene.restart();
+        });
+      } else {
+        this.showNotification("No save data found!", 1500);
+      }
+    });
+
+    this.createWildSprites();
+    this.createTrainerSprites();
+    this.createItemSprites();
+    this.createRivalSprites();
+    this.createPortalSprites();
+
+    // Check if we came through a portal and need to set position
+    if (gameState.portalTargetX !== undefined && gameState.portalTargetY !== undefined) {
+      this.player.setPosition(gameState.portalTargetX * WORLD_SCALE, gameState.portalTargetY * WORLD_SCALE);
+      gameState.portalTargetX = undefined;
+      gameState.portalTargetY = undefined;
+    }
+
+    if (gameState.team.length === 0) {
+      this.openStarterSelect();
+    }
+  }
+
+  update(): void {
+    if (this.starterOpen || this.isPaused) {
+      return;
+    }
+
+    if (this.battleStarting) return;
+
+    this.interactPressed = false;
+    this.processTouchButtons();
+
+    // Handle notification timer
+    if (this.notificationTimer > 0) {
+      this.notificationTimer -= this.game.loop.delta;
+      if (this.notificationTimer <= 0) {
+        this.notificationText?.setVisible(false);
+      }
+    }
+
+    // Handle XP boost timer
+    if (this.xpBoostActive && this.xpBoostTimer > 0) {
+      this.xpBoostTimer -= this.game.loop.delta;
+      if (this.xpBoostTimer <= 0) {
+        this.xpBoostActive = false;
+        gameState.xpMultiplier = 1;
+        this.showNotification("XP boost has worn off!");
+      }
+    }
+
+    // Update total play time and check for item respawns
+    gameState.totalPlayTime += this.game.loop.delta;
+    const respawnedItems = checkItemRespawns(gameState);
+    if (respawnedItems.length > 0) {
+      this.createItemSpritesForIds(respawnedItems);
+    }
+
+    // Update power spot cooldowns
+    for (const [spotId, cooldown] of this.powerSpotCooldowns.entries()) {
+      if (cooldown > 0) {
+        this.powerSpotCooldowns.set(spotId, cooldown - this.game.loop.delta);
+      }
+    }
+
+    this.updatePlayer();
+    this.updateWildMons();
+    this.updatePoiHud();
+    this.handleHealing();
+    this.checkTrainerEncounters();
+    this.checkRivalEncounters();
+    this.checkItemPickups();
+    this.checkPowerSpots();
+    this.checkLeagueEntrance();
+    this.checkPortals();
+
+    if (this.encounterCooldown > 0) {
+      this.encounterCooldown -= this.game.loop.delta;
+    }
+  }
+
+  private showNotification(message: string, duration = 2000): void {
+    if (this.notificationText) {
+      this.notificationText.setText(message).setVisible(true);
+      this.notificationTimer = duration;
+    }
+  }
+
+  private processTouchButtons(): void {
+    if (!this.touch || !this.touch.active) return;
+
+    if (this.touch.wasButtonPressed("interact")) {
+      this.interactPressed = true;
+    }
+    if (this.touch.wasButtonPressed("item")) {
+      if (usePotion(gameState)) {
+        Sound.playHeal();
+        this.showNotification("Used Potion!");
+      } else {
+        this.showNotification("No potions left!");
+      }
+    }
+    if (this.touch.wasButtonPressed("team")) {
+      if (this.teamOpen) {
+        this.closeTeamScreen();
+      } else if (!this.mapOpen && !this.pokedexOpen) {
+        this.openTeamScreen();
+      }
+    }
+    if (this.touch.wasButtonPressed("map")) {
+      if (this.mapOpen) {
+        this.closeVisualMap();
+      } else if (!this.teamOpen && !this.pokedexOpen) {
+        this.mapOpen = true;
+        this.openVisualMap();
+      }
+    }
+    if (this.touch.wasButtonPressed("menu")) {
+      this.togglePause();
+    }
+  }
+
+  private updatePlayer(): void {
+    const speed = 180;
+    let velocityX = 0;
+    let velocityY = 0;
+
+    if (this.cursors.left.isDown) velocityX = -speed;
+    else if (this.cursors.right.isDown) velocityX = speed;
+
+    if (this.cursors.up.isDown) velocityY = -speed;
+    else if (this.cursors.down.isDown) velocityY = speed;
+
+    // Virtual joystick (touch) overrides when engaged.
+    if (this.touch && this.touch.active) {
+      const axis = this.touch.getAxis();
+      if (axis.x !== 0 || axis.y !== 0) {
+        velocityX = axis.x * speed;
+        velocityY = axis.y * speed;
+      }
+    }
+
+    if (velocityX !== 0 && velocityY !== 0) {
+      const length = Math.hypot(velocityX, velocityY);
+      velocityX = (velocityX / length) * speed;
+      velocityY = (velocityY / length) * speed;
+    }
+
+    this.player.setVelocity(velocityX, velocityY);
+
+    const moving = velocityX !== 0 || velocityY !== 0;
+    // Face the direction of horizontal travel
+    if (velocityX < 0) this.player.setFlipX(true);
+    else if (velocityX > 0) this.player.setFlipX(false);
+
+    // Walk bob: gentle squash-and-bounce while moving
+    if (moving) {
+      this.walkTime += this.game.loop.delta;
+      const bob = Math.sin(this.walkTime * 0.018);
+      this.player.setScale(
+        this.playerBaseScale * (1 - bob * 0.04),
+        this.playerBaseScale * (1 + bob * 0.05)
+      );
+    } else {
+      this.walkTime = 0;
+      this.player.setScale(this.playerBaseScale, this.playerBaseScale);
+    }
+
+    // Keep the player's shadow under its feet
+    if (this.playerShadow) {
+      this.playerShadow.setPosition(this.player.x, this.player.y + 26);
+      this.playerShadow.setScale(moving ? 0.9 : 1);
+    }
+  }
+
+  private updateWildMons(): void {
+    const region = getRegion(gameState);
+    for (const wild of gameState.wildMons) {
+      const zone = region.zones.find((z) => z.id === wild.zoneId);
+      if (!zone) continue;
+      const jitter = 0.3;
+      wild.vx += (Math.random() - 0.5) * jitter;
+      wild.vy += (Math.random() - 0.5) * jitter;
+      const speed = Math.hypot(wild.vx, wild.vy) || 0.0001;
+      const maxSpeed = 1.2;
+      if (speed > maxSpeed) {
+        wild.vx = (wild.vx / speed) * maxSpeed;
+        wild.vy = (wild.vy / speed) * maxSpeed;
+      }
+
+      const zoneX = zone.x * WORLD_SCALE;
+      const zoneY = zone.y * WORLD_SCALE;
+      const zoneR = zone.r * WORLD_SCALE;
+      const dx = wild.x - zoneX;
+      const dy = wild.y - zoneY;
+      const dist = Math.hypot(dx, dy) || 0.0001;
+      if (dist > zoneR - 30) {
+        wild.vx -= (dx / dist) * 0.6;
+        wild.vy -= (dy / dist) * 0.6;
+      }
+
+      wild.x += wild.vx;
+      wild.y += wild.vy;
+
+      const sprite = this.wildSprites.get(wild.id);
+      if (sprite) {
+        sprite.setPosition(wild.x, wild.y);
+        sprite.setFlipX(wild.vx < 0);
+        const shadow = (sprite as unknown as { shadow?: Phaser.GameObjects.Ellipse }).shadow;
+        if (shadow) {
+          shadow.setPosition(wild.x, wild.y + 20);
+        }
+      }
+
+      if (this.encounterCooldown <= 0) {
+        const distanceToPlayer = Phaser.Math.Distance.Between(this.player.x, this.player.y, wild.x, wild.y);
+        if (distanceToPlayer < 32) {
+          this.startBattle(wild.id);
+          break;
+        }
+      }
+    }
+  }
+
+  private checkTrainerEncounters(): void {
+    if (this.encounterCooldown > 0) return;
+
+    for (const trainer of gameState.npcTrainers) {
+      if (gameState.defeatedTrainers[trainer.id]) continue;
+
+      const trainerX = trainer.x * WORLD_SCALE;
+      const trainerY = trainer.y * WORLD_SCALE;
+      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, trainerX, trainerY);
+
+      if (distance < 60) {
+        // Show "!" indicator and start battle
+        this.showNotification(`${trainer.name}: "${trainer.dialogue}"`);
+        this.startTrainerBattle(trainer);
+        break;
+      }
+    }
+  }
+
+  private checkItemPickups(): void {
+    for (const item of gameState.hiddenItems) {
+      if (item.found) continue;
+
+      const itemX = item.x * WORLD_SCALE;
+      const itemY = item.y * WORLD_SCALE;
+      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, itemX, itemY);
+
+      if (distance < 30) {
+        const result = collectItem(gameState, item.id);
+        if (result) {
+          Sound.playItemGet();
+          const itemName = result.item === "pokeball" ? "Poke Ball" :
+            result.item === "greatball" ? "Great Ball" :
+            result.item === "ultraball" ? "Ultra Ball" :
+            result.item === "potion" ? "Potion" :
+            result.item === "superpotion" ? "Super Potion" :
+            result.item === "revive" ? "Revive" : result.item;
+          this.showNotification(`Found ${result.amount}x ${itemName}!`);
+
+          // Remove item sprite
+          const sprite = this.itemSprites.get(item.id);
+          if (sprite) {
+            sprite.destroy();
+            this.itemSprites.delete(item.id);
+          }
+        }
+      }
+    }
+  }
+
+  private checkPowerSpots(): void {
+    const region = getRegion(gameState);
+    const playerX = this.player.x;
+    const playerY = this.player.y;
+
+    for (const spot of region.powerSpots) {
+      const spotX = spot.x * WORLD_SCALE;
+      const spotY = spot.y * WORLD_SCALE;
+      const distance = Phaser.Math.Distance.Between(playerX, playerY, spotX, spotY);
+
+      if (distance < 35) {
+        const cooldown = this.powerSpotCooldowns.get(spot.id) || 0;
+        if (cooldown <= 0) {
+          this.activatePowerSpot(spot);
+          this.powerSpotCooldowns.set(spot.id, 30000); // 30 second cooldown
+        }
+      }
+    }
+  }
+
+  private activatePowerSpot(spot: { id: string; name: string; effect: string; x: number; y: number; color: number }): void {
+    Sound.playMenuSelect();
+
+    switch (spot.effect) {
+      case "heal": {
+        // Heal all Pokemon by 30%
+        gameState.team.forEach(mon => {
+          const healAmount = Math.floor(mon.maxHp * 0.3);
+          mon.hp = Math.min(mon.maxHp, mon.hp + healAmount);
+        });
+        Sound.playHeal();
+        this.showNotification(`${spot.name}: Your Pokemon feel refreshed!`, 2500);
+        break;
+      }
+      case "xpboost": {
+        // Give 2x XP for 60 seconds
+        this.xpBoostActive = true;
+        this.xpBoostTimer = 60000;
+        gameState.xpMultiplier = 2;
+        this.showNotification(`${spot.name}: 2x XP boost for 60 seconds!`, 2500);
+        break;
+      }
+      case "rarepokemon": {
+        // Spawn a rare Pokemon nearby
+        this.spawnRarePokemon(spot.x, spot.y);
+        this.showNotification(`${spot.name}: A rare Pokemon appeared!`, 2500);
+        Sound.playEncounter();
+        break;
+      }
+    }
+  }
+
+  private spawnRarePokemon(spotX: number, spotY: number): void {
+    const rarePool = ["eevee", "dratini", "lapras", "pikachu", "abra"];
+    const speciesId = rarePool[Math.floor(Math.random() * rarePool.length)];
+    const level = 10 + Math.floor(Math.random() * 10);
+
+    const mon = makeWildPokemon(speciesId, level, "sanctuary");
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 40 + Math.random() * 30;
+    mon.x = spotX * WORLD_SCALE + Math.cos(angle) * dist;
+    mon.y = spotY * WORLD_SCALE + Math.sin(angle) * dist;
+    gameState.wildMons.push(mon);
+
+    // Create sprite for the new Pokemon
+    const textureKey = this.textures.exists(`pokemon-${mon.speciesId}`)
+      ? `pokemon-${mon.speciesId}`
+      : "wild-fallback";
+    const sprite = this.physics.add.sprite(mon.x, mon.y, textureKey) as WildSprite;
+    this.applyDisplayHeight(sprite, 48);
+    sprite.wildId = mon.id;
+    this.wildSprites.set(mon.id, sprite);
+
+    // Add sparkle effect to indicate rarity
+    this.tweens.add({
+      targets: sprite,
+      alpha: { from: 0.5, to: 1 },
+      scale: { from: 0.5, to: sprite.scaleX },
+      duration: 500,
+      ease: "Back.easeOut"
+    });
+  }
+
+  private checkLeagueEntrance(): void {
+    // Check if all gyms are defeated
+    const region = getRegion(gameState);
+    const allGymsDefeated = region.gyms.every(g => gameState.defeatedGyms[g.id]);
+
+    if (!allGymsDefeated || gameState.isChampion) return;
+
+    // League entrance is at the mountain peak
+    const leagueX = 45 * WORLD_SCALE;
+    const leagueY = 35 * WORLD_SCALE;
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, leagueX, leagueY);
+
+    if (distance < 50 && ((this.keyL && this.input.keyboard?.checkDown(this.keyL, 500)) || this.interactPressed)) {
+      this.interactPressed = false;
+      this.startPokemonLeague();
+    }
+  }
+
+  private startPokemonLeague(): void {
+    this.encounterCooldown = 1500;
+    this.scene.pause();
+
+    // Elite Four battle sequence
+    const eliteFourTeam = [
+      { speciesId: "alakazam", level: 45 },
+      { speciesId: "gengar", level: 46 },
+      { speciesId: "machamp", level: 47 },
+      { speciesId: "dragonite", level: 50 }
+    ];
+
+    this.scene.launch("Battle", {
+      type: "elite",
+      trainerId: "elite-four",
+      trainerName: "Elite Four Champion",
+      trainerTeam: eliteFourTeam
+    });
+
+    const battleScene = this.scene.get("Battle");
+    battleScene.events.once("battle-complete", (payload: { result: string }) => {
+      if (payload.result === "victory") {
+        gameState.eliteFourDefeated = true;
+        gameState.isChampion = true;
+        this.showNotification("Congratulations! You are the new Pokemon Champion!", 5000);
+      } else if (payload.result === "defeat") {
+        this.handleBattleDefeat();
+      }
+      this.scene.resume();
+      Sound.playOverworldMusic();
+    });
+  }
+
+  private startTrainerBattle(trainer: NpcTrainer): void {
+    this.encounterCooldown = 1500;
+    this.scene.pause();
+    this.scene.launch("Battle", {
+      type: "trainer",
+      trainerId: trainer.id,
+      trainerName: trainer.name,
+      trainerTeam: trainer.team
+    });
+    const battleScene = this.scene.get("Battle");
+    battleScene.events.once("battle-complete", (payload: { result: string }) => {
+      if (payload.result === "victory") {
+        gameState.defeatedTrainers[trainer.id] = true;
+        // Remove trainer sprite
+        const sprite = this.trainerSprites.get(trainer.id);
+        if (sprite) {
+          sprite.destroy();
+          this.trainerSprites.delete(trainer.id);
+        }
+      } else if (payload.result === "defeat") {
+        this.handleBattleDefeat();
+      }
+      this.scene.resume();
+      Sound.playOverworldMusic();
+    });
+  }
+
+  private startBattle(wildId: string): void {
+    if (this.battleStarting) return;
+    this.battleStarting = true;
+    this.encounterCooldown = 1500;
+    this.player.setVelocity(0, 0);
+    this.cameras.main.flash(200, 255, 255, 255);
+    this.cameras.main.shake(240, 0.012);
+    this.time.delayedCall(300, () => this.doStartBattle(wildId));
+  }
+
+  private doStartBattle(wildId: string): void {
+    this.battleStarting = false;
+    this.scene.pause();
+    this.scene.launch("Battle", { wildId, type: "wild" });
+    const battleScene = this.scene.get("Battle");
+    battleScene.events.once("battle-complete", (payload: { wildId: string }) => {
+      if (!gameState.wildMons.find((m) => m.id === payload.wildId)) {
+        const sprite = this.wildSprites.get(payload.wildId);
+        if (sprite) {
+          (sprite as unknown as { shadow?: Phaser.GameObjects.Ellipse }).shadow?.destroy();
+          sprite.destroy();
+          this.wildSprites.delete(payload.wildId);
+        }
+      }
+      this.scene.resume();
+      Sound.playOverworldMusic();
+    });
+  }
+
+  private startGymBattle(gymId: string): void {
+    this.encounterCooldown = 1500;
+    this.scene.pause();
+    this.scene.launch("Battle", { type: "gym", gymId });
+    const battleScene = this.scene.get("Battle");
+    battleScene.events.once("battle-complete", (payload: { result: string }) => {
+      if (payload.result === "victory") {
+        const region = getRegion(gameState);
+        const gym = region.gyms.find(g => g.id === gymId);
+        if (gym) {
+          this.showNotification(`You earned the ${gym.badge}!`, 3000);
+        }
+      } else if (payload.result === "defeat") {
+        this.handleBattleDefeat();
+      }
+      this.scene.resume();
+      Sound.playOverworldMusic();
+    });
+  }
+
+  private spawnWildMons(region: RegionData): void {
+    region.zones.forEach((zone) => {
+      const biome = BIOMES[zone.biome];
+      const spawnCount = Math.floor(4 + zone.r * 0.3);
+      for (let i = 0; i < spawnCount; i++) {
+        const entry = pickWeighted(biome.spawns);
+        const level = randomLevel(entry.min, entry.max);
+        const mon = makeWildPokemon(entry.id, level, zone.id);
+        mon.x = (zone.x + (Math.random() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
+        mon.y = (zone.y + (Math.random() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
+        gameState.wildMons.push(mon);
+      }
+    });
+  }
+
+  private createWildSprites(): void {
+    gameState.wildMons.forEach((wild) => {
+      const textureKey = this.textures.exists(`pokemon-${wild.speciesId}`)
+        ? `pokemon-${wild.speciesId}`
+        : "wild-fallback";
+      const sprite = this.physics.add.sprite(wild.x, wild.y, textureKey) as WildSprite;
+      this.applyDisplayHeight(sprite, 48);
+      sprite.wildId = wild.id;
+      const shadow = this.makeShadow(wild.x, wild.y + 20, 32);
+      (sprite as unknown as { shadow: Phaser.GameObjects.Ellipse }).shadow = shadow;
+      this.wildSprites.set(wild.id, sprite);
+    });
+  }
+
+  private createTrainerSprites(): void {
+    gameState.npcTrainers.forEach((trainer) => {
+      if (gameState.defeatedTrainers[trainer.id]) return;
+
+      const x = trainer.x * WORLD_SCALE;
+      const y = trainer.y * WORLD_SCALE;
+
+      // Create trainer sprite using their specific sprite
+      const textureKey = this.textures.exists(trainer.sprite) ? trainer.sprite : "trainer-youngster";
+      this.makeShadow(x, y + 24, 36);
+      const sprite = this.add.sprite(x, y, textureKey);
+      this.applyDisplayHeight(sprite, 56);
+
+      // Add exclamation mark above trainer
+      const exclaim = this.add.text(x, y - 40, "!", {
+        fontFamily: "monospace",
+        fontSize: "24px",
+        color: "#ff0000",
+        fontStyle: "bold"
+      }).setOrigin(0.5);
+
+      // Animate the exclamation mark
+      this.tweens.add({
+        targets: exclaim,
+        y: y - 50,
+        duration: 500,
+        yoyo: true,
+        repeat: -1
+      });
+
+      this.trainerSprites.set(trainer.id, sprite);
+    });
+  }
+
+  private createItemSprites(): void {
+    gameState.hiddenItems.forEach((item) => {
+      if (item.found) return;
+
+      const x = item.x * WORLD_SCALE;
+      const y = item.y * WORLD_SCALE;
+
+      // Create sparkle effect for hidden items
+      const sparkle = this.add.circle(x, y, 8, 0xfbbf24);
+      sparkle.setAlpha(0.8);
+
+      // Pulsing animation
+      this.tweens.add({
+        targets: sparkle,
+        alpha: 0.3,
+        scale: 1.3,
+        duration: 800,
+        yoyo: true,
+        repeat: -1
+      });
+
+      this.itemSprites.set(item.id, sparkle);
+    });
+  }
+
+  private createItemSpritesForIds(itemIds: string[]): void {
+    for (const itemId of itemIds) {
+      const item = gameState.hiddenItems.find(i => i.id === itemId);
+      if (!item || item.found) continue;
+
+      const x = item.x * WORLD_SCALE;
+      const y = item.y * WORLD_SCALE;
+
+      const sparkle = this.add.circle(x, y, 8, 0xfbbf24);
+      sparkle.setAlpha(0.8);
+
+      this.tweens.add({
+        targets: sparkle,
+        alpha: 0.3,
+        scale: 1.3,
+        duration: 800,
+        yoyo: true,
+        repeat: -1
+      });
+
+      this.itemSprites.set(item.id, sparkle);
+    }
+  }
+
+  private createPortalSprites(): void {
+    const region = getRegion(gameState);
+    if (!region.portals) return;
+
+    for (const portal of region.portals) {
+      const x = portal.x * WORLD_SCALE;
+      const y = portal.y * WORLD_SCALE;
+
+      // Create container for portal effects
+      const container = this.add.container(x, y);
+
+      // Outer glow ring
+      const outer = this.add.circle(0, 0, 35, portal.color, 0.3);
+      // Middle ring
+      const middle = this.add.circle(0, 0, 25, portal.color, 0.5);
+      // Inner core
+      const inner = this.add.circle(0, 0, 15, portal.color, 0.8);
+
+      // Add swirl effect lines
+      const swirl1 = this.add.arc(0, 0, 20, 0, 90, false, 0xffffff, 0.6);
+      swirl1.setStrokeStyle(3, 0xffffff, 0.8);
+      const swirl2 = this.add.arc(0, 0, 20, 180, 270, false, 0xffffff, 0.6);
+      swirl2.setStrokeStyle(3, 0xffffff, 0.8);
+
+      container.add([outer, middle, inner, swirl1, swirl2]);
+
+      // Rotation animation for the whole portal
+      this.tweens.add({
+        targets: container,
+        angle: 360,
+        duration: 3000,
+        repeat: -1,
+        ease: 'Linear'
+      });
+
+      // Pulse animation for the rings
+      this.tweens.add({
+        targets: [outer, middle],
+        scale: 1.2,
+        alpha: 0.2,
+        duration: 1500,
+        yoyo: true,
+        repeat: -1
+      });
+
+      // Add portal label
+      const label = this.add.text(x, y + 50, portal.name, {
+        fontFamily: "monospace",
+        fontSize: "12px",
+        color: "#c4b5fd"
+      }).setOrigin(0.5);
+
+      this.portalSprites.set(portal.id, container);
+    }
+  }
+
+  private checkPortals(): void {
+    if (this.portalTransitioning) return;
+    const region = getRegion(gameState);
+    if (!region.portals) return;
+
+    for (const portal of region.portals) {
+      const portalX = portal.x * WORLD_SCALE;
+      const portalY = portal.y * WORLD_SCALE;
+      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, portalX, portalY);
+
+      if (distance < 30) {
+        this.triggerPortalTransition(portal);
+        break;
+      }
+    }
+  }
+
+  private triggerPortalTransition(portal: PortalData): void {
+    this.portalTransitioning = true;
+    Sound.playMenuSelect();
+
+    // Disable player movement
+    this.player.setVelocity(0, 0);
+
+    // Get player screen position
+    const playerScreenX = this.player.x - this.cameras.main.scrollX;
+    const playerScreenY = this.player.y - this.cameras.main.scrollY;
+
+    // Create swirl overlay effect
+    const overlay = this.add.graphics();
+    overlay.setScrollFactor(0);
+    overlay.setDepth(2000);
+
+    const centerX = playerScreenX;
+    const centerY = playerScreenY;
+
+    // Animate swirl growing and player shrinking
+    let frame = 0;
+    const maxFrames = 60;
+
+    // Shrink and spin the player
+    this.tweens.add({
+      targets: this.player,
+      scaleX: 0,
+      scaleY: 0,
+      angle: 720,
+      duration: 1200,
+      ease: 'Cubic.easeIn'
+    });
+
+    const swirlTimer = this.time.addEvent({
+      delay: 20,
+      repeat: maxFrames,
+      callback: () => {
+        frame++;
+        const progress = frame / maxFrames;
+
+        overlay.clear();
+
+        // Draw expanding swirl
+        for (let i = 0; i < 6; i++) {
+          const baseAngle = (progress * Math.PI * 4) + (i * Math.PI / 3);
+          const radius = progress * 400;
+          const armWidth = 30 + progress * 50;
+
+          overlay.fillStyle(portal.color, 0.7 - progress * 0.3);
+
+          // Draw spiral arm
+          for (let j = 0; j < 20; j++) {
+            const t = j / 20;
+            const r = radius * t;
+            const angle = baseAngle + t * Math.PI;
+            const x = centerX + Math.cos(angle) * r;
+            const y = centerY + Math.sin(angle) * r;
+            const size = armWidth * (1 - t * 0.5);
+            overlay.fillCircle(x, y, size);
+          }
+        }
+
+        // Central vortex
+        overlay.fillStyle(0x000000, progress);
+        overlay.fillCircle(centerX, centerY, 20 + progress * 100);
+        overlay.fillStyle(portal.color, 0.8);
+        overlay.fillCircle(centerX, centerY, 10 + progress * 30);
+      }
+    });
+
+    // After animation, switch region
+    this.time.delayedCall(1400, () => {
+      // Clear wild Pokemon for the new region
+      gameState.wildMons = [];
+
+      // Set target position and region
+      gameState.portalTargetX = portal.targetX;
+      gameState.portalTargetY = portal.targetY;
+      gameState.regionIndex = portal.targetRegionIndex;
+
+      // Restart scene to load new region
+      this.scene.restart();
+    });
+  }
+
+  private createRivalSprites(): void {
+    // Only show the next rival encounter that hasn't been defeated
+    const nextBattleNumber = gameState.rivalBattles + 1;
+    const nextEncounter = this.rivalEncounters.find(e => e.battleNumber === nextBattleNumber);
+
+    if (!nextEncounter || gameState.rivalDefeated[nextEncounter.battleNumber]) return;
+    if (!gameState.playerStarter) return; // Don't show rival until player has chosen starter
+
+    const x = nextEncounter.x * WORLD_SCALE;
+    const y = nextEncounter.y * WORLD_SCALE;
+
+    // Create rival sprite with unique appearance
+    const sprite = this.add.sprite(x, y, "trainer-rival");
+    this.applyDisplayHeight(sprite, 60);
+
+    // Add "!" indicator above rival
+    const exclaim = this.add.text(x, y - 45, "!", {
+      fontFamily: "monospace",
+      fontSize: "28px",
+      color: "#3b82f6",
+      fontStyle: "bold"
+    }).setOrigin(0.5);
+
+    // Animate the exclamation mark
+    this.tweens.add({
+      targets: exclaim,
+      y: y - 55,
+      duration: 400,
+      yoyo: true,
+      repeat: -1
+    });
+
+    // Add name label
+    const nameLabel = this.add.text(x, y + 35, "RIVAL", {
+      fontFamily: "monospace",
+      fontSize: "10px",
+      color: "#3b82f6",
+      backgroundColor: "#1e293b",
+      padding: { left: 4, right: 4, top: 2, bottom: 2 }
+    }).setOrigin(0.5);
+
+    this.rivalSprites.set(nextEncounter.id, sprite);
+  }
+
+  private checkRivalEncounters(): void {
+    if (this.encounterCooldown > 0) return;
+    if (!gameState.playerStarter) return;
+
+    const nextBattleNumber = gameState.rivalBattles + 1;
+    const encounter = this.rivalEncounters.find(e => e.battleNumber === nextBattleNumber);
+
+    if (!encounter || gameState.rivalDefeated[encounter.battleNumber]) return;
+
+    const rivalX = encounter.x * WORLD_SCALE;
+    const rivalY = encounter.y * WORLD_SCALE;
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, rivalX, rivalY);
+
+    if (distance < 50) {
+      this.showNotification(`RIVAL: "${encounter.dialogue}"`, 3000);
+      this.startRivalBattle(encounter);
+    }
+  }
+
+  private startRivalBattle(encounter: RivalEncounter): void {
+    this.encounterCooldown = 2000;
+    this.scene.pause();
+
+    const rivalTeam = getRivalTeam(gameState, encounter.battleNumber);
+
+    this.scene.launch("Battle", {
+      type: "rival",
+      trainerId: encounter.id,
+      trainerName: "Rival Blue",
+      trainerTeam: rivalTeam
+    });
+
+    const battleScene = this.scene.get("Battle");
+    battleScene.events.once("battle-complete", (payload: { result: string }) => {
+      if (payload.result === "victory") {
+        gameState.rivalDefeated[encounter.battleNumber] = true;
+        gameState.rivalBattles = encounter.battleNumber;
+        this.showNotification(`RIVAL: "${encounter.defeatDialogue}"`, 3000);
+
+        // Remove rival sprite
+        const sprite = this.rivalSprites.get(encounter.id);
+        if (sprite) {
+          sprite.destroy();
+          this.rivalSprites.delete(encounter.id);
+        }
+
+        // Spawn next rival encounter if any
+        this.time.delayedCall(1000, () => {
+          this.createRivalSprites();
+        });
+      } else if (payload.result === "defeat") {
+        // Teleport player to nearest Pokemon Center on defeat
+        this.handleBattleDefeat();
+      }
+      this.scene.resume();
+      Sound.playOverworldMusic();
+    });
+  }
+
+  private findNearestTown(): TownData | null {
+    const region = getRegion(gameState);
+    let nearest: TownData | null = null;
+    let minDist = Infinity;
+    for (const town of region.towns) {
+      if (!town.services.includes("center")) continue;
+      const dist = Phaser.Math.Distance.Between(
+        this.player.x, this.player.y,
+        town.x * WORLD_SCALE, town.y * WORLD_SCALE
+      );
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = town;
+      }
+    }
+    return nearest;
+  }
+
+  private handleBattleDefeat(): void {
+    const nearestTown = this.findNearestTown();
+    if (nearestTown) {
+      this.player.setPosition(nearestTown.x * WORLD_SCALE, nearestTown.y * WORLD_SCALE);
+    }
+    healTeam(gameState);
+    this.showNotification("You rushed to the Pokemon Center...", 3000);
+    this.encounterCooldown = 5000;
+  }
+
+  private drawZones(region: RegionData): void {
+    this.zoneGraphics.clear();
+    region.zones.forEach((zone) => {
+      const biome = BIOMES[zone.biome];
+      const x = zone.x * WORLD_SCALE;
+      const y = zone.y * WORLD_SCALE;
+      const r = zone.r * WORLD_SCALE;
+      const shape = zone.shape || "circle";
+      const rotation = (zone.rotation || 0) * Math.PI / 180;
+
+      // No outlines - just fill so zones blend together
+      this.zoneGraphics.fillStyle(biome.color, 0.5);
+
+      switch (shape) {
+        case "ellipse": {
+          // Draw rotated ellipse
+          this.zoneGraphics.save();
+          this.zoneGraphics.translateCanvas(x, y);
+          this.zoneGraphics.rotateCanvas(rotation);
+          this.zoneGraphics.fillEllipse(0, 0, r * 1.4, r * 0.8);
+          this.zoneGraphics.restore();
+          break;
+        }
+        case "blob": {
+          // Draw organic blob shape
+          this.drawBlobShape(x, y, r, biome.color);
+          break;
+        }
+        case "rounded": {
+          // Draw rounded rectangle
+          const width = r * 1.6;
+          const height = r * 1.2;
+          this.zoneGraphics.fillRoundedRect(x - width, y - height, width * 2, height * 2, r * 0.4);
+          break;
+        }
+        default: {
+          // Circle (default)
+          this.zoneGraphics.fillCircle(x, y, r);
+        }
+      }
+    });
+  }
+
+  private drawBlobShape(x: number, y: number, r: number, color: number): void {
+    // Generate a smooth blob with slight irregularities using ellipses
+    const seed = x * 1000 + y; // Consistent seed per location
+
+    // Draw overlapping ellipses to create blob effect - no outlines for seamless blending
+    this.zoneGraphics.fillStyle(color, 0.5);
+
+    // Main body
+    const mainRx = r * (0.9 + 0.2 * Math.sin(seed));
+    const mainRy = r * (0.9 + 0.2 * Math.cos(seed));
+    this.zoneGraphics.fillEllipse(x, y, mainRx * 2, mainRy * 2);
+
+    // Add bumps around the edge for organic shape
+    const numBumps = 5;
+    for (let i = 0; i < numBumps; i++) {
+      const angle = (i / numBumps) * Math.PI * 2 + seed * 0.1;
+      const dist = r * 0.6;
+      const bumpX = x + Math.cos(angle) * dist;
+      const bumpY = y + Math.sin(angle) * dist;
+      const bumpR = r * (0.4 + 0.15 * Math.sin(seed + i * 2));
+      this.zoneGraphics.fillEllipse(bumpX, bumpY, bumpR * 2, bumpR * 1.6);
+    }
+  }
+
+  private createAmbientEffects(region: RegionData): void {
+    // Clean up old particles
+    this.ambientParticles.forEach(emitter => emitter.destroy());
+    this.ambientParticles = [];
+
+    region.zones.forEach((zone) => {
+      const x = zone.x * WORLD_SCALE;
+      const y = zone.y * WORLD_SCALE;
+      const r = zone.r * WORLD_SCALE;
+
+      // Create a simple graphics texture for particles
+      const particleKey = `particle-${zone.biome}`;
+      if (!this.textures.exists(particleKey)) {
+        const graphics = this.add.graphics();
+
+        // Different particle styles per biome
+        switch (zone.biome) {
+          case "forest":
+            graphics.fillStyle(0x22c55e, 0.6);
+            graphics.fillCircle(4, 4, 3);
+            break;
+          case "cave":
+            graphics.fillStyle(0xa5f3fc, 0.8);
+            graphics.fillRect(2, 0, 4, 8);
+            break;
+          case "lake":
+            graphics.fillStyle(0x60a5fa, 0.5);
+            graphics.fillCircle(4, 4, 4);
+            break;
+          case "tundra":
+            graphics.fillStyle(0xffffff, 0.8);
+            graphics.fillCircle(3, 3, 2);
+            break;
+          case "desert":
+            graphics.fillStyle(0xfcd34d, 0.4);
+            graphics.fillCircle(3, 3, 2);
+            break;
+          case "mountain":
+            graphics.fillStyle(0x9ca3af, 0.5);
+            graphics.fillCircle(3, 3, 2);
+            break;
+          default:
+            graphics.fillStyle(0xffffff, 0.3);
+            graphics.fillCircle(2, 2, 2);
+        }
+
+        graphics.generateTexture(particleKey, 8, 8);
+        graphics.destroy();
+      }
+
+      // Create particle emitter for this zone
+      const particles = this.add.particles(x, y, particleKey, {
+        x: { min: -r * 0.8, max: r * 0.8 },
+        y: { min: -r * 0.8, max: r * 0.8 },
+        speed: { min: 5, max: 20 },
+        angle: { min: 0, max: 360 },
+        scale: { start: 0.8, end: 0.2 },
+        alpha: { start: 0.6, end: 0 },
+        lifespan: { min: 3000, max: 6000 },
+        frequency: zone.biome === "tundra" ? 200 : zone.biome === "cave" ? 400 : 600,
+        quantity: 1,
+        blendMode: zone.biome === "cave" ? "ADD" : "NORMAL"
+      });
+
+      this.ambientParticles.push(particles);
+    });
+
+    // Create power spot glow effects
+    region.powerSpots.forEach((spot) => {
+      const x = spot.x * WORLD_SCALE;
+      const y = spot.y * WORLD_SCALE;
+
+      const glowKey = `glow-${spot.id}`;
+      if (!this.textures.exists(glowKey)) {
+        const graphics = this.add.graphics();
+        graphics.fillStyle(spot.color, 0.8);
+        graphics.fillCircle(6, 6, 5);
+        graphics.generateTexture(glowKey, 12, 12);
+        graphics.destroy();
+      }
+
+      const particles = this.add.particles(x, y, glowKey, {
+        x: { min: -20, max: 20 },
+        y: { min: -20, max: 20 },
+        speed: { min: 10, max: 30 },
+        angle: { min: 250, max: 290 }, // Float upward
+        scale: { start: 0.6, end: 0.1 },
+        alpha: { start: 0.7, end: 0 },
+        lifespan: 2000,
+        frequency: 150,
+        quantity: 1,
+        blendMode: "ADD"
+      });
+
+      this.powerSpotEffects.push(particles);
+    });
+  }
+
+  private drawRoutes(region: RegionData): void {
+    this.routeGraphics.clear();
+    this.routeGraphics.lineStyle(6, 0x0f172a, 0.4);
+    this.routeGraphics.lineStyle(3, 0xf9fafb, 0.7);
+    region.routes.forEach((route) => {
+      const from = this.findTownOrLandmark(region, route.from);
+      const to = this.findTownOrLandmark(region, route.to);
+      if (!from || !to) return;
+      const fromX = from.x * WORLD_SCALE;
+      const fromY = from.y * WORLD_SCALE;
+      const toX = to.x * WORLD_SCALE;
+      const toY = to.y * WORLD_SCALE;
+      this.routeGraphics.strokeLineShape(new Phaser.Geom.Line(fromX, fromY, toX, toY));
+    });
+  }
+
+  private drawPointsOfInterest(region: RegionData): void {
+    this.poiGraphics.clear();
+    region.towns.forEach((town) => {
+      const x = town.x * WORLD_SCALE;
+      const y = town.y * WORLD_SCALE;
+      this.poiGraphics.fillStyle(0x1f2937, 0.9);
+      this.poiGraphics.fillRect(x - 18, y - 16, 36, 32);
+      this.poiGraphics.fillStyle(0xfbbf24, 0.9);
+      this.poiGraphics.fillRect(x - 18, y - 22, 36, 6);
+      // Add building details
+      this.poiGraphics.fillStyle(0x3b82f6, 0.9);
+      this.poiGraphics.fillRect(x - 4, y - 8, 8, 12);
+    });
+    region.landmarks.forEach((landmark) => {
+      const x = landmark.x * WORLD_SCALE;
+      const y = landmark.y * WORLD_SCALE;
+      this.poiGraphics.fillStyle(landmark.color, 0.9);
+      this.poiGraphics.fillTriangle(x, y - 20, x - 14, y + 10, x + 14, y + 10);
+      this.poiGraphics.lineStyle(2, 0xffffff, 0.6);
+      this.poiGraphics.strokeTriangle(x, y - 20, x - 14, y + 10, x + 14, y + 10);
+    });
+    region.gyms.forEach((gym) => {
+      const x = gym.x * WORLD_SCALE;
+      const y = gym.y * WORLD_SCALE;
+      const isDefeated = gameState.defeatedGyms[gym.id];
+      this.poiGraphics.fillStyle(isDefeated ? 0x6b7280 : gym.color, 0.9);
+      this.poiGraphics.fillRect(x - 16, y - 16, 32, 32);
+      this.poiGraphics.lineStyle(2, 0xffffff, 0.7);
+      this.poiGraphics.strokeRect(x - 16, y - 16, 32, 32);
+      // Add gym symbol
+      if (!isDefeated) {
+        this.poiGraphics.fillStyle(0xffffff, 0.8);
+        this.poiGraphics.fillCircle(x, y, 6);
+      }
+    });
+    region.powerSpots.forEach((spot) => {
+      const x = spot.x * WORLD_SCALE;
+      const y = spot.y * WORLD_SCALE;
+
+      // Draw base glow
+      this.poiGraphics.fillStyle(spot.color, 0.15);
+      this.poiGraphics.fillCircle(x, y, 32);
+      this.poiGraphics.fillStyle(spot.color, 0.25);
+      this.poiGraphics.fillCircle(x, y, 24);
+
+      // Draw effect-specific decoration
+      if (spot.effect === "heal") {
+        // Healing spring - water ripples
+        this.poiGraphics.lineStyle(2, 0x60a5fa, 0.7);
+        this.poiGraphics.strokeCircle(x, y, 12);
+        this.poiGraphics.strokeCircle(x, y, 20);
+        // Cross symbol
+        this.poiGraphics.fillStyle(0xffffff, 0.9);
+        this.poiGraphics.fillRect(x - 2, y - 8, 4, 16);
+        this.poiGraphics.fillRect(x - 8, y - 2, 16, 4);
+      } else if (spot.effect === "xpboost") {
+        // Ancient shrine - star pattern
+        this.poiGraphics.lineStyle(2, spot.color, 0.9);
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          const innerR = 8;
+          const outerR = 18;
+          this.poiGraphics.beginPath();
+          this.poiGraphics.moveTo(x + Math.cos(angle) * innerR, y + Math.sin(angle) * innerR);
+          this.poiGraphics.lineTo(x + Math.cos(angle) * outerR, y + Math.sin(angle) * outerR);
+          this.poiGraphics.strokePath();
+        }
+        // Center gem
+        this.poiGraphics.fillStyle(0xffd700, 0.9);
+        this.poiGraphics.fillCircle(x, y, 6);
+      } else if (spot.effect === "rarepokemon") {
+        // Sanctuary - Pokeball-like symbol
+        this.poiGraphics.lineStyle(3, spot.color, 0.9);
+        this.poiGraphics.strokeCircle(x, y, 16);
+        this.poiGraphics.beginPath();
+        this.poiGraphics.moveTo(x - 16, y);
+        this.poiGraphics.lineTo(x + 16, y);
+        this.poiGraphics.strokePath();
+        this.poiGraphics.fillStyle(0xffffff, 0.9);
+        this.poiGraphics.fillCircle(x, y, 5);
+        this.poiGraphics.lineStyle(2, spot.color, 1);
+        this.poiGraphics.strokeCircle(x, y, 5);
+      }
+
+      // Outer decorative ring
+      this.poiGraphics.lineStyle(2, spot.color, 0.6);
+      this.poiGraphics.strokeCircle(x, y, 28);
+    });
+
+    // Draw Pokemon League entrance if all gyms defeated
+    const allGymsDefeated = region.gyms.every(g => gameState.defeatedGyms[g.id]);
+    if (allGymsDefeated && !gameState.isChampion) {
+      const leagueX = 45 * WORLD_SCALE;
+      const leagueY = 35 * WORLD_SCALE;
+      this.poiGraphics.fillStyle(0xffd700, 0.9);
+      this.poiGraphics.fillRect(leagueX - 20, leagueY - 20, 40, 40);
+      this.poiGraphics.lineStyle(3, 0xffffff, 0.9);
+      this.poiGraphics.strokeRect(leagueX - 20, leagueY - 20, 40, 40);
+      // Crown symbol
+      this.poiGraphics.fillStyle(0xffffff, 0.9);
+      this.poiGraphics.fillTriangle(leagueX, leagueY - 10, leagueX - 10, leagueY + 5, leagueX + 10, leagueY + 5);
+    }
+  }
+
+  private spawnProps(region: RegionData): void {
+    this.props = [];
+    this.propBodies.clear(true, true);
+    region.zones.forEach((zone) => {
+      const biome = BIOMES[zone.biome];
+      const count = Math.floor(zone.r * 1.2);
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * zone.r * 0.9;
+        const x = (zone.x + Math.cos(angle) * radius) * WORLD_SCALE;
+        const y = (zone.y + Math.sin(angle) * radius) * WORLD_SCALE;
+        const type = biome.props[Math.floor(Math.random() * biome.props.length)];
+        const variant = Math.floor(Math.random() * 3); // 0, 1, or 2 variant
+        const scale = 0.8 + Math.random() * 0.4; // 0.8 to 1.2 scale
+        this.props.push({ x, y, type, variant, scale });
+        const size = this.getPropBodySize(type);
+        // Position collision body at the base of the prop, make it smaller
+        const body = this.propBodies.create(x, y + size.h * 0.3, "collider") as Phaser.Physics.Arcade.Image;
+        body.setDisplaySize(size.w * 0.6, size.h * 0.5); // Smaller collision area
+        body.setAlpha(0);
+        body.refreshBody();
+      }
+    });
+    this.drawProps();
+  }
+
+  private drawProps(): void {
+    this.propGraphics.clear();
+    this.props.forEach((prop) => {
+      const { x, y, type, variant, scale } = prop;
+      const s = scale;
+
+      switch (type) {
+        case "tree":
+          this.drawTree(x, y, variant, s);
+          break;
+        case "pine":
+          this.drawPine(x, y, variant, s);
+          break;
+        case "bush":
+          this.drawBush(x, y, variant, s);
+          break;
+        case "flower":
+          this.drawFlower(x, y, variant, s);
+          break;
+        case "rock":
+          this.drawRock(x, y, variant, s);
+          break;
+        case "boulder":
+          this.drawBoulder(x, y, variant, s);
+          break;
+        case "rockspire":
+          this.drawRockspire(x, y, variant, s);
+          break;
+        case "crystal":
+          this.drawCrystal(x, y, variant, s);
+          break;
+        case "glacier":
+          this.drawGlacier(x, y, variant, s);
+          break;
+        case "snowdrift":
+          this.drawSnowdrift(x, y, variant, s);
+          break;
+        case "cactus":
+          this.drawCactus(x, y, variant, s);
+          break;
+        case "waterlily":
+          this.drawWaterlily(x, y, variant, s);
+          break;
+        case "reed":
+          this.drawReed(x, y, variant, s);
+          break;
+        default:
+          this.propGraphics.fillStyle(0x4b5563, 1);
+          this.propGraphics.fillRect(x - 6, y - 6, 12, 12);
+          break;
+      }
+    });
+  }
+
+  private drawTree(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+    // Trunk with texture
+    g.fillStyle(0x5b3a1e, 1);
+    g.fillRect(x - 5 * s, y - 8 * s, 10 * s, 18 * s);
+    g.fillStyle(0x4a2f18, 1);
+    g.fillRect(x - 2 * s, y - 6 * s, 2 * s, 14 * s);
+
+    // Layered foliage based on variant
+    const colors = [
+      [0x22c55e, 0x16a34a, 0x15803d],  // Green
+      [0x4ade80, 0x22c55e, 0x16a34a],  // Light green
+      [0x86efac, 0x4ade80, 0x22c55e]   // Pale green
+    ][variant];
+
+    g.fillStyle(colors[2], 1);
+    g.fillCircle(x, y - 14 * s, 16 * s);
+    g.fillStyle(colors[1], 1);
+    g.fillCircle(x - 4 * s, y - 18 * s, 12 * s);
+    g.fillCircle(x + 5 * s, y - 16 * s, 11 * s);
+    g.fillStyle(colors[0], 1);
+    g.fillCircle(x, y - 22 * s, 10 * s);
+
+    // Highlight
+    g.fillStyle(0xffffff, 0.2);
+    g.fillCircle(x - 3 * s, y - 24 * s, 4 * s);
+  }
+
+  private drawPine(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+    // Trunk
+    g.fillStyle(0x5b3a1e, 1);
+    g.fillRect(x - 3 * s, y + 2 * s, 6 * s, 10 * s);
+
+    // Layered triangles for pine look
+    const colors = [0x1f5c38, 0x2a6b3f, 0x357a4a][variant];
+    const darkColor = [0x164430, 0x1f5c38, 0x2a6b3f][variant];
+
+    // Back layer
+    g.fillStyle(darkColor, 1);
+    g.fillTriangle(x, y - 28 * s, x - 16 * s, y + 4 * s, x + 16 * s, y + 4 * s);
+
+    // Middle layers
+    g.fillStyle(colors, 1);
+    g.fillTriangle(x, y - 26 * s, x - 14 * s, y - 6 * s, x + 14 * s, y - 6 * s);
+    g.fillTriangle(x, y - 18 * s, x - 12 * s, y + 2 * s, x + 12 * s, y + 2 * s);
+
+    // Snow caps on some variants
+    if (variant === 2) {
+      g.fillStyle(0xffffff, 0.7);
+      g.fillTriangle(x, y - 26 * s, x - 6 * s, y - 18 * s, x + 6 * s, y - 18 * s);
+    }
+  }
+
+  private drawBush(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+    const colors = [
+      [0x22c55e, 0x16a34a],
+      [0x4ade80, 0x22c55e],
+      [0xf472b6, 0xec4899] // Flowering bush
+    ][variant];
+
+    // Multiple overlapping circles for organic shape
+    g.fillStyle(colors[1], 1);
+    g.fillCircle(x - 4 * s, y - 4 * s, 9 * s);
+    g.fillCircle(x + 5 * s, y - 3 * s, 8 * s);
+    g.fillStyle(colors[0], 1);
+    g.fillCircle(x, y - 6 * s, 10 * s);
+    g.fillCircle(x + 3 * s, y - 8 * s, 7 * s);
+
+    // Add berries/flowers for variant 2
+    if (variant === 2) {
+      g.fillStyle(0xfcd34d, 1);
+      g.fillCircle(x - 5 * s, y - 8 * s, 2 * s);
+      g.fillCircle(x + 4 * s, y - 10 * s, 2 * s);
+      g.fillCircle(x + 6 * s, y - 4 * s, 2 * s);
+    }
+
+    // Highlight
+    g.fillStyle(0xffffff, 0.15);
+    g.fillCircle(x - 2 * s, y - 10 * s, 4 * s);
+  }
+
+  private drawFlower(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+    const petalColors = [0xf472b6, 0xfbbf24, 0xa78bfa][variant];
+
+    // Stem
+    g.fillStyle(0x22c55e, 1);
+    g.fillRect(x - 1 * s, y - 2 * s, 2 * s, 8 * s);
+
+    // Petals in a circle
+    g.fillStyle(petalColors, 1);
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      const px = x + Math.cos(angle) * 4 * s;
+      const py = y - 6 * s + Math.sin(angle) * 4 * s;
+      g.fillEllipse(px, py, 4 * s, 3 * s);
+    }
+
+    // Center
+    g.fillStyle(0xfcd34d, 1);
+    g.fillCircle(x, y - 6 * s, 3 * s);
+
+    // Leaf
+    g.fillStyle(0x22c55e, 1);
+    g.fillEllipse(x + 3 * s, y + 2 * s, 4 * s, 2 * s);
+  }
+
+  private drawRock(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+    const colors = [0x6b7280, 0x78716c, 0x9ca3af][variant];
+    const darkColors = [0x4b5563, 0x57534e, 0x6b7280][variant];
+
+    // Main rock body - irregular polygon
+    g.fillStyle(colors, 1);
+    g.beginPath();
+    g.moveTo(x - 2 * s, y - 12 * s);
+    g.lineTo(x + 8 * s, y - 8 * s);
+    g.lineTo(x + 10 * s, y + 2 * s);
+    g.lineTo(x + 6 * s, y + 8 * s);
+    g.lineTo(x - 8 * s, y + 8 * s);
+    g.lineTo(x - 10 * s, y + 2 * s);
+    g.lineTo(x - 8 * s, y - 6 * s);
+    g.closePath();
+    g.fillPath();
+
+    // Shading
+    g.fillStyle(darkColors, 1);
+    g.beginPath();
+    g.moveTo(x - 8 * s, y + 8 * s);
+    g.lineTo(x - 10 * s, y + 2 * s);
+    g.lineTo(x - 6 * s, y + 4 * s);
+    g.lineTo(x - 4 * s, y + 8 * s);
+    g.closePath();
+    g.fillPath();
+
+    // Highlight
+    g.fillStyle(0xffffff, 0.2);
+    g.fillCircle(x + 2 * s, y - 6 * s, 3 * s);
+  }
+
+  private drawBoulder(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+    const colors = [0x8b8f97, 0xa3a8b0, 0x78716c][variant];
+
+    // Large rounded boulder
+    g.fillStyle(colors, 1);
+    g.fillEllipse(x, y - 2 * s, 16 * s, 12 * s);
+
+    // Darker bottom
+    g.fillStyle(0x4b5563, 0.4);
+    g.fillEllipse(x, y + 2 * s, 14 * s, 6 * s);
+
+    // Cracks/texture
+    g.lineStyle(1, 0x374151, 0.3);
+    g.beginPath();
+    g.moveTo(x - 4 * s, y - 4 * s);
+    g.lineTo(x + 2 * s, y);
+    g.lineTo(x + 6 * s, y - 2 * s);
+    g.strokePath();
+
+    // Highlight
+    g.fillStyle(0xffffff, 0.25);
+    g.fillEllipse(x - 3 * s, y - 5 * s, 5 * s, 3 * s);
+  }
+
+  private drawRockspire(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+    const colors = [0x5f5b52, 0x78716c, 0x6b7280][variant];
+
+    // Tall jagged rock
+    g.fillStyle(colors, 1);
+    g.beginPath();
+    g.moveTo(x, y - 24 * s);
+    g.lineTo(x + 6 * s, y - 14 * s);
+    g.lineTo(x + 10 * s, y + 10 * s);
+    g.lineTo(x - 10 * s, y + 10 * s);
+    g.lineTo(x - 6 * s, y - 10 * s);
+    g.closePath();
+    g.fillPath();
+
+    // Side shading
+    g.fillStyle(0x374151, 0.4);
+    g.beginPath();
+    g.moveTo(x - 6 * s, y - 10 * s);
+    g.lineTo(x, y - 24 * s);
+    g.lineTo(x - 2 * s, y - 12 * s);
+    g.lineTo(x - 10 * s, y + 10 * s);
+    g.closePath();
+    g.fillPath();
+
+    // Highlight streak
+    g.fillStyle(0xffffff, 0.15);
+    g.fillRect(x + 2 * s, y - 16 * s, 2 * s, 12 * s);
+  }
+
+  private drawCrystal(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+    const colors = [0xa5f3fc, 0xc4b5fd, 0xfda4af][variant]; // Cyan, purple, pink
+
+    // Main crystal
+    g.fillStyle(colors, 0.85);
+    g.fillTriangle(x, y - 22 * s, x - 8 * s, y + 8 * s, x + 8 * s, y + 8 * s);
+
+    // Inner shine
+    g.fillStyle(0xffffff, 0.4);
+    g.fillTriangle(x, y - 18 * s, x - 3 * s, y + 2 * s, x + 3 * s, y + 2 * s);
+
+    // Outline glow
+    g.lineStyle(2, colors, 0.6);
+    g.strokeTriangle(x, y - 22 * s, x - 8 * s, y + 8 * s, x + 8 * s, y + 8 * s);
+
+    // Small secondary crystal
+    g.fillStyle(colors, 0.7);
+    g.fillTriangle(x + 8 * s, y - 10 * s, x + 4 * s, y + 6 * s, x + 12 * s, y + 6 * s);
+  }
+
+  private drawGlacier(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+
+    // Ice chunk
+    g.fillStyle(0xdbeafe, 0.9);
+    g.beginPath();
+    g.moveTo(x - 4 * s, y - 24 * s);
+    g.lineTo(x + 8 * s, y - 18 * s);
+    g.lineTo(x + 14 * s, y + 10 * s);
+    g.lineTo(x - 14 * s, y + 10 * s);
+    g.lineTo(x - 10 * s, y - 12 * s);
+    g.closePath();
+    g.fillPath();
+
+    // Ice cracks
+    g.lineStyle(1, 0x93c5fd, 0.6);
+    g.beginPath();
+    g.moveTo(x, y - 16 * s);
+    g.lineTo(x - 4 * s, y - 4 * s);
+    g.lineTo(x + 2 * s, y + 4 * s);
+    g.strokePath();
+
+    // Highlight
+    g.fillStyle(0xffffff, 0.5);
+    g.fillTriangle(x - 2 * s, y - 20 * s, x - 8 * s, y - 8 * s, x + 4 * s, y - 14 * s);
+
+    // Snow on top
+    if (variant === 0) {
+      g.fillStyle(0xffffff, 0.9);
+      g.fillEllipse(x, y - 22 * s, 10 * s, 4 * s);
+    }
+  }
+
+  private drawSnowdrift(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+
+    // Multiple snow mounds
+    g.fillStyle(0xf8fafc, 1);
+    g.fillEllipse(x - 6 * s, y + 4 * s, 14 * s, 8 * s);
+    g.fillEllipse(x + 8 * s, y + 6 * s, 12 * s, 6 * s);
+    g.fillEllipse(x, y + 2 * s, 18 * s, 10 * s);
+
+    // Subtle shading
+    g.fillStyle(0xe2e8f0, 0.4);
+    g.fillEllipse(x + 4 * s, y + 6 * s, 10 * s, 4 * s);
+
+    // Sparkles for variant 1
+    if (variant === 1) {
+      g.fillStyle(0xffffff, 0.9);
+      g.fillCircle(x - 4 * s, y - 2 * s, 1.5 * s);
+      g.fillCircle(x + 6 * s, y, 1 * s);
+      g.fillCircle(x, y + 4 * s, 1 * s);
+    }
+  }
+
+  private drawCactus(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+    const color = [0x22c55e, 0x16a34a, 0x15803d][variant];
+    const darkColor = [0x16a34a, 0x15803d, 0x14532d][variant];
+
+    // Main body
+    g.fillStyle(color, 1);
+    g.fillRoundedRect(x - 4 * s, y - 18 * s, 8 * s, 26 * s, 3 * s);
+
+    // Arms
+    g.fillRoundedRect(x - 12 * s, y - 10 * s, 8 * s, 4 * s, 2 * s);
+    g.fillRoundedRect(x - 12 * s, y - 10 * s, 4 * s, 12 * s, 2 * s);
+
+    g.fillRoundedRect(x + 4 * s, y - 6 * s, 8 * s, 4 * s, 2 * s);
+    g.fillRoundedRect(x + 8 * s, y - 6 * s, 4 * s, 10 * s, 2 * s);
+
+    // Vertical lines for texture
+    g.lineStyle(1, darkColor, 0.5);
+    g.beginPath();
+    g.moveTo(x - 1 * s, y - 16 * s);
+    g.lineTo(x - 1 * s, y + 6 * s);
+    g.moveTo(x + 1 * s, y - 16 * s);
+    g.lineTo(x + 1 * s, y + 6 * s);
+    g.strokePath();
+
+    // Flower on top for variant 2
+    if (variant === 2) {
+      g.fillStyle(0xfbbf24, 1);
+      g.fillCircle(x, y - 20 * s, 4 * s);
+      g.fillStyle(0xfcd34d, 1);
+      g.fillCircle(x, y - 20 * s, 2 * s);
+    }
+  }
+
+  private drawWaterlily(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+
+    // Lily pad
+    g.fillStyle(0x22c55e, 0.8);
+    g.fillEllipse(x, y + 4 * s, 18 * s, 12 * s);
+
+    // Notch in pad
+    g.fillStyle(0x4f7fc9, 0.5);
+    g.fillTriangle(x, y + 4 * s, x - 2 * s, y - 2 * s, x + 2 * s, y - 2 * s);
+
+    // Darker center
+    g.fillStyle(0x16a34a, 0.6);
+    g.fillEllipse(x, y + 4 * s, 8 * s, 5 * s);
+
+    // Flower for some variants
+    if (variant !== 0) {
+      const flowerColor = variant === 1 ? 0xfda4af : 0xfbbf24;
+      g.fillStyle(flowerColor, 0.9);
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2;
+        const px = x + Math.cos(angle) * 4 * s;
+        const py = y + Math.sin(angle) * 3 * s;
+        g.fillEllipse(px, py, 3 * s, 2 * s);
+      }
+      g.fillStyle(0xfcd34d, 1);
+      g.fillCircle(x, y, 2 * s);
+    }
+  }
+
+  private drawReed(x: number, y: number, variant: number, s: number): void {
+    const g = this.propGraphics;
+    const count = variant + 2; // 2-4 reeds
+
+    for (let i = 0; i < count; i++) {
+      const offsetX = (i - count / 2) * 4 * s;
+      const height = (14 + Math.random() * 6) * s;
+
+      // Stem
+      g.fillStyle(0x15803d, 1);
+      g.fillRect(x + offsetX - 1 * s, y - height, 2 * s, height + 4 * s);
+
+      // Cattail top
+      g.fillStyle(0x78350f, 1);
+      g.fillEllipse(x + offsetX, y - height - 4 * s, 3 * s, 6 * s);
+    }
+  }
+
+  private getPropBodySize(type: string): { w: number; h: number } {
+    // Collision sizes - smaller than visual for better gameplay feel
+    switch (type) {
+      case "tree": return { w: 12, h: 14 };      // Just trunk area
+      case "pine": return { w: 10, h: 12 };      // Just trunk area
+      case "bush": return { w: 14, h: 10 };      // Can brush against
+      case "flower": return { w: 4, h: 4 };       // Tiny, almost walkable
+      case "rock": return { w: 14, h: 10 };      // Base only
+      case "boulder": return { w: 18, h: 12 };   // Rounded so smaller
+      case "rockspire": return { w: 12, h: 14 }; // Narrower at base
+      case "crystal": return { w: 10, h: 12 };   // Can get close
+      case "glacier": return { w: 16, h: 12 };   // Wide but low
+      case "snowdrift": return { w: 12, h: 6 };  // Very walkable
+      case "cactus": return { w: 10, h: 16 };    // Tall and thin
+      case "waterlily": return { w: 8, h: 4 };   // Almost walkable
+      case "reed": return { w: 6, h: 8 };        // Walk through
+      default: return { w: 10, h: 10 };
+    }
+  }
+
+  private updatePoiHud(): void {
+    const region = getRegion(gameState);
+    const playerX = this.player.x;
+    const playerY = this.player.y;
+    let gymLabel = "";
+    let locationLabel = "Wilderness";
+    let gymHint = "";
+    let healHint = "";
+    let leagueHint = "";
+    let powerSpotHint = "";
+    let xpBoostLabel = "";
+
+    for (const gym of region.gyms) {
+      const distance = Phaser.Math.Distance.Between(playerX, playerY, gym.x * WORLD_SCALE, gym.y * WORLD_SCALE);
+      if (distance < 90 && !gameState.defeatedGyms[gym.id]) {
+        gymLabel = `Gym: ${gym.name} (${gym.leader})`;
+        gymHint = "[E/A] Challenge Gym";
+        if ((this.keyE && this.input.keyboard?.checkDown(this.keyE, 250)) || this.interactPressed) {
+          this.interactPressed = false;
+          this.startGymBattle(gym.id);
+          return;
+        }
+        break;
+      }
+    }
+
+    for (const town of region.towns) {
+      const distance = Phaser.Math.Distance.Between(playerX, playerY, town.x * WORLD_SCALE, town.y * WORLD_SCALE);
+      if (distance < 70) {
+        locationLabel = town.name;
+        if (town.services.includes("center")) {
+          healHint = "[H] Pokemon Center";
+        }
+        break;
+      }
+    }
+
+    if (locationLabel === "Wilderness") {
+      for (const landmark of region.landmarks) {
+        const distance = Phaser.Math.Distance.Between(playerX, playerY, landmark.x * WORLD_SCALE, landmark.y * WORLD_SCALE);
+        if (distance < 70) {
+          locationLabel = landmark.name;
+          break;
+        }
+      }
+    }
+
+    if (locationLabel === "Wilderness") {
+      const zone = region.zones.find((z) =>
+        Phaser.Math.Distance.Between(playerX, playerY, z.x * WORLD_SCALE, z.y * WORLD_SCALE) < z.r * WORLD_SCALE
+      );
+      if (zone) locationLabel = zone.name;
+    }
+
+    // Check for Pokemon League
+    const allGymsDefeated = region.gyms.every(g => gameState.defeatedGyms[g.id]);
+    if (allGymsDefeated && !gameState.isChampion) {
+      const leagueX = 45 * WORLD_SCALE;
+      const leagueY = 35 * WORLD_SCALE;
+      const distance = Phaser.Math.Distance.Between(playerX, playerY, leagueX, leagueY);
+      if (distance < 60) {
+        leagueHint = "[L] Enter Pokemon League!";
+      }
+    }
+
+    // Check for nearby power spots
+    for (const spot of region.powerSpots) {
+      const distance = Phaser.Math.Distance.Between(playerX, playerY, spot.x * WORLD_SCALE, spot.y * WORLD_SCALE);
+      if (distance < 60) {
+        const cooldown = this.powerSpotCooldowns.get(spot.id) || 0;
+        if (cooldown <= 0) {
+          const effectDesc = spot.effect === "heal" ? "Healing aura nearby!" :
+            spot.effect === "xpboost" ? "Ancient power nearby!" :
+            "Rare Pokemon sense something!";
+          powerSpotHint = `${spot.name}: ${effectDesc}`;
+        } else {
+          powerSpotHint = `${spot.name}: Recharging...`;
+        }
+        break;
+      }
+    }
+
+    // Show XP boost status
+    if (this.xpBoostActive) {
+      const secondsLeft = Math.ceil(this.xpBoostTimer / 1000);
+      xpBoostLabel = `2x XP BOOST: ${secondsLeft}s`;
+    }
+
+    const pokedexCount = getPokedexCount(gameState);
+    const nextGym = region.gyms.find((gym) => !gameState.defeatedGyms[gym.id]);
+    const objective = gameState.isChampion ? "Champion!" :
+      allGymsDefeated ? "Challenge the Pokemon League!" :
+      nextGym ? `Defeat ${nextGym.name}` : "Explore!";
+
+    const hudLines = [
+      `Location: ${locationLabel}`,
+      gymLabel,
+      `Badges: ${gameState.badges.length}/3  |  Pokedex: ${pokedexCount.caught}`,
+      `Goal: ${objective}`,
+      xpBoostLabel,
+      "",
+      powerSpotHint,
+      healHint,
+      gymHint,
+      leagueHint,
+      `[P] Potion (${gameState.inventory.potion}) | [R] Revive (${gameState.inventory.revive})`,
+      "[M] Map | [T] Team | [D] Pokedex"
+    ].filter(line => line !== "");
+
+    this.hudText.setText(hudLines.join("\n"));
+
+    // Update player marker on visual map if open
+    if (this.mapOpen && this.mapPlayerMarker && this.mapContainer) {
+      const bounds = this.getWorldBounds(region);
+      const mapWidth = 400;
+      const mapHeight = 300;
+      const scaleX = mapWidth / bounds.width;
+      const scaleY = mapHeight / bounds.height;
+      const markerX = (this.player.x - bounds.x) * scaleX;
+      const markerY = (this.player.y - bounds.y) * scaleY;
+      this.mapPlayerMarker.setPosition(markerX, markerY);
+    }
+  }
+
+  private setupCameraZoom(): void {
+    // Zoom in a little on small / touch screens so sprites read clearly.
+    const minSide = Math.min(this.scale.width, this.scale.height);
+    let zoom = 1;
+    if (minSide < 500) zoom = 1.6;
+    else if (minSide < 720) zoom = 1.35;
+    else if (minSide < 1000) zoom = 1.15;
+    this.cameras.main.setZoom(zoom);
+  }
+
+  private createVignette(): void {
+    this.vignette?.destroy();
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const g = this.add.graphics();
+    g.setScrollFactor(0).setDepth(900);
+    // Soft darkened edges for depth/atmosphere
+    const steps = 6;
+    for (let i = 0; i < steps; i++) {
+      const alpha = 0.06 * (i + 1);
+      const inset = (i / steps) * Math.min(w, h) * 0.18;
+      g.fillStyle(0x000000, alpha);
+      g.fillRect(0, 0, w, inset);
+      g.fillRect(0, h - inset, w, inset);
+      g.fillRect(0, 0, inset, h);
+      g.fillRect(w - inset, 0, inset, h);
+    }
+    this.vignette = g;
+  }
+
+  /** Soft ground shadow placed under an entity standing at (x, baseY).
+   *  Pinned to a fixed depth band: above the ground layers, below all entities. */
+  private makeShadow(x: number, baseY: number, width: number): Phaser.GameObjects.Ellipse {
+    const shadow = this.add.ellipse(x, baseY, width, width * 0.35, 0x000000, 0.25);
+    shadow.setDepth(-50);
+    return shadow;
+  }
+
+  private applyDisplayHeight(sprite: Phaser.GameObjects.Sprite, height: number): void {
+    const texture = sprite.texture.getSourceImage() as HTMLImageElement;
+    if (texture && texture.height) {
+      const scale = height / texture.height;
+      sprite.setScale(scale);
+    } else {
+      sprite.setDisplaySize(height, height);
+    }
+  }
+
+  private handleHealing(): void {
+    const region = getRegion(gameState);
+    const playerX = this.player.x;
+    const playerY = this.player.y;
+
+    const healActivated = (this.keyH && this.input.keyboard?.checkDown(this.keyH, 250)) || this.interactPressed;
+    if (healActivated) {
+      const town = region.towns.find((t) =>
+        t.services.includes("center") &&
+        Phaser.Math.Distance.Between(playerX, playerY, t.x * WORLD_SCALE, t.y * WORLD_SCALE) < 70
+      );
+      if (town) {
+        this.interactPressed = false;
+        Sound.playHeal();
+        healTeam(gameState);
+        this.showNotification("Your Pokemon have been healed!");
+      }
+    }
+    if (this.keyP && this.input.keyboard?.checkDown(this.keyP, 250)) {
+      if (usePotion(gameState)) {
+        Sound.playHeal();
+        this.showNotification("Used Potion!");
+      }
+    }
+    if (this.keyR && this.input.keyboard?.checkDown(this.keyR, 250)) {
+      if (useRevive(gameState)) {
+        this.showNotification("Used Revive!");
+      }
+    }
+  }
+
+  private togglePause(): void {
+    if (this.isPaused) {
+      this.resumeGame();
+    } else {
+      this.pauseGame();
+    }
+  }
+
+  private openVisualMap(): void {
+    this.touch?.setVisible(false);
+    const region = getRegion(gameState);
+    const bounds = this.getWorldBounds(region);
+
+    const mapWidth = 400;
+    const mapHeight = 300;
+    const mapX = this.scale.width / 2;
+    const mapY = this.scale.height / 2;
+
+    // Create container for the map
+    this.mapContainer = this.add.container(mapX - mapWidth / 2, mapY - mapHeight / 2);
+    this.mapContainer.setScrollFactor(0);
+    this.mapContainer.setDepth(500);
+
+    // Background panel
+    const bg = this.add.rectangle(mapWidth / 2, mapHeight / 2, mapWidth + 20, mapHeight + 60, 0x0f172a, 0.95);
+    bg.setStrokeStyle(3, 0xfbbf24);
+    this.mapContainer.add(bg);
+
+    // Title
+    const title = this.add.text(mapWidth / 2, -15, region.name, {
+      fontFamily: "monospace",
+      fontSize: "18px",
+      color: "#fbbf24",
+      fontStyle: "bold"
+    }).setOrigin(0.5);
+    this.mapContainer.add(title);
+
+    // Map graphics for drawing zones
+    this.mapGraphics = this.add.graphics();
+    this.mapContainer.add(this.mapGraphics);
+
+    const scaleX = mapWidth / bounds.width;
+    const scaleY = mapHeight / bounds.height;
+
+    // Draw zones
+    region.zones.forEach((zone) => {
+      const biome = BIOMES[zone.biome];
+      const x = (zone.x * WORLD_SCALE - bounds.x) * scaleX;
+      const y = (zone.y * WORLD_SCALE - bounds.y) * scaleY;
+      const r = zone.r * WORLD_SCALE * Math.min(scaleX, scaleY) * 0.8;
+
+      this.mapGraphics!.fillStyle(biome.color, 0.6);
+      this.mapGraphics!.fillCircle(x, y, r);
+      this.mapGraphics!.lineStyle(1, biome.color, 0.8);
+      this.mapGraphics!.strokeCircle(x, y, r);
+    });
+
+    // Draw towns
+    region.towns.forEach((town) => {
+      const x = (town.x * WORLD_SCALE - bounds.x) * scaleX;
+      const y = (town.y * WORLD_SCALE - bounds.y) * scaleY;
+
+      // Town marker (house shape)
+      this.mapGraphics!.fillStyle(0x60a5fa, 1);
+      this.mapGraphics!.fillRect(x - 6, y - 3, 12, 10);
+      this.mapGraphics!.fillTriangle(x - 8, y - 3, x + 8, y - 3, x, y - 10);
+
+      // Town name
+      const label = this.add.text(x, y + 12, town.name, {
+        fontFamily: "monospace",
+        fontSize: "9px",
+        color: "#93c5fd"
+      }).setOrigin(0.5);
+      this.mapContainer!.add(label);
+    });
+
+    // Draw gyms
+    region.gyms.forEach((gym) => {
+      const x = (gym.x * WORLD_SCALE - bounds.x) * scaleX;
+      const y = (gym.y * WORLD_SCALE - bounds.y) * scaleY;
+      const isCleared = gameState.defeatedGyms[gym.id];
+
+      // Gym marker (star shape)
+      this.mapGraphics!.fillStyle(isCleared ? 0x22c55e : gym.color, 1);
+      this.mapGraphics!.fillCircle(x, y, 8);
+      this.mapGraphics!.lineStyle(2, 0xffffff, 0.8);
+      this.mapGraphics!.strokeCircle(x, y, 8);
+
+      // Gym label
+      const label = this.add.text(x, y + 14, isCleared ? "✓" : gym.leader, {
+        fontFamily: "monospace",
+        fontSize: "8px",
+        color: isCleared ? "#22c55e" : "#fbbf24"
+      }).setOrigin(0.5);
+      this.mapContainer!.add(label);
+    });
+
+    // Draw portals
+    if (region.portals) {
+      region.portals.forEach((portal) => {
+        const x = (portal.x * WORLD_SCALE - bounds.x) * scaleX;
+        const y = (portal.y * WORLD_SCALE - bounds.y) * scaleY;
+
+        // Portal marker (swirl)
+        this.mapGraphics!.fillStyle(portal.color, 0.8);
+        this.mapGraphics!.fillCircle(x, y, 10);
+        this.mapGraphics!.lineStyle(2, 0xffffff, 0.6);
+        this.mapGraphics!.strokeCircle(x, y, 10);
+        this.mapGraphics!.strokeCircle(x, y, 6);
+
+        // Portal label
+        const label = this.add.text(x, y + 16, "Portal", {
+          fontFamily: "monospace",
+          fontSize: "8px",
+          color: "#c4b5fd"
+        }).setOrigin(0.5);
+        this.mapContainer!.add(label);
+      });
+    }
+
+    // Player marker
+    const playerX = (this.player.x - bounds.x) * scaleX;
+    const playerY = (this.player.y - bounds.y) * scaleY;
+    this.mapPlayerMarker = this.add.circle(playerX, playerY, 6, 0xff0000, 1);
+    this.mapPlayerMarker.setStrokeStyle(2, 0xffffff);
+    this.mapContainer.add(this.mapPlayerMarker);
+
+    // Pulse animation for player marker
+    this.tweens.add({
+      targets: this.mapPlayerMarker,
+      scale: 1.3,
+      alpha: 0.7,
+      duration: 500,
+      yoyo: true,
+      repeat: -1
+    });
+
+    // Legend at bottom
+    const legend = this.add.text(mapWidth / 2, mapHeight + 15,
+      `Badges: ${gameState.badges.length}/${region.gyms.length}  |  [M] Close`, {
+      fontFamily: "monospace",
+      fontSize: "11px",
+      color: "#94a3b8"
+    }).setOrigin(0.5);
+    this.mapContainer.add(legend);
+  }
+
+  private closeVisualMap(): void {
+    this.mapOpen = false;
+    this.touch?.setVisible(true);
+    if (this.mapContainer) {
+      this.mapContainer.destroy();
+      this.mapContainer = undefined;
+    }
+    this.mapGraphics = undefined;
+    this.mapPlayerMarker = undefined;
+  }
+
+  private pauseGame(): void {
+    this.isPaused = true;
+    this.physics.pause();
+    this.touch?.setVisible(false);
+
+    // Close any open menus
+    if (this.mapOpen) {
+      this.closeVisualMap();
+    }
+    if (this.teamOpen) this.closeTeamScreen();
+    if (this.pokedexOpen) this.closePokedex();
+
+    const centerX = this.scale.width / 2;
+    const centerY = this.scale.height / 2;
+
+    // Dark overlay
+    this.pauseOverlay = this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x000000, 0.7);
+    this.pauseOverlay.setScrollFactor(0);
+    this.pauseOverlay.setDepth(1000);
+
+    // Pause title
+    const title = this.add.text(centerX, centerY - 100, "PAUSED", {
+      fontFamily: "monospace",
+      fontSize: "36px",
+      color: "#fbbf24",
+      fontStyle: "bold"
+    });
+    title.setScrollFactor(0).setOrigin(0.5).setDepth(1001);
+    this.pauseText.push(title);
+
+    // Menu options
+    const menuItems = [
+      { label: "Resume Game", y: centerY - 20 },
+      { label: "Save Game [S]", y: centerY + 30 },
+      { label: "Load Game [F1]", y: centerY + 80 }
+    ];
+
+    menuItems.forEach((item) => {
+      const text = this.add.text(centerX, item.y, item.label, {
+        fontFamily: "monospace",
+        fontSize: "20px",
+        color: "#f8fafc",
+        backgroundColor: "#1e293b",
+        padding: { left: 20, right: 20, top: 10, bottom: 10 }
+      });
+      text.setScrollFactor(0).setOrigin(0.5).setDepth(1001);
+      text.setInteractive({ useHandCursor: true });
+      text.on("pointerover", () => text.setStyle({ backgroundColor: "#334155" }));
+      text.on("pointerout", () => text.setStyle({ backgroundColor: "#1e293b" }));
+      if (item.label === "Resume Game") {
+        text.on("pointerdown", () => this.resumeGame());
+      } else if (item.label === "Save Game [S]") {
+        text.on("pointerdown", () => {
+          if (saveGame()) {
+            Sound.playMenuSelect();
+            this.showNotification("Game Saved!", 1500);
+          }
+        });
+      } else if (item.label === "Load Game [F1]") {
+        text.on("pointerdown", () => {
+          if (loadGame()) {
+            Sound.playMenuSelect();
+            this.resumeGame();
+            this.time.delayedCall(100, () => {
+              this.scene.restart();
+            });
+          } else {
+            this.showNotification("No save data found!", 1500);
+          }
+        });
+      }
+      this.pauseText.push(text);
+    });
+
+    // Controls hint
+    const hint = this.add.text(centerX, centerY + 150, "Press ESC to resume", {
+      fontFamily: "monospace",
+      fontSize: "14px",
+      color: "#6b7280"
+    });
+    hint.setScrollFactor(0).setOrigin(0.5).setDepth(1001);
+    this.pauseText.push(hint);
+  }
+
+  private resumeGame(): void {
+    this.isPaused = false;
+    this.physics.resume();
+    this.touch?.setVisible(true);
+
+    // Clean up pause UI
+    if (this.pauseOverlay) {
+      this.pauseOverlay.destroy();
+      this.pauseOverlay = undefined;
+    }
+    this.pauseText.forEach(t => t.destroy());
+    this.pauseText = [];
+  }
+
+  private openTeamScreen(): void {
+    if (this.teamOpen) return;
+    this.teamOpen = true;
+    this.touch?.setVisible(false);
+    const width = 560;
+    const height = 350;
+    const centerX = this.scale.width / 2;
+    const centerY = this.scale.height / 2;
+    this.teamOverlay = this.add.rectangle(centerX, centerY, width, height, 0x0f172a, 0.95);
+    this.teamOverlay.setScrollFactor(0);
+
+    const title = this.add.text(centerX - 250, centerY - 160, "Your Pokemon Team", {
+      fontFamily: "monospace",
+      fontSize: "20px",
+      color: "#fbbf24"
+    });
+    title.setScrollFactor(0);
+    this.teamText.push(title);
+
+    if (gameState.team.length === 0) {
+      const empty = this.add.text(centerX - 250, centerY - 100, "No Pokemon in team", {
+        fontFamily: "monospace",
+        fontSize: "14px",
+        color: "#6b7280"
+      });
+      empty.setScrollFactor(0);
+      this.teamText.push(empty);
+    } else {
+      gameState.team.forEach((mon, index) => {
+        const y = centerY - 120 + index * 42;
+        const hpPercent = Math.floor((mon.hp / mon.maxHp) * 100);
+        const hpColor = hpPercent > 50 ? "#22c55e" : hpPercent > 20 ? "#eab308" : "#ef4444";
+        const statusStr = mon.status !== "none" ? ` [${mon.status.toUpperCase()}]` : "";
+
+        const line = this.add.text(centerX - 250, y,
+          `${index + 1}. ${mon.nickname || mon.name} Lv${mon.level}`, {
+          fontFamily: "monospace",
+          fontSize: "16px",
+          color: mon.hp > 0 ? "#f8fafc" : "#6b7280"
+        });
+        line.setScrollFactor(0);
+        this.teamText.push(line);
+
+        const stats = this.add.text(centerX - 250, y + 18,
+          `   HP: ${mon.hp}/${mon.maxHp} (${hpPercent}%)${statusStr}  |  EXP: ${mon.exp}/${mon.expToNext}`, {
+          fontFamily: "monospace",
+          fontSize: "12px",
+          color: hpColor
+        });
+        stats.setScrollFactor(0);
+        this.teamText.push(stats);
+      });
+    }
+
+    const boxLabel = this.add.text(centerX - 250, centerY + 100, `Box: ${gameState.box.length} Pokemon stored`, {
+      fontFamily: "monospace",
+      fontSize: "14px",
+      color: "#94a3b8"
+    });
+    boxLabel.setScrollFactor(0);
+    this.teamText.push(boxLabel);
+
+    const close = this.add.text(centerX - 250, centerY + 140, "[T] Close", {
+      fontFamily: "monospace",
+      fontSize: "14px",
+      color: "#6b7280"
+    });
+    close.setScrollFactor(0);
+    this.teamText.push(close);
+  }
+
+  private closeTeamScreen(): void {
+    this.teamOpen = false;
+    this.touch?.setVisible(true);
+    if (this.teamOverlay) this.teamOverlay.destroy();
+    this.teamText.forEach((item) => item.destroy());
+    this.teamText = [];
+  }
+
+  private openPokedex(): void {
+    if (this.pokedexOpen) return;
+    this.pokedexOpen = true;
+    this.touch?.setVisible(false);
+    const width = 600;
+    const height = 400;
+    const centerX = this.scale.width / 2;
+    const centerY = this.scale.height / 2;
+    this.pokedexOverlay = this.add.rectangle(centerX, centerY, width, height, 0x0f172a, 0.95);
+    this.pokedexOverlay.setScrollFactor(0);
+
+    const pokedexCount = getPokedexCount(gameState);
+    const title = this.add.text(centerX - 280, centerY - 180,
+      `Pokedex - Seen: ${pokedexCount.seen} | Caught: ${pokedexCount.caught}`, {
+      fontFamily: "monospace",
+      fontSize: "18px",
+      color: "#ef4444"
+    });
+    title.setScrollFactor(0);
+    this.pokedexText.push(title);
+
+    // Show caught Pokemon
+    const entries = Object.entries(gameState.pokedex).filter(([_, data]) => data.caught);
+    const columns = 3;
+    entries.slice(0, 18).forEach(([speciesId, data], index) => {
+      const species = SPECIES[speciesId];
+      if (!species) return;
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const x = centerX - 260 + col * 180;
+      const y = centerY - 130 + row * 45;
+
+      const text = this.add.text(x, y,
+        `#${(index + 1).toString().padStart(3, "0")} ${species.name}`, {
+        fontFamily: "monospace",
+        fontSize: "13px",
+        color: data.caught ? "#22c55e" : "#6b7280"
+      });
+      text.setScrollFactor(0);
+      this.pokedexText.push(text);
+    });
+
+    if (entries.length === 0) {
+      const empty = this.add.text(centerX - 280, centerY - 100, "No Pokemon caught yet!\nGo explore and catch some!", {
+        fontFamily: "monospace",
+        fontSize: "14px",
+        color: "#6b7280"
+      });
+      empty.setScrollFactor(0);
+      this.pokedexText.push(empty);
+    }
+
+    const close = this.add.text(centerX - 280, centerY + 160, "[D] Close Pokedex", {
+      fontFamily: "monospace",
+      fontSize: "14px",
+      color: "#6b7280"
+    });
+    close.setScrollFactor(0);
+    this.pokedexText.push(close);
+  }
+
+  private closePokedex(): void {
+    this.pokedexOpen = false;
+    this.touch?.setVisible(true);
+    if (this.pokedexOverlay) this.pokedexOverlay.destroy();
+    this.pokedexText.forEach((item) => item.destroy());
+    this.pokedexText = [];
+  }
+
+  private openStarterSelect(): void {
+    this.starterOpen = true;
+    this.touch?.setVisible(false);
+    const centerX = this.scale.width / 2;
+    const centerY = this.scale.height / 2;
+
+    // Main panel background
+    const panelWidth = 520;
+    const panelHeight = 420;
+    this.starterOverlay = this.add.rectangle(centerX, centerY, panelWidth, panelHeight, 0x0f172a, 0.97);
+    this.starterOverlay.setScrollFactor(0);
+    this.starterOverlay.setStrokeStyle(3, 0xfbbf24);
+
+    // Decorative border
+    const innerBorder = this.add.rectangle(centerX, centerY, panelWidth - 16, panelHeight - 16, 0x1e293b, 0);
+    innerBorder.setScrollFactor(0);
+    innerBorder.setStrokeStyle(2, 0x334155);
+    this.starterText.push(innerBorder as unknown as Phaser.GameObjects.Text);
+
+    // Title
+    const title = this.add.text(centerX, centerY - 175, "Choose Your Partner!", {
+      fontFamily: "monospace",
+      fontSize: "24px",
+      color: "#fbbf24",
+      fontStyle: "bold"
+    });
+    title.setScrollFactor(0).setOrigin(0.5);
+    this.starterText.push(title);
+
+    // Subtitle
+    const subtitle = this.add.text(centerX, centerY - 145, "Your first Pokemon awaits...", {
+      fontFamily: "monospace",
+      fontSize: "14px",
+      color: "#94a3b8"
+    });
+    subtitle.setScrollFactor(0).setOrigin(0.5);
+    this.starterText.push(subtitle);
+
+    const starters = [
+      { id: "bulbasaur", type: "Grass/Poison", color: 0x22c55e, darkColor: 0x166534 },
+      { id: "charmander", type: "Fire", color: 0xf97316, darkColor: 0xc2410c },
+      { id: "squirtle", type: "Water", color: 0x3b82f6, darkColor: 0x1d4ed8 },
+      { id: "pikachu", type: "Electric", color: 0xfbbf24, darkColor: 0xd97706 }
+    ];
+
+    // 2x2 grid layout
+    const gridStartX = centerX - 115;
+    const gridStartY = centerY - 70;
+    const cellWidth = 230;
+    const cellHeight = 140;
+
+    starters.forEach((starter, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = gridStartX + col * cellWidth;
+      const y = gridStartY + row * cellHeight;
+      const name = SPECIES[starter.id].name;
+
+      // Card background
+      const cardBg = this.add.rectangle(x, y, 200, 120, starter.darkColor, 0.3);
+      cardBg.setScrollFactor(0);
+      cardBg.setStrokeStyle(2, starter.color);
+      this.starterText.push(cardBg as unknown as Phaser.GameObjects.Text);
+
+      // Pokemon sprite
+      const spriteKey = this.textures.exists(`pokemon-${starter.id}`) ? `pokemon-${starter.id}` : "wild-fallback";
+      const sprite = this.add.sprite(x - 50, y, spriteKey);
+      sprite.setScrollFactor(0);
+      this.applyDisplayHeight(sprite, 80);
+      this.starterText.push(sprite as unknown as Phaser.GameObjects.Text);
+
+      // Add idle animation to sprite
+      this.tweens.add({
+        targets: sprite,
+        y: y - 5,
+        duration: 1000,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut"
+      });
+
+      // Pokemon name
+      const nameText = this.add.text(x + 30, y - 25, name, {
+        fontFamily: "monospace",
+        fontSize: "18px",
+        color: "#f8fafc",
+        fontStyle: "bold"
+      });
+      nameText.setScrollFactor(0).setOrigin(0.5);
+      this.starterText.push(nameText);
+
+      // Type badge
+      const typeBadge = this.add.text(x + 30, y + 5, starter.type, {
+        fontFamily: "monospace",
+        fontSize: "11px",
+        color: "#ffffff",
+        backgroundColor: `#${starter.color.toString(16).padStart(6, "0")}`,
+        padding: { left: 8, right: 8, top: 3, bottom: 3 }
+      });
+      typeBadge.setScrollFactor(0).setOrigin(0.5);
+      this.starterText.push(typeBadge);
+
+      // Level indicator
+      const levelText = this.add.text(x + 30, y + 30, "Lv. 5", {
+        fontFamily: "monospace",
+        fontSize: "12px",
+        color: "#94a3b8"
+      });
+      levelText.setScrollFactor(0).setOrigin(0.5);
+      this.starterText.push(levelText);
+
+      // Make the whole card interactive
+      cardBg.setInteractive({ useHandCursor: true });
+      cardBg.on("pointerover", () => {
+        cardBg.setStrokeStyle(3, 0xffffff);
+        cardBg.setFillStyle(starter.color, 0.4);
+        sprite.setScale(sprite.scaleX * 1.1, sprite.scaleY * 1.1);
+      });
+      cardBg.on("pointerout", () => {
+        cardBg.setStrokeStyle(2, starter.color);
+        cardBg.setFillStyle(starter.darkColor, 0.3);
+        sprite.setScale(sprite.scaleX / 1.1, sprite.scaleY / 1.1);
+      });
+      cardBg.on("pointerdown", () => {
+        Sound.playMenuSelect();
+        const mon = makePokemon(starter.id, 5);
+        addToTeam(gameState, mon);
+        markCaught(gameState, starter.id);
+        gameState.playerStarter = starter.id;
+        this.closeStarterSelect();
+        this.showNotification(`${name} joined your team!`, 3000);
+        Sound.playOverworldMusic();
+        this.time.delayedCall(500, () => {
+          this.createRivalSprites();
+        });
+      });
+    });
+
+    // Bottom hint
+    const hint = this.add.text(centerX, centerY + 175, "Click a Pokemon to begin your adventure!", {
+      fontFamily: "monospace",
+      fontSize: "13px",
+      color: "#64748b"
+    });
+    hint.setScrollFactor(0).setOrigin(0.5);
+    this.starterText.push(hint);
+  }
+
+  private closeStarterSelect(): void {
+    this.starterOpen = false;
+    this.touch?.setVisible(true);
+    if (this.starterOverlay) this.starterOverlay.destroy();
+    this.starterText.forEach((item) => item.destroy());
+    this.starterText = [];
+  }
+
+  private findTownOrLandmark(region: RegionData, id: string): TownData | LandmarkData | null {
+    const town = region.towns.find((t) => t.id === id);
+    if (town) return town;
+    const landmark = region.landmarks.find((l) => l.id === id);
+    return landmark ?? null;
+  }
+
+  private getWorldBounds(region: RegionData) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    region.zones.forEach((zone) => {
+      minX = Math.min(minX, (zone.x - zone.r) * WORLD_SCALE);
+      maxX = Math.max(maxX, (zone.x + zone.r) * WORLD_SCALE);
+      minY = Math.min(minY, (zone.y - zone.r) * WORLD_SCALE);
+      maxY = Math.max(maxY, (zone.y + zone.r) * WORLD_SCALE);
+    });
+    region.gyms.forEach((gym) => {
+      minX = Math.min(minX, gym.x * WORLD_SCALE);
+      maxX = Math.max(maxX, gym.x * WORLD_SCALE);
+      minY = Math.min(minY, gym.y * WORLD_SCALE);
+      maxY = Math.max(maxY, gym.y * WORLD_SCALE);
+    });
+    region.powerSpots.forEach((spot) => {
+      minX = Math.min(minX, spot.x * WORLD_SCALE);
+      maxX = Math.max(maxX, spot.x * WORLD_SCALE);
+      minY = Math.min(minY, spot.y * WORLD_SCALE);
+      maxY = Math.max(maxY, spot.y * WORLD_SCALE);
+    });
+    region.towns.forEach((town) => {
+      minX = Math.min(minX, town.x * WORLD_SCALE);
+      maxX = Math.max(maxX, town.x * WORLD_SCALE);
+      minY = Math.min(minY, town.y * WORLD_SCALE);
+      maxY = Math.max(maxY, town.y * WORLD_SCALE);
+    });
+    region.landmarks.forEach((landmark) => {
+      minX = Math.min(minX, landmark.x * WORLD_SCALE);
+      maxX = Math.max(maxX, landmark.x * WORLD_SCALE);
+      minY = Math.min(minY, landmark.y * WORLD_SCALE);
+      maxY = Math.max(maxY, landmark.y * WORLD_SCALE);
+    });
+
+    const padding = 300;
+    return {
+      x: minX - padding,
+      y: minY - padding,
+      width: maxX - minX + padding * 2,
+      height: maxY - minY + padding * 2
+    };
+  }
+}

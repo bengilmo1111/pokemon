@@ -1,0 +1,816 @@
+Pokémon – Game World Overview
+Core Concept
+
+Pokémon is a vibrant adventure world where people and magical creatures called Pokémon live and grow together. Players take on the role of a Pokémon Trainer, exploring regions, befriending Pokémon, training them, and battling other trainers to become the very best.
+
+The heart of Pokémon is:
+
+Friendship
+
+Exploration
+
+Growth
+
+Strategy
+
+Discovery
+
+The World
+
+Pokémon games take place across colorful regions, each inspired by real-world places. Every region contains:
+
+Towns & cities
+
+Wild areas (forests, caves, oceans, mountains)
+
+Routes connecting locations
+
+Gyms run by powerful trainers
+
+Special landmarks (volcanoes, ruins, power plants, islands)
+
+Each region has:
+
+Its own Pokémon species
+
+Local culture and buildings
+
+A Pokémon League challenge
+
+A legendary or mythical Pokémon tied to its history
+
+Exploration is encouraged:
+
+Hidden items
+
+Secret paths
+
+Rare Pokémon encounters
+
+Side quests and mini-games
+
+Pokémon
+
+Pokémon are creatures with:
+
+Unique designs (cute, cool, scary, funny)
+
+Elemental types
+
+Special abilities
+
+Individual personalities
+
+There are:
+
+Tiny Pokémon
+
+Giant Pokémon
+
+Animal-like Pokémon
+
+Object-based Pokémon (keys, candles, gears)
+
+Dragon, ghost, fairy, robot-style Pokémon
+
+Kids love:
+
+Naming their Pokémon
+
+Choosing favorites
+
+Watching them grow and evolve
+
+Collecting new species
+
+Types System
+
+Each Pokémon has one or two types that define its strengths and weaknesses.
+
+Common types:
+
+Fire
+
+Water
+
+Grass
+
+Electric
+
+Ice
+
+Rock
+
+Ground
+
+Flying
+
+Psychic
+
+Ghost
+
+Dragon
+
+Fairy
+
+Dark
+
+Steel
+
+Bug
+
+Fighting
+
+Poison
+
+Normal
+
+Type advantages:
+
+Water beats Fire
+
+Fire beats Grass
+
+Grass beats Water
+
+Electric beats Water & Flying
+
+Fairy beats Dragon
+
+This creates:
+
+Rock-paper-scissors strategy
+
+Thinking before attacking
+
+Team-building fun
+
+Battles & Attacks
+
+Battles are:
+
+Turn-based
+
+Strategic
+
+Easy to learn, hard to master
+
+Each Pokémon knows:
+
+Up to 4 moves at a time
+
+Attacks can be:
+
+Physical
+
+Special
+
+Status (sleep, poison, speed boost, etc.)
+
+Move examples:
+
+Flamethrower
+
+Thunderbolt
+
+Surf
+
+Vine Whip
+
+Ice Beam
+
+Psychic
+
+Battle features:
+
+Critical hits
+
+Misses
+
+Status effects
+
+Type bonuses
+
+Weather effects (rain, sun, sandstorm)
+
+Evolution
+
+Many Pokémon evolve into stronger forms.
+
+Ways to evolve:
+
+Reaching a certain level
+
+Using special stones
+
+Trading
+
+High friendship
+
+Special locations or time of day
+
+Evolution means:
+
+New appearance
+
+Better stats
+
+New moves
+
+Kids love:
+
+Surprise evolutions
+
+Big visual changes
+
+Feeling powerful growth
+
+Trainers
+
+Trainers are:
+
+Kids, adults, hikers, swimmers, villains
+
+Gym Leaders
+
+Rivals
+
+Champions
+
+Player Trainer:
+
+Customizable outfit
+
+Backpack
+
+Pokédex (Pokémon encyclopedia)
+
+Rivals:
+
+Challenge you often
+
+Grow stronger alongside you
+
+Encourage competition
+
+Gyms & Badges
+
+Gyms are major milestones.
+
+Each Gym:
+
+Specializes in a type (Fire Gym, Water Gym, etc.)
+
+Run by a Gym Leader
+
+Puzzle inside before the battle
+
+Winning earns:
+
+A Badge
+
+Respect
+
+Progress toward the Pokémon League
+
+Badges:
+
+Show your skill
+
+Allow Pokémon to obey you
+
+Unlock travel abilities
+
+Pokémon League
+
+The ultimate challenge:
+
+Elite trainers
+
+Champion battle
+
+Becoming Champion of the region
+
+This is:
+
+End-game goal
+
+Big celebration moment
+
+Catching Pokémon
+
+Wild Pokémon appear in:
+
+Tall grass
+
+Water
+
+Caves
+
+Special zones
+
+Catching system:
+
+Battle Pokémon
+
+Lower its HP
+
+Throw Poké Ball
+
+Hope it stays inside!
+
+Ball types:
+
+Poké Ball
+
+Great Ball
+
+Ultra Ball
+
+Special themed balls
+
+Catching is:
+
+Exciting
+
+Sometimes tricky
+
+Rewarding
+
+Teams
+
+Players build a team of:
+
+Up to 6 Pokémon
+
+Mixed types
+
+Different roles:
+
+Tank
+
+Fast attacker
+
+Status user
+
+Healer
+
+Strategy:
+
+Cover weaknesses
+
+Switch during battles
+
+Train all team members
+
+Legendary & Mythical Pokémon
+
+Rare, powerful Pokémon tied to:
+
+Ancient myths
+
+Weather
+
+Time
+
+Space
+
+Creation of the world
+
+These:
+
+Drive the story
+
+Create epic moments
+
+Are hard to catch
+
+Feel special and magical
+
+Villain Teams
+
+Most games include:
+
+A bad organization
+
+Silly grunts
+
+Big evil plan
+
+They might want to:
+
+Control legendary Pokémon
+
+Take over the world
+
+Steal Pokémon
+
+This adds:
+
+Story tension
+
+Funny moments
+
+Hero vs villain feel
+
+Friendship & Bond
+
+A core theme:
+
+Pokémon trust you
+
+Fight better when happy
+
+Can survive tough battles for you
+
+Some Pokémon:
+
+Follow you outside the ball
+
+React emotionally
+
+Play mini-games
+
+What Makes Pokémon Special for Kids
+
+Cute creatures
+
+Simple rules, deep strategy
+
+Exploration freedom
+
+Collecting & completing Pokédex
+
+Naming Pokémon
+
+Surprising evolutions
+
+Feeling like a hero
+
+Making friends (NPCs & real players)
+
+Trading & battling friends
+
+Bright visuals & music
+
+Summary
+
+Pokémon games combine:
+
+Adventure
+
+Strategy
+
+Collection
+
+Friendship
+
+Discovery
+
+The player grows from:
+
+New trainer → Gym challenger → League champion
+
+Along the way they:
+
+Catch new Pokémon
+
+Train a team
+
+Explore the world
+
+Solve puzzles
+
+Battle rivals
+
+Stop villains
+
+Become a Pokémon Master
+
+Regions & Lands of the Pokémon Universe
+
+The Pokémon world is made up of many unique regions, each inspired by real-world countries or environments. Every region has its own climate, culture, buildings, music, and Pokémon species. This makes exploration exciting and gives each game its own identity.
+
+Core Biomes & Environments
+
+Each region contains a mix of natural areas where different Pokémon appear:
+
+🌳 Forests & Jungles
+
+Bug Pokémon (Caterpie, Scyther)
+
+Grass Pokémon (Oddish, Budew)
+
+Flying Pokémon (Pidgey, Hoothoot)
+
+Hidden paths, berry trees, secret clearings
+
+⛰ Mountains & Caves
+
+Rock Pokémon (Geodude, Onix)
+
+Ground Pokémon (Diglett, Sandshrew)
+
+Dragon Pokémon (rare!)
+
+Dark caves with puzzles, ladders, and crystals
+
+🌊 Oceans, Lakes & Rivers
+
+Water Pokémon (Magikarp, Lapras)
+
+Ice Pokémon (in cold seas)
+
+Fishing spots
+
+Diving areas
+
+Sunken ruins
+
+🔥 Volcanoes & Hot Springs
+
+Fire Pokémon (Slugma, Magmar)
+
+Heat-based puzzles
+
+Lava flows
+
+Steam vents
+
+❄ Snow Fields & Ice Caves
+
+Ice Pokémon (Sneasel, Spheal)
+
+Slippery floors
+
+Snowstorms
+
+Frozen lakes
+
+🌾 Plains & Routes
+
+Normal Pokémon
+
+Early-game species
+
+Trainers to battle
+
+Rest spots
+
+🏙 Cities & Towns
+
+Pokémon Centers
+
+Poké Marts
+
+Gyms
+
+Schools
+
+Research labs
+
+Markets
+
+🌌 Special Zones
+
+Haunted towers (Ghost Pokémon)
+
+Power plants (Electric Pokémon)
+
+Fairy forests
+
+Desert ruins
+
+Space observatories
+
+Famous Pokémon Regions
+🇯🇵 Kanto (Classic Region)
+
+Theme: Traditional towns, forests, caves
+Pokémon: Pikachu, Bulbasaur, Charmander, Squirtle
+Landmarks:
+
+Viridian Forest
+
+Mt. Moon
+
+Lavender Tower
+Vibe: Nostalgic, beginner-friendly
+
+🇯🇵 Johto
+
+Theme: Ancient history, temples, nature
+Pokémon: Totodile, Chikorita, Cyndaquil
+Landmarks:
+
+Bell Tower
+
+Ruins of Alph
+
+Whirl Islands
+Vibe: Mythical, calm
+
+🇯🇵 Hoenn
+
+Theme: Islands, oceans, volcanoes
+Pokémon: Mudkip, Torchic, Treecko
+Landmarks:
+
+Active volcano
+
+Ocean routes
+
+Underwater caves
+Vibe: Tropical adventure
+
+🇯🇵 Sinnoh
+
+Theme: Snowy mountains, legends
+Pokémon: Piplup, Turtwig, Chimchar
+Landmarks:
+
+Mt. Coronet
+
+Snow routes
+
+Ancient shrines
+Vibe: Epic, serious
+
+🇫🇷 Kalos
+
+Theme: Fashion, beauty, big cities
+Pokémon: Froakie, Fennekin, Chespin
+Landmarks:
+
+Eiffel-style tower
+
+Fashion boutiques
+
+Fairy forests
+Vibe: Stylish, modern
+
+🇺🇸 Unova
+
+Theme: Big city life
+Pokémon: Snivy, Tepig, Oshawott
+Landmarks:
+
+Skyscrapers
+
+Subway battles
+
+Bridges
+Vibe: Urban adventure
+
+🇬🇧 Galar
+
+Theme: Stadium gyms, sports culture
+Pokémon: Grookey, Scorbunny, Sobble
+Landmarks:
+
+Giant stadiums
+
+Rolling countryside
+
+Foggy forests
+Vibe: Sports league feel
+
+🇪🇸 Paldea
+
+Theme: Open world, school adventure
+Pokémon: Sprigatito, Fuecoco, Quaxly
+Landmarks:
+
+Giant crater
+
+School campus
+
+Free exploration
+Vibe: Freedom, discovery
+
+🌴 Alola
+
+Theme: Tropical islands
+Pokémon: Rowlet, Litten, Popplio
+Landmarks:
+
+Beaches
+
+Totem Pokémon
+
+Island trials
+Vibe: Relaxed, friendly
+
+Regional Pokémon
+
+Each region has:
+
+Starter Pokémon (Grass, Fire, Water)
+
+Regional forms (same Pokémon, new look & type)
+
+Exclusive Pokémon
+
+Unique evolutions
+
+Examples:
+
+Alolan Raichu (Electric/Psychic)
+
+Galarian Meowth (Steel)
+
+Hisuian Zorua (Ghost)
+
+This makes:
+
+Each region feel fresh
+
+Trading important
+
+Exploration rewarding
+
+Legendary Pokémon & Regions
+
+Every region has:
+
+Guardian Pokémon
+
+Weather controllers
+
+Time & space beings
+
+Examples:
+
+Hoenn: Kyogre (ocean), Groudon (land)
+
+Sinnoh: Dialga (time), Palkia (space)
+
+Johto: Ho-Oh, Lugia
+
+They:
+
+Live in special locations
+
+Have epic battles
+
+Drive story plots
+
+Regional Culture
+
+Each region has:
+
+Local foods
+
+Traditional clothing
+
+Festivals
+
+Unique buildings
+
+NPCs:
+
+Speak differently
+
+Have regional jobs
+
+Tell stories about local Pokémon
+
+Why Regions Matter for Kids
+
+Feels like travelling the world
+
+Different Pokémon everywhere
+
+New environments stay exciting
+
+Hidden secrets
+
+Makes each game feel new
+
+Design Opportunity for New Game
+
+Your game can:
+
+Invent a brand-new region
+
+Combine biomes
+
+Add:
+
+Floating islands
+
+Candy forests
+
+Robot cities
+
+Dream worlds
+
+Each new area should:
+
+Have themed Pokémon
+
+Matching gym
+
+Unique puzzles
+
+Special music

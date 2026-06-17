@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Pocket RPG: Aim & Catch</title>
+    <style>
+        :root {
+            --accent: #ffcc00;
+            --gmax: #ff0055;
+            --success: #05ffa1;
+            --primary: #00a8ff;
+            --bg-glass: rgba(10, 25, 47, 0.95);
+            --border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #000; user-select: none; color: white; }
+       
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+       
+        /* AIMING UI */
+        #aim-layer { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; cursor: none; z-index: 100; }
+       
+        #target-ring {
+            position: absolute; width: 120px; height: 120px;
+            border: 4px solid #ff0055; border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 15px #ff0055, inset 0 0 15px #ff0055;
+            animation: pulse-ring 1.5s infinite;
+            pointer-events: none;
+        }
+       
+        #crosshair {
+            position: absolute; width: 60px; height: 60px;
+            background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.8) 5px, transparent 6px),
+                        conic-gradient(#ff0000 0% 50%, #ffffff 50% 100%);
+            border: 3px solid #333; border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #crosshair::after {
+            content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 4px; background: #333; transform: translateY(-50%);
+        }
+        #aim-msg {
+            position: absolute; bottom: 100px; width: 100%; text-align: center;
+            font-size: 1.5rem; font-weight: 900; text-transform: uppercase;
+            text-shadow: 0 2px 4px #000; color: white; pointer-events: none;
+        }
+
+        @keyframes pulse-ring { 0% { opacity: 0.6; scale: 1; } 50% { opacity: 1; scale: 1.1; } 100% { opacity: 0.6; scale: 1; } }
+
+        /* STANDARD UI */
+        .glass-panel {
+            background: var(--bg-glass);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            border: var(--border); border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0, 0.5); pointer-events: auto;
+        }
+
+        #world-ui { position: absolute; bottom: 30px; left: 30px; padding: 20px; min-width: 260px; }
+        .ui-title { font-size: 1.4rem; font-weight: 900; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; }
+        .hint { font-size: 0.9rem; color: #ccc; margin-top: 6px; display: flex; gap: 8px; align-items: center; }
+        .key { background: rgba(255,255,255,0.15); padding: 2px 6px; border-radius: 4px; font-weight: bold; color: var(--accent); min-width: 15px; text-align: center; }
+
+        .corner-btn {
+            position: absolute; pointer-events: auto;
+            background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);
+            padding: 8px 16px; font-weight: 700; border-radius: 8px; cursor: pointer; text-transform: uppercase;
+            transition: all 0.2s;
+        }
+        .corner-btn:hover { background: var(--accent); color: black; }
+        #reset-btn { top: 20px; right: 20px; background: var(--gmax); border: none; }
+        #dex-btn { top: 20px; left: 20px; background: var(--primary); border: none; }
+
+        /* POKEDEX UI */
+        #pokedex-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 50; justify-content: center; align-items: center; pointer-events: auto; }
+        #dex-container { width: 800px; height: 500px; display: flex; flex-direction: column; padding: 30px; gap: 20px; }
+        .dex-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--accent); padding-bottom: 10px;}
+        .dex-columns { display: flex; gap: 20px; flex: 1; overflow: hidden; }
+        .dex-col { flex: 1; display: flex; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; }
+        .mon-slot { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; transition: 0.2s; }
+        .mon-slot:hover { background: rgba(255,255,255,0.1); }
+        .mon-slot.selected { border-color: var(--success); background: rgba(5, 255, 161, 0.1); }
+        .tag { font-size: 0.7rem; padding: 2px 4px; border-radius: 3px; margin-right: 5px; font-weight: bold; text-transform: uppercase; }
+        .tag-tiny { background: #00a8ff; color: white; }
+        .tag-huge { background: #ffcc00; color: black; }
+        .tag-gmax { background: #ff0055; color: white; border: 1px solid white; box-shadow: 0 0 5px #ff0055; }
+
+        /* BATTLE UI */
+        #battle-ui { display: none; width: 100%; height: 100%; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+        .hud-row { display: flex; justify-content: space-between; width: 100%; max-width: 900px; margin: 40px auto 0; }
+        .stat-card { width: 300px; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+        .hp-track { width: 100%; height: 16px; background: #222; border-radius: 4px; overflow: hidden; }
+        .hp-fill { height: 100%; background: var(--success); width: 100%; transition: width 0.3s; }
+       
+        #console { width: 100%; max-width: 800px; height: 200px; margin: 0 auto 20px; display: flex; flex-direction: column; border: 2px solid var(--accent); }
+        #log { flex: 1; padding: 15px; overflow-y: auto; font-family: monospace; color: #aaa; background: rgba(0,0,0,0.4); }
+        .entry.new { color: white; border-left: 3px solid var(--accent); padding-left: 5px; }
+        .entry.gmax { color: var(--gmax); border-left: 3px solid var(--gmax); font-weight: bold; text-shadow: 0 0 5px var(--gmax); }
+        .entry.aim { color: var(--primary); font-style: italic; }
+       
+        #menu { width: 100%; border-top: 1px solid var(--accent); padding: 15px; background: rgba(255, 204, 0, 0.05); }
+        .grid { display: grid; gap: 10px; grid-template-columns: repeat(4, 1fr); }
+        .btn { background: rgba(0,0,0,0.6); border: 1px solid var(--accent); color: var(--accent); padding: 12px; font-weight: 800; cursor: pointer; text-transform: uppercase; }
+        .btn:hover { background: var(--accent); color: #000; }
+        .btn:disabled { opacity: 0.3; cursor: not-allowed; border-color: #555; color: #555; }
+
+        #flash { position: absolute; top:0; left:0; width:100%; height:100%; background: white; opacity: 0; pointer-events: none; transition: opacity 0.5s; z-index: 100; }
+        #warp-flash { position: absolute; top:0; left:0; width:100%; height:100%; background: #00ffff; opacity: 0; pointer-events: none; transition: opacity 0.8s; z-index: 100; mix-blend-mode: hard-light; }
+        #gmax-flash { position: absolute; top:0; left:0; width:100%; height:100%; background: #ff0055; opacity: 0; pointer-events: none; transition: opacity 1s; z-index: 101; mix-blend-mode: overlay; }
+    </style>
+</head>
+<body>
+
+    <button id="dex-btn" class="corner-btn" onclick="Pokedex.toggle()">Manage Team (I)</button>
+    <button id="reset-btn" class="corner-btn" onclick="location.reload()">Reset</button>
+
+    <div id="flash"></div>
+    <div id="warp-flash"></div>
+    <div id="gmax-flash"></div>
+    <div id="canvas-container"></div>
+
+    <div id="aim-layer">
+        <div id="target-ring"></div>
+        <div id="crosshair"></div>
+        <div id="aim-msg">Aim for the Center! Click to Throw!</div>
+    </div>
+
+    <div id="pokedex-overlay" class="glass-panel">
+        <div id="dex-container" class="glass-panel">
+            <div class="dex-header">
+                <h2>Team Management System</h2>
+                <button class="corner-btn" style="position:static" onclick="Pokedex.toggle()">Close</button>
+            </div>
+            <div class="dex-columns">
+                <div class="dex-col" id="col-team"><h3>Active Team</h3><div id="list-team"></div></div>
+                <div class="dex-col" id="col-box"><h3>Storage Box</h3><div id="list-box"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="world-ui" class="glass-panel">
+            <div style="font-size:0.8rem; color:#888;">PLANET</div>
+            <div id="planet-name" class="ui-title">Terra Prime</div>
+            <div class="hint"><span class="key">WASD</span> Move</div>
+            <div class="hint"><span class="key">P</span> Warp Planet</div>
+            <div class="hint" style="color:var(--gmax)">🔴 Find Power Spots</div>
+        </div>
+
+        <div id="battle-ui">
+            <div class="hud-row">
+                <div class="stat-card glass-panel">
+                    <h2 id="enemy-name">TARGET</h2>
+                    <div class="hp-track"><div id="enemy-hp-bar" class="hp-fill"></div></div>
+                </div>
+                <div class="stat-card glass-panel" style="align-items: flex-end;">
+                    <h2 id="player-name">HERO</h2>
+                    <div class="hp-track"><div id="player-hp-bar" class="hp-fill"></div></div>
+                    <div id="player-hp-text" style="text-align:right">100/100</div>
+                </div>
+            </div>
+            <div id="console" class="glass-panel">
+                <div id="log"><div class="entry">System Ready.</div></div>
+                <div id="menu">
+                    <div id="menu-root" class="grid">
+                        <button class="btn" onclick="Battle.toMoves()">Fight</button>
+                        <button class="btn" onclick="Battle.startAiming()" id="btn-catch">Catch</button>
+                        <button class="btn" onclick="Battle.toSwitch()">PKMN</button>
+                        <button class="btn" onclick="Battle.tryRun()">Run</button>
+                    </div>
+                    <div id="menu-moves" class="grid" style="display:none;"></div>
+                    <div id="menu-switch" class="grid" style="display:none; grid-template-columns: 1fr;"></div>
+                    <div id="menu-msg" style="display:none; text-align:center; font-weight:bold; padding:10px;">PROCESSING...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- DATA ---
+        const TYPES = { NORMAL:'normal', FIRE:'fire', WATER:'water', ICE:'ice', ROCK:'rock' };
+        const COLORS = { FIRE: 0xff4d4d, WATER: 0x3498db, GRASS: 0x2ecc71, ICE: 0xaaccff, ROCK: 0x887766, WALL: 0x223344 };
+        const MOVES = { tackle:{name:"Tackle", type:TYPES.NORMAL, power:40}, ember:{name:"Ember", type:TYPES.FIRE, power:40}, water:{name:"Water Gun", type:TYPES.WATER, power:40}, icebeam:{name:"Ice Beam", type:TYPES.ICE, power:90}, rockthrow:{name:"Rock Throw", type:TYPES.ROCK, power:50} };
+       
+        const SPECIES = {
+            charmander: { id:'charmander', name:"Cube-Zard", type:TYPES.FIRE, maxHp:100, moves:[MOVES.tackle, MOVES.ember], color:COLORS.FIRE },
+            squirtle: { id:'squirtle', name:"Hydra-Sphere", type:TYPES.WATER, maxHp:110, moves:[MOVES.tackle, MOVES.water], color:COLORS.WATER },
+            bulbasaur: { id:'bulbasaur', name:"Leaf-Saur", type:TYPES.GRASS, maxHp:120, moves:[MOVES.tackle], color:COLORS.GRASS },
+            glaceon: { id:'glaceon', name:"Frost-Bite", type:TYPES.ICE, maxHp:110, moves:[MOVES.icebeam], color:COLORS.ICE },
+            golem: { id:'golem', name:"Boulder-Bash", type:TYPES.ROCK, maxHp:140, moves:[MOVES.rockthrow], color:COLORS.ROCK },
+            magmar: { id:'magmar', name:"Magma-Maw", type:TYPES.FIRE, maxHp:120, moves:[MOVES.ember], color:0xff6600 }
+        };
+
+        const PLANETS = [
+            { name: "Terra Prime", bg: 0x87CEEB, ground: 0x2ecc71, spawns: ['charmander', 'squirtle', 'bulbasaur'], genType: 'TREE', gymColor: 0xff0055 },
+            { name: "Glacia-9", bg: 0xaaccff, ground: 0xffffff, spawns: ['glaceon', 'squirtle'], genType: 'CRYSTAL', gymColor: 0x00ffff },
+            { name: "Magmaros", bg: 0x330505, ground: 0x220000, spawns: ['golem', 'magmar', 'charmander'], genType: 'ROCK', gymColor: 0xffaa00 }
+        ];
+
+        const SIZES = { TINY:{label:'Tiny',scale:0.5,hpMod:0.8}, NORMAL:{label:'',scale:1.0,hpMod:1.0}, HUGE:{label:'Huge',scale:1.8,hpMod:1.3}, GMAX:{label:'G-MAX',scale:8.0,hpMod:3.0} };
+
+        // --- STATE ---
+        const State = { mode:'WORLD', planetIdx:0, teamP:[{...SPECIES.charmander, hp:100, maxHp:100, size:'NORMAL'}, {...SPECIES.bulbasaur, hp:120, maxHp:120, size:'NORMAL'}], box:[], teamE:[], wildMons:[], zones:[], activeWildId:null };
+        let mouseX = window.innerWidth/2, mouseY = window.innerHeight/2;
+
+        // --- RENDERER ---
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const Scenes = { world: new THREE.Scene(), battle: new THREE.Scene(), wCam: new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000), bCam: new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 100) };
+        Scenes.bCam.position.set(-9, 6, 14); Scenes.bCam.lookAt(0, 2, 0);
+
+        // --- ASSETS ---
+        const mat = (col) => new THREE.MeshStandardMaterial({ color: col, roughness: 0.5 });
+        const matGlow = (col, int=0.6) => new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: int });
+        const matGmax = (col) => new THREE.MeshStandardMaterial({ color: col, emissive: 0xff0000, emissiveIntensity: 0.8 });
+
+        const Assets = {
+            makeMon: (data, sizeKey='NORMAL') => {
+                const g = new THREE.Group();
+                const isGmax = sizeKey === 'GMAX';
+                const m = isGmax ? matGmax(data.color) : mat(data.color);
+               
+                if(data.type === TYPES.ICE) g.add(new THREE.Mesh(new THREE.ConeGeometry(0.8,2,4), m));
+                else if(data.type === TYPES.ROCK) g.add(new THREE.Mesh(new THREE.DodecahedronGeometry(1.0), m));
+                else if(data.type === TYPES.WATER) g.add(new THREE.Mesh(new THREE.SphereGeometry(0.9), m));
+                else g.add(new THREE.Mesh(new THREE.BoxGeometry(1.2,1.6,1.2), m)); // Fire/Normal
+               
+                if(data.type===TYPES.FIRE) { const t=new THREE.Mesh(new THREE.BoxGeometry(0.3,1.2,0.3),matGlow(0xffcc00)); t.position.set(0,0.6,-0.8); t.rotation.x=-0.5; g.add(t); }
+               
+                g.children.forEach(c => c.position.y += 0.8);
+                const scale = SIZES[sizeKey].scale; g.scale.set(scale, scale, scale); g.castShadow = true;
+                if(isGmax) { const a = new THREE.PointLight(0xff0055, 3, 20); a.position.y=5; g.add(a); }
+                return g;
+            },
+            makeTrainer: () => { const g=new THREE.Group(); g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.45,1.6), mat(0x00ccff))); const h=new THREE.Mesh(new THREE.SphereGeometry(0.35), mat(0xffccaa)); h.position.y=1.3; g.children[0].position.y=0.8; g.add(h); g.castShadow=true; return g; },
+            makeProp: (type) => {
+                const g = new THREE.Group();
+                if(type === 'TREE') { const t=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.5,2), mat(0x8b4513)); t.position.y=1; const l=new THREE.Mesh(new THREE.ConeGeometry(2,3,7), mat(0x2ecc71)); l.position.y=2.5; g.add(t,l); }
+                else { const r=new THREE.Mesh(new THREE.DodecahedronGeometry(1.5), mat(0x665544)); r.position.y=1; g.add(r); }
+                g.castShadow=true; return g;
+            },
+            makeZone: () => { const g=new THREE.Group(); const r=new THREE.Mesh(new THREE.RingGeometry(2,2.5,16), new THREE.MeshBasicMaterial({color:0xff0055, side:THREE.DoubleSide})); r.rotation.x=-Math.PI/2; r.position.y=0.1; g.add(r); return g; },
+            makeBall: () => { const g=new THREE.Group(); const b=new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshStandardMaterial({color:0xff0000})); const w=new THREE.Mesh(new THREE.SphereGeometry(0.3,32,16,0,Math.PI*2,0,Math.PI/2), new THREE.MeshStandardMaterial({color:0xffffff})); w.rotation.x=Math.PI; g.add(b,w); return g; }
+        };
+
+        // --- WORLD SETUP ---
+        const playerObj = Assets.makeTrainer();
+        let groundMesh, sunLight, ambLight, gymMesh;
+
+        function initWorld() {
+            Scenes.world.add(playerObj);
+            sunLight = new THREE.DirectionalLight(0xffffff, 1); sunLight.position.set(30,50,20); sunLight.castShadow=true;
+            sunLight.shadow.mapSize.set(2048,2048); sunLight.shadow.camera.left=-50; sunLight.shadow.camera.right=50; sunLight.shadow.camera.top=50; sunLight.shadow.camera.bottom=-50;
+            Scenes.world.add(sunLight); Scenes.world.add(new THREE.AmbientLight(0xffffff, 0.6));
+            groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(200,200), mat(0x222222)); groundMesh.rotation.x=-Math.PI/2; groundMesh.receiveShadow=true; Scenes.world.add(groundMesh);
+            gymMesh = new THREE.Group(); gymMesh.position.set(20,0,-20);
+            gymMesh.add(new THREE.Mesh(new THREE.BoxGeometry(10,6,10), mat(COLORS.WALL)));
+            const roof = new THREE.Mesh(new THREE.ConeGeometry(8,4,4), matGlow(0xffffff)); roof.position.y=5; roof.rotation.y=Math.PI/4; gymMesh.add(roof); Scenes.world.add(gymMesh);
+            loadPlanet(0);
+        }
+
+        function loadPlanet(idx) {
+            State.planetIdx=idx; const p=PLANETS[idx];
+            document.getElementById('planet-name').innerText=p.name;
+            renderer.setClearColor(p.bg); Scenes.world.background=new THREE.Color(p.bg); Scenes.world.fog=new THREE.Fog(p.bg,20,90);
+            groundMesh.material.color.setHex(p.ground);
+           
+            for(let i=Scenes.world.children.length-1; i>=0; i--) { const o=Scenes.world.children[i]; if(o!==playerObj && o!==groundMesh && o!==sunLight && o.type!=='AmbientLight' && o!==gymMesh) Scenes.world.remove(o); }
+            State.wildMons=[]; State.zones=[];
+
+            for(let i=0; i<40; i++) { const x=(Math.random()-0.5)*120, z=(Math.random()-0.5)*120; if(Math.hypot(x,z)<6 || Math.hypot(x-20,z+20)<12) continue; const t=Assets.makeProp(p.genType); t.position.set(x,0,z); Scenes.world.add(t); }
+            for(let i=0; i<5; i++) { const x=(Math.random()-0.5)*100, z=(Math.random()-0.5)*100; if(Math.hypot(x,z)<8 || Math.hypot(x-20,z+20)<12) continue; const h=Assets.makeZone(); h.position.set(x,0,z); Scenes.world.add(h); State.zones.push({x:x,z:z,r:2.5}); }
+            const sizeKeys = ['TINY','NORMAL','NORMAL','HUGE'];
+            for(let i=0; i<15; i++) {
+                const x=(Math.random()-0.5)*80, z=(Math.random()-0.5)*80; if(Math.hypot(x,z)<8 || Math.hypot(x-20,z+20)<10) continue;
+                const key=p.spawns[Math.floor(Math.random()*p.spawns.length)]; const sz=sizeKeys[Math.floor(Math.random()*sizeKeys.length)];
+                const mesh=Assets.makeMon(SPECIES[key], sz); mesh.position.set(x,0,z); Scenes.world.add(mesh);
+                const hp=Math.floor(SPECIES[key].maxHp*SIZES[sz].hpMod);
+                State.wildMons.push({id:i, species:{...SPECIES[key], maxHp:hp, hp:hp}, size:sz, mesh:mesh, x:x, z:z});
+            }
+        }
+
+        // --- BATTLE SCENE ---
+        Scenes.battle.add(new THREE.DirectionalLight(0xffffff, 1), new THREE.AmbientLight(0xffffff, 0.6));
+        const arena = new THREE.Mesh(new THREE.CylinderGeometry(14,16,1,32), mat(0x223344)); arena.position.y=-0.5; arena.receiveShadow=true; Scenes.battle.add(arena);
+        const slotP = new THREE.Group(); slotP.position.set(-4,0,5); slotP.rotation.y=Math.PI/1.1;
+        const slotE = new THREE.Group(); slotE.position.set(4,0,-3); slotE.rotation.y=-Math.PI/4;
+        Scenes.battle.add(slotP, slotE);
+        const ballObj = Assets.makeBall(); ballObj.visible=false; Scenes.battle.add(ballObj);
+
+        // --- SYSTEMS ---
+        const Pokedex = {
+            isOpen: false, selTeam: null, selBox: null,
+            toggle: () => { if(State.mode==='BATTLE') return; Pokedex.isOpen=!Pokedex.isOpen; document.getElementById('pokedex-overlay').style.display=Pokedex.isOpen?'flex':'none'; if(Pokedex.isOpen){Pokedex.selTeam=null; Pokedex.selBox=null; Pokedex.render();} },
+            render: () => {
+                const drawSlot = (m) => `<div><span class="tag tag-${m.size.toLowerCase()}">${SIZES[m.size].label}</span><span class="mon-name">${m.name}</span></div><span class="mon-hp">${Math.ceil(m.hp)}/${m.maxHp} HP</span>`;
+                const tList=document.getElementById('list-team'); tList.innerHTML='';
+                State.teamP.forEach((m,i)=>{ const d=document.createElement('div'); d.className=`mon-slot ${Pokedex.selTeam===i?'selected':''}`; d.innerHTML=drawSlot(m); d.onclick=()=>{Pokedex.selTeam=i; Pokedex.checkSwap(); Pokedex.render();}; tList.appendChild(d); });
+                const bList=document.getElementById('list-box'); bList.innerHTML=''; if(State.box.length===0) bList.innerHTML='<div style="color:#666; padding:10px;">Box Empty</div>';
+                State.box.forEach((m,i)=>{ const d=document.createElement('div'); d.className=`mon-slot ${Pokedex.selBox===i?'selected':''}`; d.innerHTML=drawSlot(m); d.onclick=()=>{Pokedex.selBox=i; Pokedex.checkSwap(); Pokedex.render();}; bList.appendChild(d); });
+            },
+            checkSwap: () => { if(Pokedex.selTeam!==null && Pokedex.selBox!==null) { const t=State.teamP[Pokedex.selTeam]; State.teamP[Pokedex.selTeam]=State.box[Pokedex.selBox]; State.box[Pokedex.selBox]=t; Pokedex.selTeam=null; Pokedex.selBox=null; } }
+        };
+
+        const Battle = {
+            pIdx:0, eIdx:0, locked:false, aiming:false,
+            init: (type, target) => {
+                Battle.pIdx=State.teamP.findIndex(p=>p.hp>0); if(Battle.pIdx===-1) return alert("Reset Required.");
+                document.getElementById('btn-catch').style.display=type==='GYM'?'none':'inline-block';
+                if(type==='GYM'){ const p=PLANETS[State.planetIdx]; State.teamE=[{...SPECIES[p.spawns[0]],hp:100,maxHp:100,size:'NORMAL'},{...SPECIES[p.spawns[1]],hp:110,maxHp:110,size:'HUGE'},{...SPECIES[p.spawns[0]],hp:200,maxHp:200,size:'GMAX'}]; } else State.teamE=[{...target}];
+                Battle.eIdx=0; Battle.locked=false; Battle.renderMon();
+                Battle.log(type==='GMAX'?`GIGANTAMAX ${target.name}!`:`${type==='WILD'?target.name:'Gym Leader'} appeared!`, type==='GMAX'?'gmax':'new');
+                Battle.updateHUD(); Battle.menu('root');
+            },
+            renderMon: () => {
+                slotP.clear(); slotE.clear();
+                slotP.add(Assets.makeMon(State.teamP[Battle.pIdx], State.teamP[Battle.pIdx].size)); slotP.visible=true;
+                const e=State.teamE[Battle.eIdx]; const mesh=Assets.makeMon(e, e.size);
+                if(e.size==='GMAX') { mesh.position.set(2, -2.5, 0); Scenes.bCam.position.set(-10,4,16); Scenes.bCam.lookAt(0,3,0); }
+                else { Scenes.bCam.position.set(-9,6,14); Scenes.bCam.lookAt(0,2,0); if(e.size==='HUGE') mesh.position.y=-0.5; }
+                slotE.add(mesh); slotE.visible=true;
+            },
+            startAiming: () => {
+                Battle.aiming = true;
+                Battle.menu('msg');
+                document.getElementById('aim-layer').style.display = 'block';
+                // Reset crosshair to center
+                mouseX = window.innerWidth/2; mouseY = window.innerHeight/2;
+            },
+            throwBall: async () => {
+                if(!Battle.aiming) return;
+                Battle.aiming = false;
+                document.getElementById('aim-layer').style.display = 'none';
+               
+                // Get Enemy Screen Position
+                const enemyPos = slotE.children[0].position.clone();
+                // Add height offset based on size for center mass
+                const e = State.teamE[Battle.eIdx];
+                enemyPos.y += e.size === 'GMAX' ? 5 : 1;
+               
+                enemyPos.project(Scenes.bCam);
+                const enemyX = (enemyPos.x * .5 + .5) * window.innerWidth;
+                const enemyY = (-(enemyPos.y * .5) + .5) * window.innerHeight;
+
+                const dist = Math.hypot(mouseX - enemyX, mouseY - enemyY);
+                const hit = dist < 60; // 60px radius
+
+                Battle.log("Throwing...", "aim");
+                ballObj.visible = true; ballObj.position.set(-3, 1, 4);
+                let f=0; await new Promise(r => { function step() { f++; ballObj.position.x += 0.4; ballObj.position.y = 1 + Math.sin(f*0.2)*2; ballObj.position.z -= 0.4; if(f<20) requestAnimationFrame(step); else r(); } step(); });
+
+                if(hit) {
+                    const catchRate = (1-(e.hp/e.maxHp))*0.8+0.2;
+                    // G-MAX is harder
+                    const mod = e.size==='GMAX' ? 0.2 : (e.size==='HUGE'?0.7:1.0);
+                   
+                    if(Math.random() < (catchRate * mod)) {
+                        slotE.visible=false; ballObj.visible=false; Battle.log("Caught!", "new");
+                        if(State.teamP.length<3) State.teamP.push(e); else State.box.push(e);
+                        await Battle.wait(1500); App.endBattle(true);
+                    } else {
+                        ballObj.visible=false; Battle.log("Broke free!", "new"); await Battle.wait(1000); Battle.enemyTurn();
+                    }
+                } else {
+                    ballObj.visible=false; Battle.log("Missed!", "new"); await Battle.wait(1000); Battle.enemyTurn();
+                }
+            },
+            updateHUD: () => {
+                const p=State.teamP[Battle.pIdx], e=State.teamE[Battle.eIdx];
+                document.getElementById('player-name').innerText = p.size!=='NORMAL' ? `${SIZES[p.size].label} ${p.name}` : p.name;
+                document.getElementById('enemy-name').innerText = e.size!=='NORMAL' ? `${SIZES[e.size].label} ${e.name}` : e.name;
+                document.getElementById('player-hp-bar').style.width = (p.hp/p.maxHp)*100+'%';
+                document.getElementById('enemy-hp-bar').style.width = (e.hp/e.maxHp)*100+'%';
+                document.getElementById('player-hp-text').innerText = `${Math.ceil(p.hp)}/${p.maxHp}`;
+            },
+            log: (msg, type='') => { const l=document.getElementById('log'), d=document.createElement('div'); d.className=`entry ${type}`; d.innerText=`> ${msg}`; l.appendChild(d); l.scrollTop=l.scrollHeight; },
+            wait: (ms) => new Promise(r => setTimeout(r,ms)),
+            menu: (id) => { ['menu-root','menu-moves','menu-switch','menu-msg'].forEach(m=>document.getElementById(m).style.display='none'); document.getElementById(id==='msg'?'menu-msg':`menu-${id}`).style.display=id==='msg'?'block':(id==='switch'?'block':'grid'); },
+            toMoves: () => { const c=document.getElementById('menu-moves'); c.innerHTML=''; State.teamP[Battle.pIdx].moves.forEach(m=>{const b=document.createElement('button');b.className='btn';b.innerText=m.name;b.onclick=()=>Battle.runTurn(m);c.appendChild(b);}); const b=document.createElement('button');b.className='btn';b.innerText='BACK';b.onclick=()=>Battle.menu('root');c.appendChild(b); Battle.menu('moves'); },
+            toSwitch: () => { const c=document.getElementById('menu-switch'); c.innerHTML=''; State.teamP.forEach((p,i)=>{const b=document.createElement('button');b.className='btn';b.innerText=`${p.name} (${Math.ceil(p.hp)})`; if(i===Battle.pIdx||p.hp<=0)b.disabled=true;else b.onclick=()=>Battle.runSwitch(i);c.appendChild(b);}); const b=document.createElement('button');b.className='btn';b.innerText='BACK';b.onclick=()=>Battle.menu('root');c.appendChild(b); Battle.menu('switch'); },
+            tryRun: () => { if(State.activeWildId!==null){Battle.log("Escaped."); setTimeout(()=>App.endBattle(false),1000);} else Battle.log("Can't run from Gym!"); },
+            runTurn: async (pMove) => {
+                if(Battle.locked)return; Battle.locked=true; Battle.menu('msg');
+                const p=State.teamP[Battle.pIdx], e=State.teamE[Battle.eIdx];
+                Battle.log(`${p.name} used ${pMove.name}!`); await Battle.animLunge(slotP,true);
+                const eff=Battle.eff(pMove.type,e.type); const dmg=Math.floor(pMove.power*eff*0.45);
+                e.hp=Math.max(0,e.hp-dmg); Battle.updateHUD(); await Battle.animShake(slotE);
+                if(e.hp<=0) {
+                    Battle.log(`${e.name} fainted!`); await Battle.animFaint(slotE);
+                    const next=State.teamE.findIndex(x=>x.hp>0);
+                    if(next===-1){Battle.log("Victory!", "new"); await Battle.wait(1500); App.endBattle(true); return;}
+                    Battle.eIdx=next; Battle.renderMon(); Battle.updateHUD(); Battle.locked=false; Battle.menu('root'); return;
+                }
+                await Battle.enemyTurn();
+            },
+            enemyTurn: async () => {
+                const p=State.teamP[Battle.pIdx], e=State.teamE[Battle.eIdx]; await Battle.wait(500);
+                const eMove=e.moves[Math.floor(Math.random()*e.moves.length)];
+                Battle.log(`${e.name} used ${eMove.name}`); await Battle.animLunge(slotE,false);
+                const eff=Battle.eff(eMove.type,p.type); const dmg=Math.floor(eMove.power*eff*0.45);
+                p.hp=Math.max(0,p.hp-dmg); Battle.updateHUD(); await Battle.animShake(slotP);
+                if(p.hp<=0) {
+                    if(State.teamP.every(x=>x.hp<=0)){Battle.log("Defeated...", "new"); await Battle.wait(2000); location.reload();}
+                    else {Battle.locked=false; Battle.toSwitch();} return;
+                }
+                Battle.locked=false; Battle.menu('root');
+            },
+            runSwitch: async (idx) => {
+                Battle.locked=true; Battle.menu('msg'); Battle.log(`Go ${State.teamP[idx].name}!`); await Battle.wait(1000);
+                Battle.pIdx=idx; Battle.renderMon(); Battle.updateHUD();
+                if(State.teamE[Battle.eIdx].hp>0) { Battle.log("Enemy takes free hit!"); await Battle.animLunge(slotE,false); State.teamP[Battle.pIdx].hp-=10; Battle.updateHUD(); await Battle.animShake(slotP); }
+                Battle.locked=false; Battle.menu('root');
+            },
+            eff: (m,t)=>{if((m===TYPES.FIRE&&t===TYPES.GRASS)||(m===TYPES.WATER&&t===TYPES.FIRE)||(m===TYPES.GRASS&&t===TYPES.WATER)||(m===TYPES.ICE&&t===TYPES.GRASS)||(m===TYPES.ROCK&&t===TYPES.FIRE))return 2; if((m===TYPES.FIRE&&t===TYPES.WATER)||(m===TYPES.WATER&&t===TYPES.GRASS)||(m===TYPES.GRASS&&t===TYPES.FIRE))return 0.5; return 1;},
+            animLunge:(g,isP)=>new Promise(r=>{let f=0,d=isP?-1:1;function s(){f++;if(f<10)g.position.z+=d*0.2;else if(f<20)g.position.z-=d*0.2;else{r();return;}requestAnimationFrame(s);}s();}),
+            animShake:(g)=>new Promise(r=>{let f=0,sx=g.position.x;function s(){f++;g.position.x=sx+Math.sin(f*2)*0.3;if(f>20){g.position.x=sx;r();return;}requestAnimationFrame(s);}s();}),
+            animFaint:(g)=>new Promise(r=>{function s(){g.position.y-=0.1;g.scale.multiplyScalar(0.9);if(g.scale.y<0.1){g.visible=false;r();return;}requestAnimationFrame(s);}s();})
+        };
+
+        const keys = { w:false, a:false, s:false, d:false };
+        const App = {
+            init: () => {
+                initWorld();
+                window.addEventListener('keydown', e => {
+                    const k = e.key.toLowerCase(); if(keys[k]!==undefined) keys[k]=true;
+                    if(k==='p'&&State.mode==='WORLD'&&!Pokedex.isOpen) App.warp();
+                    if(k==='i'&&State.mode==='WORLD') Pokedex.toggle();
+                });
+                window.addEventListener('keyup', e => { const k=e.key.toLowerCase(); if(keys[k]!==undefined) keys[k]=false; });
+                window.addEventListener('resize', () => { renderer.setSize(window.innerWidth, window.innerHeight); Scenes.wCam.aspect=window.innerWidth/window.innerHeight; Scenes.wCam.updateProjectionMatrix(); Scenes.bCam.aspect=window.innerWidth/window.innerHeight; Scenes.bCam.updateProjectionMatrix(); });
+               
+                // AIM HANDLERS
+                window.addEventListener('mousemove', e => {
+                    mouseX = e.clientX; mouseY = e.clientY;
+                    if(Battle.aiming) {
+                        const ch = document.getElementById('crosshair');
+                        ch.style.left = mouseX + 'px'; ch.style.top = mouseY + 'px';
+                    }
+                });
+                window.addEventListener('mousedown', () => {
+                    if(Battle.aiming) Battle.throwBall();
+                });
+
+                App.loop();
+            },
+            warp: () => {
+                document.getElementById('warp-flash').style.opacity=1;
+                setTimeout(() => { let next=State.planetIdx+1; if(next>=PLANETS.length)next=0; loadPlanet(next); document.getElementById('warp-flash').style.opacity=0; }, 400);
+            },
+            startBattle: (type, target) => {
+                State.mode = 'BATTLE'; State.activeWildId = type==='WILD'||type==='GMAX' ? target.id : null;
+                const flash = type==='GMAX'?'gmax-flash':'flash'; document.getElementById(flash).style.opacity=1;
+                setTimeout(()=>{
+                    document.getElementById('world-ui').style.display='none'; document.getElementById('battle-ui').style.display='flex';
+                    let data = target ? target.species : null;
+                    if(type==='WILD'||type==='GMAX') data = {...data, size:target.size, maxHp:target.species.maxHp, hp:target.species.hp};
+                    Battle.init(type, data); document.getElementById(flash).style.opacity=0;
+                },500);
+            },
+            endBattle: (victory) => {
+                State.mode = 'WORLD'; document.getElementById('battle-ui').style.display='none'; document.getElementById('world-ui').style.display='block';
+                if(victory && State.activeWildId !== null) {
+                    const idx = State.wildMons.findIndex(m => m.id === State.activeWildId);
+                    if(idx !== -1) { Scenes.world.remove(State.wildMons[idx].mesh); State.wildMons.splice(idx,1); }
+                }
+                playerObj.position.z += State.activeWildId===null ? 5 : 2;
+                State.teamP.forEach(p => {if(p.hp>0) p.hp = Math.min(p.maxHp, p.hp+20);});
+            },
+            updateWorld: () => {
+                if(Pokedex.isOpen) return;
+                const s=0.25; if(keys.w) playerObj.position.z-=s; if(keys.s) playerObj.position.z+=s; if(keys.a) playerObj.position.x-=s; if(keys.d) playerObj.position.x+=s;
+                Scenes.wCam.position.set(playerObj.position.x, 25, playerObj.position.z+15); Scenes.wCam.lookAt(playerObj.position);
+                const dx=playerObj.position.x, dz=playerObj.position.z;
+                if(Math.hypot(dx-20, dz+20)<6) { App.startBattle('GYM'); return; }
+                for(let m of State.wildMons) { m.mesh.rotation.y+=0.02; if(Math.hypot(dx-m.x, dz-m.z)<2) { App.startBattle('WILD', m); return; } }
+                for(let z of State.zones) {
+                    if(Math.hypot(dx-z.x, dz-z.z) < z.r) {
+                        const p=PLANETS[State.planetIdx]; const key=p.spawns[Math.floor(Math.random()*p.spawns.length)];
+                        const hp=SPECIES[key].maxHp*SIZES.GMAX.hpMod;
+                        App.startBattle('GMAX', {id:999, size:'GMAX', species:{...SPECIES[key], maxHp:hp, hp:hp}}); return;
+                    }
+                }
+            },
+            loop: () => {
+                requestAnimationFrame(App.loop);
+                if(State.mode === 'WORLD') { App.updateWorld(); renderer.render(Scenes.world, Scenes.wCam); }
+                else {
+                    const t = Date.now()*0.002;
+                    if(slotP.children.length) slotP.position.y = Math.sin(t)*0.1;
+                    if(slotE.children.length && slotE.children[0]) {
+                        // Move target ring if aiming
+                        if(Battle.aiming) {
+                            const ePos = slotE.children[0].position.clone();
+                            // GMAX/HUGE offset
+                            const e = State.teamE[Battle.eIdx];
+                            ePos.y += e.size==='GMAX'?5:1;
+                           
+                            ePos.project(Scenes.bCam);
+                            const screenX = (ePos.x * .5 + .5) * window.innerWidth;
+                            const screenY = (-(ePos.y * .5) + .5) * window.innerHeight;
+                            const ring = document.getElementById('target-ring');
+                            ring.style.left = screenX + 'px'; ring.style.top = screenY + 'px';
+                            // Adjust ring size
+                            const ringSize = e.size==='GMAX' ? 200 : (e.size==='HUGE'?120:80);
+                            ring.style.width = ringSize+'px'; ring.style.height = ringSize+'px';
+                        }
+                    }
+                    renderer.render(Scenes.battle, Scenes.bCam);
+                }
+            }
+        };
+
+        App.init();
+
+    </script>
+</body>
+</html>
