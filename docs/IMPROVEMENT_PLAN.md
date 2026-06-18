@@ -128,9 +128,15 @@ Phase 3 → Phase 5. Each phase is its own commit(s), type-checked via `npm run 
 - **Phase 3 — Evolution methods DONE; PP + weather REMAINING.** Item-based evolution via
   stones (Fire/Water/Thunder/Leaf/Moon): shared `evolveMon`/`tryItemEvolution`, Mart sells
   stones, team-screen "Use Stone" action; Pikachu/Clefairy/Jigglypuff/Eevee switched to
-  canon stone evolutions. v3 save migration. Runtime-verified. PP system and weather not
-  started.
-- **Phase 4 — DONE (core).** Battle message word-wrap, graphical HP bars, preload progress
-  bar, New Game confirmation, and **"forget a move" prompt** at full moveset. Remaining
-  (minor): disabled-button affordance + tooltip clamp.
-- **Phase 5 — not started.** Canon species expansion.
+  canon stone evolutions (Eevee branches by stone: Fire→Flareon, Water→Vaporeon,
+  Thunder→Jolteon). v3 save migration. Runtime-verified. PP system and weather not started.
+- **Phase 4 — DONE.** Battle message word-wrap, graphical HP bars, preload progress bar,
+  New Game confirmation, "forget a move" prompt, **disabled-button affordance**, and
+  **move-tooltip clamping**.
+- **Phase 5 — DONE (core).** Added 48 canonical Gen-1 species (sprites already shipped;
+  Preload auto-loads by id), and upgraded every gym, the Elite Four, and rival Blue to
+  authentic rosters (Brock/Onix, Misty/Starmie, Erika/Vileplume, Koga/Weezing, Blaine/
+  Arcanine, Giovanni/Rhydon, Lance/Aerodactyl, …). 112 species total. Remaining (optional):
+  the rest of the Gen-1 dex + canon wild-spawn pools per route.
+- **Still open:** PP system (Phase 3.2, breaking save change), weather (Phase 3.3), remaining
+  Gen-1 dex + biome spawn tuning (Phase 5 tail).
