@@ -28,6 +28,8 @@ export interface SpeciesData {
   learnableMoves: LearnableMove[];
   catchRate: number;
   evolution?: EvolutionData;
+  /** Multiple (branching) evolutions, e.g. Eevee's stone evolutions. */
+  evolutions?: EvolutionData[];
   expYield: number;
   /** Canonical primary ability id (see data/abilities.ts). */
   ability?: string;
@@ -492,7 +494,12 @@ export const SPECIES: Record<string, SpeciesData> = {
       { moveId: "swift", level: 25 }
     ],
     catchRate: 45,
-    evolution: { to: "flareon", item: "firestone" },
+    // Eevee branches by stone — see `evolutions`.
+    evolutions: [
+      { to: "flareon", item: "firestone" },
+      { to: "vaporeon", item: "waterstone" },
+      { to: "jolteon", item: "thunderstone" }
+    ],
     expYield: 65
   },
   flareon: {

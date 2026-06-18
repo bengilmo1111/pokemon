@@ -338,10 +338,14 @@ export function evolveMon(mon: PokemonInstance, newSpeciesId: string): void {
  * Returns the old/new names on success, or null if the item doesn't apply.
  */
 export function tryItemEvolution(mon: PokemonInstance, itemKey: string): { oldName: string; newName: string } | null {
-  const evo = SPECIES[mon.speciesId]?.evolution;
-  if (!evo || evo.item !== itemKey) return null;
+  const species = SPECIES[mon.speciesId];
+  if (!species) return null;
+  // Check the single evolution plus any branching evolutions (e.g. Eevee).
+  const candidates = [species.evolution, ...(species.evolutions ?? [])];
+  const match = candidates.find((e) => e && e.item === itemKey);
+  if (!match) return null;
   const oldName = mon.name;
-  evolveMon(mon, evo.to);
+  evolveMon(mon, match.to);
   return { oldName, newName: mon.name };
 }
 
@@ -685,11 +689,11 @@ export function generateEliteFourTrainers(): NpcTrainer[] {
       sprite: "trainer-psychic",
       x: 0, y: 0,
       team: [
-        { speciesId: "lapras",   level: 52 },
-        { speciesId: "dewgong",  level: 54 },
-        { speciesId: "clefable", level: 54 },
-        { speciesId: "alakazam", level: 54 },
-        { speciesId: "gengar",   level: 56 }
+        { speciesId: "dewgong",  level: 52 },
+        { speciesId: "cloyster", level: 54 },
+        { speciesId: "slowbro",  level: 54 },
+        { speciesId: "jynx",     level: 54 },
+        { speciesId: "lapras",   level: 56 }
       ],
       dialogue: "No one can get past my Pokemon!",
       defeated: false
@@ -700,11 +704,11 @@ export function generateEliteFourTrainers(): NpcTrainer[] {
       sprite: "trainer-hiker",
       x: 0, y: 0,
       team: [
-        { speciesId: "geodude",  level: 53 },
-        { speciesId: "machop",   level: 55 },
-        { speciesId: "machoke",  level: 55 },
-        { speciesId: "graveler", level: 56 },
-        { speciesId: "machamp",  level: 58 }
+        { speciesId: "onix",       level: 53 },
+        { speciesId: "hitmonchan", level: 55 },
+        { speciesId: "hitmonlee",  level: 55 },
+        { speciesId: "onix",       level: 56 },
+        { speciesId: "machamp",    level: 58 }
       ],
       dialogue: "I have trained here for years!",
       defeated: false
@@ -715,10 +719,10 @@ export function generateEliteFourTrainers(): NpcTrainer[] {
       sprite: "trainer-psychic",
       x: 0, y: 0,
       team: [
-        { speciesId: "gastly",  level: 54 },
+        { speciesId: "gengar",  level: 54 },
+        { speciesId: "golbat",  level: 56 },
         { speciesId: "haunter", level: 56 },
-        { speciesId: "gengar",  level: 58 },
-        { speciesId: "haunter", level: 58 },
+        { speciesId: "arbok",   level: 58 },
         { speciesId: "gengar",  level: 60 }
       ],
       dialogue: "Hehehe... you have some spirit!",
@@ -730,11 +734,11 @@ export function generateEliteFourTrainers(): NpcTrainer[] {
       sprite: "trainer-lance",
       x: 0, y: 0,
       team: [
-        { speciesId: "gyarados",  level: 58 },
-        { speciesId: "dragonair", level: 60 },
-        { speciesId: "dragonair", level: 60 },
-        { speciesId: "alakazam",  level: 62 },
-        { speciesId: "dragonite", level: 65 }
+        { speciesId: "gyarados",   level: 58 },
+        { speciesId: "dragonair",  level: 60 },
+        { speciesId: "dragonair",  level: 60 },
+        { speciesId: "aerodactyl", level: 62 },
+        { speciesId: "dragonite",  level: 65 }
       ],
       dialogue: "I am the most powerful trainer alive!",
       defeated: false
@@ -871,16 +875,17 @@ export function getRivalTeam(state: GameState, battleNumber: number): { speciesI
       return [
         { speciesId: starterForm, level: 28 },
         { speciesId: "pidgeotto", level: 25 },
-        { speciesId: "raticate", level: 24 },
+        { speciesId: "exeggcute", level: 24 },
         { speciesId: "alakazam", level: 25 }
       ];
     case 4:
       return [
-        { speciesId: starterForm, level: 40 },
-        { speciesId: "pidgeot", level: 38 },
-        { speciesId: "alakazam", level: 37 },
-        { speciesId: "golem", level: 38 },
-        { speciesId: "gyarados", level: 39 }
+        { speciesId: "pidgeot", level: 37 },
+        { speciesId: "rhydon", level: 38 },
+        { speciesId: "exeggutor", level: 38 },
+        { speciesId: "alakazam", level: 39 },
+        { speciesId: "gyarados", level: 39 },
+        { speciesId: starterForm, level: 40 }
       ];
     default:
       return [{ speciesId: starterForm, level: 10 }];
