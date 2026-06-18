@@ -373,7 +373,7 @@ export default class Battle extends Phaser.Scene {
     const items = [
       { label: "Fight", color: "#b91c1c", action: () => this.openMoveMenu() },
       { label: "Bag", color: "#a16207", action: () => this.openBallMenu() },
-      { label: "Pokemon", color: "#15803d", action: () => this.openSwitchMenu() },
+      { label: "Pokémon", color: "#15803d", action: () => this.openSwitchMenu() },
       { label: "Run", color: "#334155", action: () => this.handleRun() }
     ];
 
@@ -1251,7 +1251,8 @@ export default class Battle extends Phaser.Scene {
   private async handleRun(): Promise<void> {
     if (this.busy || this.moveMenuOpen || this.switchMenuOpen || this.ballMenuOpen) return;
     if (!this.canCatch) {
-      this.setMessage("Cannot run from a trainer battle!");
+      Sound.playMiss();
+      this.setMessage("No! There's no running from a Trainer battle!");
       return;
     }
     this.busy = true;
