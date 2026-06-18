@@ -25,9 +25,12 @@ import {
   RivalEncounter,
   PokemonInstance,
   markCaught,
+  markSeen,
   generateRivalEncounters,
   getRivalTeam,
-  HELD_ITEMS
+  HELD_ITEMS,
+  EVO_STONES,
+  tryItemEvolution
 } from "../game/state";
 import { pickWeighted } from "../game/utils";
 import * as Sound from "../game/sound";
@@ -1213,7 +1216,7 @@ export default class Overworld extends Phaser.Scene {
     });
 
     // Add name label
-    const nameLabel = this.add.text(x, y + 35, "RIVAL", {
+    const nameLabel = this.add.text(x, y + 35, "BLUE", {
       fontFamily: "monospace",
       fontSize: "10px",
       color: "#3b82f6",
@@ -2808,6 +2811,30 @@ export default class Overworld extends Phaser.Scene {
             itemBtnX += equipBtn.width + 8;
           });
         }
+
+        // Evolution stone: if this species evolves via an item the player owns.
+        const evo = SPECIES[mon.speciesId]?.evolution;
+        if (evo?.item && (gameState.inventory[evo.item as keyof typeof gameState.inventory] ?? 0) > 0) {
+          const stone = EVO_STONES[evo.item];
+          const useBtn = this.add.text(centerX - 40, panelY + 48, `[Use ${stone?.name ?? "Stone"}]`, {
+            fontFamily: "monospace", fontSize: "12px", color: "#0f172a",
+            backgroundColor: "#a855f7",
+            padding: { left: 6, right: 6, top: 3, bottom: 3 }
+          }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
+          useBtn.on("pointerdown", () => {
+            const key = evo.item as keyof typeof gameState.inventory;
+            const result = tryItemEvolution(mon, evo.item!);
+            if (result) {
+              gameState.inventory[key] = Math.max(0, (gameState.inventory[key] ?? 0) - 1);
+              markSeen(gameState, mon.speciesId);
+              markCaught(gameState, mon.speciesId);
+              Sound.playEvolution();
+              this.renderTeamScreen();
+              this.showNotification(`${result.oldName} evolved into ${result.newName}!`, 2500);
+            }
+          });
+          this.teamText.push(useBtn);
+        }
       }
     }
   }
@@ -3284,7 +3311,7 @@ export default class Overworld extends Phaser.Scene {
     const centerX = this.scale.width / 2;
     const centerY = this.scale.height / 2;
     const cardW = 440;
-    const cardH = 480;
+    const cardH = 620;
 
     this.martOverlay = this.add.rectangle(centerX, centerY, cardW, cardH, 0x0f172a, 0.95);
     this.martOverlay.setScrollFactor(0).setDepth(950).setStrokeStyle(2, 0xfbbf24);
@@ -3316,11 +3343,16 @@ export default class Overworld extends Phaser.Scene {
       { name: "Revive",       key: "revive",      price: 500 },
       { name: "Oran Berry",   key: "oranberry",   price: 150,  desc: "Held: restore 10 HP <50%" },
       { name: "Lucky Egg",    key: "luckyegg",    price: 2000, desc: "Held: 1.5x EXP" },
-      { name: "Shell Bell",   key: "shellbell",   price: 1000, desc: "Held: restore 1/8 dmg dealt" }
+      { name: "Shell Bell",   key: "shellbell",   price: 1000, desc: "Held: restore 1/8 dmg dealt" },
+      { name: "Fire Stone",    key: "firestone",    price: 2100, desc: "Evolves Eevee → Flareon" },
+      { name: "Thunder Stone", key: "thunderstone", price: 2100, desc: "Evolves Pikachu → Raichu" },
+      { name: "Moon Stone",    key: "moonstone",    price: 2100, desc: "Evolves Clefairy/Jigglypuff" },
+      { name: "Water Stone",   key: "waterstone",   price: 2100, desc: "A cool, watery stone" },
+      { name: "Leaf Stone",    key: "leafstone",    price: 2100, desc: "A leafy green stone" }
     ];
 
     const startY = centerY - cardH / 2 + 90;
-    const rowH = 38;
+    const rowH = 36;
 
     items.forEach((item, i) => {
       const rowY = startY + i * rowH;

@@ -140,7 +140,7 @@ export const REGIONS: RegionData[] = [
         badge: "Boulder Badge",
         team: [
           { speciesId: "geodude", level: 11 },
-          { speciesId: "graveler", level: 13 }
+          { speciesId: "onix", level: 13 }
         ]
       },
       {
@@ -154,8 +154,8 @@ export const REGIONS: RegionData[] = [
         sprite: "trainer-misty",
         badge: "Cascade Badge",
         team: [
-          { speciesId: "psyduck", level: 18 },
-          { speciesId: "golduck", level: 21 }
+          { speciesId: "staryu", level: 18 },
+          { speciesId: "starmie", level: 21 }
         ]
       },
       {
@@ -169,8 +169,8 @@ export const REGIONS: RegionData[] = [
         sprite: "trainer-ace",
         badge: "Thunder Badge",
         team: [
+          { speciesId: "voltorb", level: 21 },
           { speciesId: "magnemite", level: 21 },
-          { speciesId: "pikachu", level: 18 },
           { speciesId: "raichu", level: 24 }
         ]
       },
@@ -185,9 +185,9 @@ export const REGIONS: RegionData[] = [
         sprite: "trainer-erika",
         badge: "Rainbow Badge",
         team: [
-          { speciesId: "bulbasaur", level: 27 },
-          { speciesId: "ivysaur", level: 29 },
-          { speciesId: "venusaur", level: 31 }
+          { speciesId: "tangela", level: 29 },
+          { speciesId: "victreebel", level: 29 },
+          { speciesId: "vileplume", level: 31 }
         ]
       },
       {
@@ -201,9 +201,10 @@ export const REGIONS: RegionData[] = [
         sprite: "trainer-koga",
         badge: "Soul Badge",
         team: [
-          { speciesId: "beedrill", level: 37 },
-          { speciesId: "nidoqueen", level: 39 },
-          { speciesId: "nidoking", level: 43 }
+          { speciesId: "koffing", level: 37 },
+          { speciesId: "muk", level: 39 },
+          { speciesId: "golbat", level: 41 },
+          { speciesId: "weezing", level: 43 }
         ]
       },
       {
@@ -218,6 +219,7 @@ export const REGIONS: RegionData[] = [
         badge: "Marsh Badge",
         team: [
           { speciesId: "kadabra", level: 41 },
+          { speciesId: "mr-mime", level: 43 },
           { speciesId: "alakazam", level: 46 }
         ]
       },
@@ -232,9 +234,10 @@ export const REGIONS: RegionData[] = [
         sprite: "trainer-ace",
         badge: "Volcano Badge",
         team: [
-          { speciesId: "charmeleon", level: 45 },
-          { speciesId: "flareon", level: 47 },
-          { speciesId: "charizard", level: 50 }
+          { speciesId: "growlithe", level: 42 },
+          { speciesId: "rapidash", level: 45 },
+          { speciesId: "ninetales", level: 47 },
+          { speciesId: "arcanine", level: 50 }
         ]
       },
       {
@@ -248,10 +251,11 @@ export const REGIONS: RegionData[] = [
         sprite: "trainer-giovanni",
         badge: "Earth Badge",
         team: [
-          { speciesId: "dugtrio", level: 50 },
-          { speciesId: "golem", level: 52 },
+          { speciesId: "rhyhorn", level: 50 },
+          { speciesId: "dugtrio", level: 51 },
           { speciesId: "nidoqueen", level: 53 },
-          { speciesId: "nidoking", level: 55 }
+          { speciesId: "nidoking", level: 53 },
+          { speciesId: "rhydon", level: 55 }
         ]
       }
     ],

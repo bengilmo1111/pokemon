@@ -119,13 +119,27 @@ Phase 3 → Phase 5. Each phase is its own commit(s), type-checked via `npm run 
   into damage + send-out hooks. Functional status moves (Sleep Powder, Thunder Wave,
   Toxic, Will-O-Wisp, Sing, Spore…) and per-move damage status. Save migration → v2.
   Runtime-verified: special split changes damage as expected; Levitate negates Ground.
-- **Phase 2 — Kanto DONE; Team Rocket + rival re-skin REMAINING.** Region 0 rebuilt as
-  canonical Kanto: official towns/zones/landmarks, the 8 canon Gym Leaders (Brock→
-  Giovanni) with canon types/badges/teams/sprites/titles, dynamic badge-count gating.
-  Elite Four already canon (Lorelei/Bruno/Agatha/Lance). Still to do: Team Rocket villain
-  beats (2.4) and canon rival re-skin (2.5).
-- **Phase 4 — partial.** Done: battle message word-wrap, graphical HP bars above sprites,
-  preload progress bar, New Game confirmation. Remaining: "forget a move" UI (2.5),
-  disabled-button affordance + tooltip clamp.
-- **Phase 3 / Phase 5 — not started.** Evolution methods (stones/friendship), PP system,
-  weather; canon species expansion.
+- **Phase 2 — DONE.** Region 0 rebuilt as canonical Kanto: official towns/zones/landmarks,
+  the 8 canon Gym Leaders (Brock→Giovanni) with canon types/badges/teams/sprites/titles,
+  dynamic badge-count gating. Elite Four already canon (Lorelei/Bruno/Agatha/Lance).
+  **Team Rocket** grunts added at canon sites (Mt. Moon, Rocket Hideout, Silph Co.) via the
+  NpcTrainer pipeline + `storyFlags`; rival **re-skinned to canon Blue** (cocky voice, Kanto
+  beats, counter-starter teams retained).
+- **Phase 3 — DONE.** Item-based evolution via stones (shared `evolveMon`/`tryItemEvolution`,
+  Mart + team-screen "Use Stone"; Eevee branches Fire→Flareon/Water→Vaporeon/Thunder→Jolteon;
+  v3 migration). **Weather** (Rain/Sun/Sandstorm: damage modifiers, field tint, sandstorm chip +
+  countdown; taught to Blastoise/Charizard/Ninetales/Golem/Onix). **PP system** as a parallel
+  per-move map (menu shows/dims PP, AI respects it, Struggle fallback, restored on heal; no
+  migration needed). Runtime-verified (rain ×1.5 Water / sun ×0.5; PP drain/restore/Struggle).
+- **Phase 4 — DONE.** Battle message word-wrap, graphical HP bars, preload progress bar,
+  New Game confirmation, "forget a move" prompt, **disabled-button affordance**, and
+  **move-tooltip clamping**.
+- **Phase 5 — DONE (core).** Added 48 canonical Gen-1 species (sprites already shipped;
+  Preload auto-loads by id), and upgraded every gym, the Elite Four, and rival Blue to
+  authentic rosters (Brock/Onix, Misty/Starmie, Erika/Vileplume, Koga/Weezing, Blaine/
+  Arcanine, Giovanni/Rhydon, Lance/Aerodactyl, …). 112 species total. **Canon wild spawns**
+  tuned per Kanto biome (Zubat/Onix caves, Oddish/Bellsprout forest, Voltorb Power Plant,
+  Drowzee/Hypno tower, Growlithe/Vulpix/Ponyta volcano, Staryu/Slowpoke lakes, Jynx/Shellder
+  tundra, Rhyhorn/Golbat Victory Road).
+- **All planned phases complete.** Optional future work: the remaining Gen-1 dex (~40 species
+  for a complete Pokédex), friendship/trade evolutions, and EV training.

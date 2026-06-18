@@ -1,10 +1,10 @@
-import { GameState, PokemonInstance, calculateStats } from "./state";
+import { GameState, PokemonInstance, calculateStats, createInitialState } from "./state";
 import { SPECIES } from "../data/species";
 import { randomNature } from "../data/natures";
 import { gameState } from "./store";
 
 const SAVE_KEY = "pokemon_game_save";
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 
 interface SaveData {
   version: number;
@@ -43,11 +43,23 @@ export function loadGame(): boolean {
     if (saveData.version < 2) {
       migrateToV2(gameState);
     }
+    // v3 adds evolution-stone inventory slots and the storyFlags map.
+    if (saveData.version < 3) {
+      migrateToV3(gameState);
+    }
     return true;
   } catch (e) {
     console.error("Failed to load game:", e);
     return false;
   }
+}
+
+/** Backfill new inventory slots (evolution stones) and the storyFlags map. */
+function migrateToV3(state: GameState): void {
+  const defaults = createInitialState();
+  // Merge any inventory keys missing from the old save (defaults to 0).
+  state.inventory = { ...defaults.inventory, ...state.inventory };
+  if (!state.storyFlags) state.storyFlags = {};
 }
 
 /** Backfill v1 Pokémon with nature/IVs/ability and recompute split stats. */

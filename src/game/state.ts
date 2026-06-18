@@ -36,6 +36,38 @@ export interface PokemonInstance {
   ivs?: { hp: number; atk: number; def: number; spd: number; spAtk: number; spDef: number };
   /** Friendship 0–255, for friendship-based evolution and flavor. */
   friendship?: number;
+  /** Current PP per move id (max comes from MOVES[id].pp). Lazy-initialized. */
+  pp?: Record<string, number>;
+}
+
+const DEFAULT_PP = 20;
+
+/** Max PP for a move (from the move DB, with a sane fallback). */
+export function getMaxPp(moveId: string): number {
+  return MOVES[moveId]?.pp ?? DEFAULT_PP;
+}
+
+/** Current PP for a move, lazily initialized to its max. */
+export function getMovePp(mon: PokemonInstance, moveId: string): number {
+  if (!mon.pp) mon.pp = {};
+  if (mon.pp[moveId] === undefined) mon.pp[moveId] = getMaxPp(moveId);
+  return mon.pp[moveId];
+}
+
+/** Spend one PP for a move (floored at 0). */
+export function usePp(mon: PokemonInstance, moveId: string): void {
+  const cur = getMovePp(mon, moveId);
+  mon.pp![moveId] = Math.max(0, cur - 1);
+}
+
+/** Whether the Pokémon has any move with PP left. */
+export function hasUsableMove(mon: PokemonInstance): boolean {
+  return mon.moves.some((id) => getMovePp(mon, id) > 0);
+}
+
+/** Restore all PP (clearing the map re-lazy-inits each move to its max). */
+export function restoreAllPp(mon: PokemonInstance): void {
+  mon.pp = {};
 }
 
 export interface WildPokemon {
@@ -59,6 +91,12 @@ export interface Inventory {
   oranberry: number;
   luckyegg: number;
   shellbell: number;
+  // Evolution stones (consumed when used on a Pokémon)
+  firestone: number;
+  waterstone: number;
+  thunderstone: number;
+  leafstone: number;
+  moonstone: number;
 }
 
 export interface PokedexEntry {
@@ -123,6 +161,7 @@ export interface GameState {
   money: number;  // Player's current money (Pokedollars)
   e4Progress: number;  // 0–4: how many E4 trainers have been defeated
   e4Trainers: NpcTrainer[];  // The four Elite Four trainers
+  storyFlags: Record<string, boolean>;  // One-off scripted story beats (e.g. Team Rocket)
 }
 
 // ---------- Held Items ----------
@@ -131,6 +170,16 @@ export const HELD_ITEMS: Record<string, { name: string; desc: string; icon: stri
   oranberry: { name: "Oran Berry",  desc: "Restores 10 HP when HP drops below 50%", icon: "O" },
   luckyegg:  { name: "Lucky Egg",   desc: "Holder earns 1.5x EXP from battles",     icon: "E" },
   shellbell: { name: "Shell Bell",  desc: "Restores 1/8 of damage dealt",            icon: "B" },
+};
+
+// ---------- Evolution Stones ----------
+// Used on a Pokémon to trigger an item-based evolution (see SpeciesData.evolution.item).
+export const EVO_STONES: Record<string, { name: string; desc: string; price: number }> = {
+  firestone:    { name: "Fire Stone",    desc: "Evolves certain Pokémon (e.g. Eevee → Flareon).", price: 2100 },
+  waterstone:   { name: "Water Stone",   desc: "A stone that radiates cool energy.",                price: 2100 },
+  thunderstone: { name: "Thunder Stone", desc: "Evolves certain Pokémon (e.g. Pikachu → Raichu).",  price: 2100 },
+  leafstone:    { name: "Leaf Stone",    desc: "A stone with a leaf pattern.",                       price: 2100 },
+  moonstone:    { name: "Moon Stone",    desc: "Evolves Clefairy and Jigglypuff.",                   price: 2100 },
 };
 
 export const WORLD_SCALE = 32;
@@ -237,6 +286,8 @@ export interface LevelUpResult {
   newSpeciesId?: string;
   oldName?: string;
   newName?: string;
+  /** Moves learned at full capacity (4 moves) — the player chooses what to forget. */
+  pendingMoves: string[];
 }
 
 export function gainExp(mon: PokemonInstance, amount: number): LevelUpResult {
@@ -246,6 +297,7 @@ export function gainExp(mon: PokemonInstance, amount: number): LevelUpResult {
   const result: LevelUpResult = {
     levelsGained: 0,
     newMoves: [],
+    pendingMoves: [],
     evolved: false
   };
 
@@ -270,43 +322,63 @@ export function gainExp(mon: PokemonInstance, amount: number): LevelUpResult {
     if (newMove && !mon.moves.includes(newMove.moveId)) {
       if (mon.moves.length < 4) {
         mon.moves.push(newMove.moveId);
+        result.newMoves.push(newMove.moveId);
       } else {
-        // Replace oldest move
-        mon.moves.shift();
-        mon.moves.push(newMove.moveId);
+        // Moveset is full: defer to the player to choose what to forget.
+        result.pendingMoves.push(newMove.moveId);
       }
-      result.newMoves.push(newMove.moveId);
     }
 
     // Check for evolution
     if (canEvolve(mon.speciesId, mon.level)) {
       const newSpeciesId = getEvolution(mon.speciesId);
       if (newSpeciesId) {
-        result.evolved = true;
         result.oldName = mon.name;
         result.newSpeciesId = newSpeciesId;
-
-        // Evolve the Pokemon
-        const newSpecies = SPECIES[newSpeciesId];
-        mon.speciesId = newSpeciesId;
-        mon.name = newSpecies.name;
-        mon.types = newSpecies.types;
-        result.newName = newSpecies.name;
-
-        // Recalculate stats with new species
-        const evolvedStats = calculateStats(newSpeciesId, mon.level, mon.ivs, mon.nature);
-        // Evolution adopts the new species' ability if the old one wasn't custom.
-        if (newSpecies.ability) mon.ability = newSpecies.ability;
-        const hpRatio = mon.hp / mon.maxHp;
-        mon.maxHp = evolvedStats.hp;
-        mon.hp = Math.floor(mon.maxHp * hpRatio);
-        mon.stats = evolvedStats;
-        mon.catchRate = newSpecies.catchRate;
+        evolveMon(mon, newSpeciesId);
+        result.evolved = true;
+        result.newName = mon.name;
       }
     }
   }
 
   return result;
+}
+
+/**
+ * Mutate a Pokémon into its evolved species: update id/name/types/ability and
+ * recalculate stats (preserving the current HP ratio). Shared by level-up and
+ * item-based evolution.
+ */
+export function evolveMon(mon: PokemonInstance, newSpeciesId: string): void {
+  const newSpecies = SPECIES[newSpeciesId];
+  if (!newSpecies) return;
+  mon.speciesId = newSpeciesId;
+  mon.name = newSpecies.name;
+  mon.types = newSpecies.types;
+  if (newSpecies.ability) mon.ability = newSpecies.ability;
+  const hpRatio = mon.maxHp > 0 ? mon.hp / mon.maxHp : 1;
+  const evolvedStats = calculateStats(newSpeciesId, mon.level, mon.ivs, mon.nature);
+  mon.maxHp = evolvedStats.hp;
+  mon.hp = Math.max(1, Math.floor(mon.maxHp * hpRatio));
+  mon.stats = evolvedStats;
+  mon.catchRate = newSpecies.catchRate;
+}
+
+/**
+ * Attempt to evolve a Pokémon using a held/used item (evolution stone).
+ * Returns the old/new names on success, or null if the item doesn't apply.
+ */
+export function tryItemEvolution(mon: PokemonInstance, itemKey: string): { oldName: string; newName: string } | null {
+  const species = SPECIES[mon.speciesId];
+  if (!species) return null;
+  // Check the single evolution plus any branching evolutions (e.g. Eevee).
+  const candidates = [species.evolution, ...(species.evolutions ?? [])];
+  const match = candidates.find((e) => e && e.item === itemKey);
+  if (!match) return null;
+  const oldName = mon.name;
+  evolveMon(mon, match.to);
+  return { oldName, newName: mon.name };
 }
 
 export function createInitialState(): GameState {
@@ -324,7 +396,12 @@ export function createInitialState(): GameState {
       revive: 1,
       oranberry: 0,
       luckyegg: 0,
-      shellbell: 0
+      shellbell: 0,
+      firestone: 0,
+      waterstone: 0,
+      thunderstone: 0,
+      leafstone: 0,
+      moonstone: 0
     },
     badges: [],
     defeatedGyms: {},
@@ -343,7 +420,8 @@ export function createInitialState(): GameState {
     tutorialSeen: false,
     money: 500,
     e4Progress: 0,
-    e4Trainers: []
+    e4Trainers: [],
+    storyFlags: {}
   };
 }
 
@@ -371,6 +449,7 @@ export function healTeam(state: GameState): void {
   state.team.forEach((mon) => {
     mon.hp = mon.maxHp;
     mon.status = "none";
+    restoreAllPp(mon);
   });
 }
 
@@ -589,6 +668,48 @@ export function generateNpcTrainers(): NpcTrainer[] {
       ],
       defeated: false,
       dialogue: "I want to be the very best!"
+    },
+
+    // ---- Team Rocket ----
+    // Grunts stationed at canon Rocket hotspots; Giovanni (Viridian Gym) is the
+    // arc's boss payoff.
+    {
+      id: "rocket-mtmoon",
+      name: "Team Rocket Grunt",
+      sprite: "trainer-ace",
+      x: -14, y: -22,
+      team: [
+        { speciesId: "rattata", level: 13 },
+        { speciesId: "gastly", level: 14 }
+      ],
+      defeated: false,
+      dialogue: "Team Rocket's after the Moon Stones! Beat it, kid — or battle me!"
+    },
+    {
+      id: "rocket-hideout",
+      name: "Team Rocket Grunt",
+      sprite: "trainer-ace",
+      x: 12, y: 10,
+      team: [
+        { speciesId: "raticate", level: 28 },
+        { speciesId: "machop", level: 28 },
+        { speciesId: "haunter", level: 29 }
+      ],
+      defeated: false,
+      dialogue: "This is the Rocket Hideout! The boss won't like you snooping around."
+    },
+    {
+      id: "rocket-silph",
+      name: "Team Rocket Grunt",
+      sprite: "trainer-psychic",
+      x: 18, y: -8,
+      team: [
+        { speciesId: "raticate", level: 40 },
+        { speciesId: "haunter", level: 41 },
+        { speciesId: "nidoking", level: 42 }
+      ],
+      defeated: false,
+      dialogue: "Silph Co. belongs to Team Rocket now! Giovanni's orders!"
     }
   ];
 }
@@ -601,11 +722,11 @@ export function generateEliteFourTrainers(): NpcTrainer[] {
       sprite: "trainer-psychic",
       x: 0, y: 0,
       team: [
-        { speciesId: "lapras",   level: 52 },
-        { speciesId: "dewgong",  level: 54 },
-        { speciesId: "clefable", level: 54 },
-        { speciesId: "alakazam", level: 54 },
-        { speciesId: "gengar",   level: 56 }
+        { speciesId: "dewgong",  level: 52 },
+        { speciesId: "cloyster", level: 54 },
+        { speciesId: "slowbro",  level: 54 },
+        { speciesId: "jynx",     level: 54 },
+        { speciesId: "lapras",   level: 56 }
       ],
       dialogue: "No one can get past my Pokemon!",
       defeated: false
@@ -616,11 +737,11 @@ export function generateEliteFourTrainers(): NpcTrainer[] {
       sprite: "trainer-hiker",
       x: 0, y: 0,
       team: [
-        { speciesId: "geodude",  level: 53 },
-        { speciesId: "machop",   level: 55 },
-        { speciesId: "machoke",  level: 55 },
-        { speciesId: "graveler", level: 56 },
-        { speciesId: "machamp",  level: 58 }
+        { speciesId: "onix",       level: 53 },
+        { speciesId: "hitmonchan", level: 55 },
+        { speciesId: "hitmonlee",  level: 55 },
+        { speciesId: "onix",       level: 56 },
+        { speciesId: "machamp",    level: 58 }
       ],
       dialogue: "I have trained here for years!",
       defeated: false
@@ -631,10 +752,10 @@ export function generateEliteFourTrainers(): NpcTrainer[] {
       sprite: "trainer-psychic",
       x: 0, y: 0,
       team: [
-        { speciesId: "gastly",  level: 54 },
+        { speciesId: "gengar",  level: 54 },
+        { speciesId: "golbat",  level: 56 },
         { speciesId: "haunter", level: 56 },
-        { speciesId: "gengar",  level: 58 },
-        { speciesId: "haunter", level: 58 },
+        { speciesId: "arbok",   level: 58 },
         { speciesId: "gengar",  level: 60 }
       ],
       dialogue: "Hehehe... you have some spirit!",
@@ -646,11 +767,11 @@ export function generateEliteFourTrainers(): NpcTrainer[] {
       sprite: "trainer-lance",
       x: 0, y: 0,
       team: [
-        { speciesId: "gyarados",  level: 58 },
-        { speciesId: "dragonair", level: 60 },
-        { speciesId: "dragonair", level: 60 },
-        { speciesId: "alakazam",  level: 62 },
-        { speciesId: "dragonite", level: 65 }
+        { speciesId: "gyarados",   level: 58 },
+        { speciesId: "dragonair",  level: 60 },
+        { speciesId: "dragonair",  level: 60 },
+        { speciesId: "aerodactyl", level: 62 },
+        { speciesId: "dragonite",  level: 65 }
       ],
       dialogue: "I am the most powerful trainer alive!",
       defeated: false
@@ -724,35 +845,35 @@ export function generateRivalEncounters(): RivalEncounter[] {
   return [
     {
       id: "rival-1",
-      x: -35,
-      y: 5,
+      x: -42,
+      y: 8,
       battleNumber: 1,
-      dialogue: "Hey! I've been looking for you! Let's see how strong you've gotten!",
-      defeatDialogue: "Not bad... but I'll beat you next time!"
+      dialogue: "Yo! I'm Blue — your rival! Smell ya later? Not before I crush you!",
+      defeatDialogue: "What?! I picked the better starter... Whatever. Smell ya later!"
     },
     {
       id: "rival-2",
-      x: 0,
-      y: 25,
+      x: 2,
+      y: -20,
       battleNumber: 2,
-      dialogue: "We meet again! My Pokemon have gotten way stronger!",
-      defeatDialogue: "Tch... You got lucky! I'll train harder!"
+      dialogue: "Heh, you again. My Pokémon are way tougher now. Try to keep up!",
+      defeatDialogue: "Tch... lucky win. I'm still gonna be the Champion!"
     },
     {
       id: "rival-3",
-      x: 30,
-      y: 15,
+      x: 8,
+      y: 0,
       battleNumber: 3,
-      dialogue: "This time I won't lose! Prepare yourself!",
-      defeatDialogue: "How can this be?! I trained so hard..."
+      dialogue: "You're slowing me down. Time to remind you who's boss!",
+      defeatDialogue: "No way! How are you this strong already?!"
     },
     {
       id: "rival-4",
       x: 42,
-      y: 38,
+      y: 32,
       battleNumber: 4,
-      dialogue: "You've made it far... But this is where your journey ends!",
-      defeatDialogue: "You've become a true Pokemon Master... I respect that."
+      dialogue: "So you made it to the Plateau too. This is the end of the road for you!",
+      defeatDialogue: "...You really are something. Fine — you've earned it. Go be Champion."
     }
   ];
 }
@@ -787,16 +908,17 @@ export function getRivalTeam(state: GameState, battleNumber: number): { speciesI
       return [
         { speciesId: starterForm, level: 28 },
         { speciesId: "pidgeotto", level: 25 },
-        { speciesId: "raticate", level: 24 },
+        { speciesId: "exeggcute", level: 24 },
         { speciesId: "alakazam", level: 25 }
       ];
     case 4:
       return [
-        { speciesId: starterForm, level: 40 },
-        { speciesId: "pidgeot", level: 38 },
-        { speciesId: "alakazam", level: 37 },
-        { speciesId: "golem", level: 38 },
-        { speciesId: "gyarados", level: 39 }
+        { speciesId: "pidgeot", level: 37 },
+        { speciesId: "rhydon", level: 38 },
+        { speciesId: "exeggutor", level: 38 },
+        { speciesId: "alakazam", level: 39 },
+        { speciesId: "gyarados", level: 39 },
+        { speciesId: starterForm, level: 40 }
       ];
     default:
       return [{ speciesId: starterForm, level: 10 }];

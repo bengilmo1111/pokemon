@@ -13,7 +13,8 @@ import {
   getStatusDisplayText,
   getStatusColor,
   tryInflictStatus,
-  StatStages
+  StatStages,
+  Weather
 } from "../game/battle";
 import {
   addToBox,
@@ -26,7 +27,11 @@ import {
   markSeen,
   markCaught,
   LevelUpResult,
-  StatusEffect
+  StatusEffect,
+  getMovePp,
+  getMaxPp,
+  usePp,
+  hasUsableMove
 } from "../game/state";
 
 interface BattleData {
@@ -65,6 +70,9 @@ export default class Battle extends Phaser.Scene {
   private enemyHpText!: Phaser.GameObjects.Text;
   private playerHpBar?: Phaser.GameObjects.Graphics;
   private enemyHpBar?: Phaser.GameObjects.Graphics;
+  private weather: Weather = "none";
+  private weatherTurns = 0;
+  private weatherOverlay?: Phaser.GameObjects.Rectangle;
   private playerExpText!: Phaser.GameObjects.Text;
   private playerStatusText!: Phaser.GameObjects.Text;
   private enemyStatusText!: Phaser.GameObjects.Text;
@@ -138,6 +146,10 @@ export default class Battle extends Phaser.Scene {
     // Reset tooltip
     this.tooltipBg = undefined;
     this.tooltipText = undefined;
+    // Reset weather
+    this.weather = "none";
+    this.weatherTurns = 0;
+    this.weatherOverlay = undefined;
     // Reset held item state
     this.usedOranBerry = false;
     // Reset stat stages
@@ -434,21 +446,24 @@ export default class Battle extends Phaser.Scene {
 
     moveIds.forEach((moveId, index) => {
       const move = MOVES[moveId];
-      const label = move ? `${move.name}\n${move.type.toUpperCase()}` : moveId;
+      const pp = getMovePp(this.playerMon, moveId);
+      const maxPp = getMaxPp(moveId);
+      const disabled = pp <= 0;
+      const label = move ? `${move.name}\n${move.type.toUpperCase()}  PP ${pp}/${maxPp}` : moveId;
       const x = colX[index % 2];
       const y = rowY[Math.floor(index / 2)];
       const text = this.add.text(x, y, label, {
         fontFamily: "monospace",
         fontSize: "20px",
-        color: "#f9fafb",
-        backgroundColor: "#374151",
+        color: disabled ? "#6b7280" : "#f9fafb",
+        backgroundColor: disabled ? "#1f2937" : "#374151",
         align: "center",
         fixedWidth: btnWidth,
         padding: { top: 10, bottom: 10 }
       });
-      text.setOrigin(0.5).setDepth(100);
-      text.setInteractive({ useHandCursor: true });
-      text.on("pointerdown", () => this.handleFight(moveId));
+      text.setOrigin(0.5).setDepth(100).setAlpha(disabled ? 0.6 : 1);
+      text.setInteractive({ useHandCursor: !disabled });
+      if (!disabled) text.on("pointerdown", () => this.handleFight(moveId));
 
       // Tooltip on hover
       text.on("pointerover", () => {
@@ -463,10 +478,14 @@ export default class Battle extends Phaser.Scene {
         this.tooltipText.setText(tooltipContent);
         this.tooltipText.setColor(typeHex);
 
-        // Position tooltip above the button
-        const tx = x;
-        const ty = y - 60;
-        this.tooltipBg.setPosition(tx, ty).setSize(220, 72).setVisible(true);
+        // Position tooltip above the button, clamped to stay on-screen.
+        const tw = 220;
+        const th = 72;
+        const tx = Phaser.Math.Clamp(x, tw / 2 + 8, this.scale.width - tw / 2 - 8);
+        let ty = y - 60;
+        if (ty - th / 2 < 8) ty = y + 60; // flip below if it would clip the top
+        ty = Phaser.Math.Clamp(ty, th / 2 + 8, this.scale.height - th / 2 - 8);
+        this.tooltipBg.setPosition(tx, ty).setSize(tw, th).setVisible(true);
         this.tooltipText.setPosition(tx, ty).setVisible(true);
       });
       text.on("pointerout", () => {
@@ -476,6 +495,17 @@ export default class Battle extends Phaser.Scene {
 
       this.moveMenuItems.push(text);
     });
+
+    // If every move is out of PP, offer Struggle.
+    if (!hasUsableMove(this.playerMon)) {
+      const struggle = this.add.text(this.scale.width * 0.5, this.scale.height - 168, "STRUGGLE", {
+        fontFamily: "monospace", fontSize: "20px", color: "#fca5a5",
+        backgroundColor: "#7f1d1d", align: "center",
+        fixedWidth: this.scale.width * 0.6, padding: { top: 10, bottom: 10 }
+      }).setOrigin(0.5).setDepth(100).setInteractive({ useHandCursor: true });
+      struggle.on("pointerdown", () => this.handleFight("struggle"));
+      this.moveMenuItems.push(struggle);
+    }
 
     const backText = this.add.text(this.scale.width * 0.5, this.scale.height - 56, "◀ Back", {
       fontFamily: "monospace",
@@ -526,13 +556,13 @@ export default class Battle extends Phaser.Scene {
         fontFamily: "monospace",
         fontSize: "22px",
         color: enabled ? "#f9fafb" : "#6b7280",
-        backgroundColor: "#374151",
+        backgroundColor: enabled ? "#374151" : "#1f2937",
         align: "center",
         fixedWidth: btnWidth,
         padding: { top: 9, bottom: 9 }
       });
-      text.setOrigin(0.5).setDepth(100);
-      text.setInteractive({ useHandCursor: true });
+      text.setOrigin(0.5).setDepth(100).setAlpha(enabled ? 1 : 0.6);
+      text.setInteractive({ useHandCursor: enabled });
       if (enabled) text.on("pointerdown", onTap);
       this.ballMenuItems.push(text);
       y += rowH;
@@ -615,11 +645,11 @@ export default class Battle extends Phaser.Scene {
         fontFamily: "monospace",
         fontSize: "13px",
         color: isDisabled ? "#6b7280" : "#f9fafb",
-        backgroundColor: "#374151",
+        backgroundColor: isDisabled ? "#1f2937" : "#374151",
         padding: { left: 6, right: 6, top: 2, bottom: 2 }
       });
-      text.setDepth(100);
-      text.setInteractive({ useHandCursor: true });
+      text.setDepth(100).setAlpha(isDisabled ? 0.6 : 1);
+      text.setInteractive({ useHandCursor: !isDisabled });
       if (!isDisabled) {
         text.on("pointerdown", () => this.handleSwitch(index));
         text.on("pointerover", () => text.setStyle({ backgroundColor: "#4b5563" }));
@@ -678,6 +708,10 @@ export default class Battle extends Phaser.Scene {
     // Enemy turn
     const enemyMove = this.pickEnemyMove();
     await this.executeEnemyTurn(enemyMove);
+
+    // End-of-turn weather (sandstorm chip + countdown)
+    await this.applyEndOfTurnWeather();
+    if (this.enemyMon.hp <= 0) { await this.handleEnemyFainted(); return; }
 
     if (await this.resolvePlayerFaint()) return;
     this.busy = false;
@@ -776,6 +810,11 @@ export default class Battle extends Phaser.Scene {
         await this.wait(800);
       }
 
+      // Handle moves learned at full capacity — let the player choose.
+      for (const pendingId of result.pendingMoves) {
+        await this.promptForgetMove(mon, pendingId);
+      }
+
       // Handle evolution
       if (result.evolved && result.newName) {
         Sound.playEvolution();
@@ -787,6 +826,57 @@ export default class Battle extends Phaser.Scene {
 
     void levelBefore; // suppress unused warning
     this.updateHpText();
+  }
+
+  /**
+   * When a Pokémon at full moves (4) wants to learn another, prompt the player
+   * to forget one move or skip learning. Resolves once a choice is made.
+   */
+  private promptForgetMove(mon: PokemonInstance, newMoveId: string): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const W = this.scale.width;
+      const H = this.scale.height;
+      const name = mon.nickname || mon.name;
+      const newName = MOVES[newMoveId]?.name ?? newMoveId;
+      const els: Phaser.GameObjects.GameObject[] = [];
+
+      els.push(this.add.rectangle(0, 0, W, H, 0x000000, 0.72)
+        .setOrigin(0).setScrollFactor(0).setDepth(900).setInteractive());
+      els.push(this.add.text(W / 2, H * 0.24,
+        `${name} wants to learn ${newName},\nbut already knows 4 moves.\nForget a move?`, {
+          fontFamily: "monospace", fontSize: "18px", color: "#e5e7eb",
+          align: "center", lineSpacing: 4, wordWrap: { width: W - 60 }
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(901));
+
+      const cleanup = () => els.forEach((e) => e.destroy());
+      const mkBtn = (y: number, label: string, bg: string, onClick: () => void) => {
+        const btn = this.add.text(W / 2, y, label, {
+          fontFamily: "monospace", fontSize: "16px", color: "#0f172a",
+          backgroundColor: bg, align: "center",
+          padding: { left: 12, right: 12, top: 8, bottom: 8 }
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(901)
+          .setInteractive({ useHandCursor: true });
+        btn.on("pointerdown", onClick);
+        els.push(btn);
+      };
+
+      mon.moves.forEach((mId, i) => {
+        const m = MOVES[mId];
+        mkBtn(H * 0.4 + i * 52, `${m?.name ?? mId}  (${m?.type ?? "?"})`, "#fbbf24", () => {
+          const forgotten = m?.name ?? mId;
+          mon.moves[i] = newMoveId;
+          cleanup();
+          Sound.playMenuSelect();
+          this.setMessage(`${name} forgot ${forgotten} and learned ${newName}!`);
+          this.time.delayedCall(1000, resolve);
+        });
+      });
+      mkBtn(H * 0.4 + 4 * 52, `Don't learn ${newName}`, "#94a3b8", () => {
+        cleanup();
+        this.setMessage(`${name} did not learn ${newName}.`);
+        this.time.delayedCall(800, resolve);
+      });
+    });
   }
 
   private async handleEnemyFainted(): Promise<void> {
@@ -1237,6 +1327,9 @@ export default class Battle extends Phaser.Scene {
       return;
     }
 
+    // Spend PP (Struggle has none to spend).
+    if (moveId !== "struggle") usePp(attacker, moveId);
+
     const attackerDisplayName = attacker === this.playerMon ? (attacker.nickname || attacker.name) : attacker.name;
     this.setMessage(`${attackerDisplayName} used ${move.name}!`);
     await this.wait(450);
@@ -1297,6 +1390,13 @@ export default class Battle extends Phaser.Scene {
       return;
     }
 
+    // Weather-setting moves (Rain Dance / Sunny Day / Sandstorm).
+    if (move.category === "status" && move.effect?.weather) {
+      this.setWeather(move.effect.weather);
+      await this.wait(700);
+      return;
+    }
+
     // Any other status move with no implemented effect: just show its message.
     if (move.category === "status") {
       await this.wait(400);
@@ -1305,7 +1405,7 @@ export default class Battle extends Phaser.Scene {
 
     const attackerStages = attacker === this.playerMon ? this.playerStages : this.enemyStages;
     const defenderStages = defender === this.playerMon ? this.playerStages : this.enemyStages;
-    const result = calculateDamage(attacker, defender, moveId, attackerStages, defenderStages);
+    const result = calculateDamage(attacker, defender, moveId, attackerStages, defenderStages, this.weather);
     const moveType = MOVES[moveId]?.type || "normal";
 
     // Show attack animation with type-based effects
@@ -1642,8 +1742,9 @@ export default class Battle extends Phaser.Scene {
   }
 
   private pickEnemyMove(): string {
-    const moves = this.enemyMon.moves.filter(m => MOVES[m]);
-    if (moves.length === 0) return this.enemyMon.moves[0] ?? "tackle";
+    // Only moves the enemy still has PP for; Struggle if all are depleted.
+    const moves = this.enemyMon.moves.filter(m => MOVES[m] && getMovePp(this.enemyMon, m) > 0);
+    if (moves.length === 0) return "struggle";
 
     // Simple AI: prefer super-effective moves
     const playerTypes = this.playerMon.types;
@@ -1788,6 +1889,62 @@ export default class Battle extends Phaser.Scene {
       this.playerMon.hp / this.playerMon.maxHp);
     draw(this.enemyHpBar, this.scale.width * 0.7, this.scale.height * 0.3 - 110,
       this.enemyMon.hp / this.enemyMon.maxHp);
+  }
+
+  /** Set the active weather, show a message, and tint the field. */
+  private setWeather(weather: Weather): void {
+    this.weather = weather;
+    this.weatherTurns = 5;
+    const msg: Record<string, string> = {
+      rain: "It started to rain!",
+      sun: "The sunlight turned harsh!",
+      sandstorm: "A sandstorm kicked up!",
+      none: ""
+    };
+    this.setMessage(msg[weather] ?? "");
+    const tint: Record<string, number> = {
+      rain: 0x3b5bdb, sun: 0xf59e0b, sandstorm: 0xb59f6b, none: 0x000000
+    };
+    this.weatherOverlay?.destroy();
+    if (weather !== "none") {
+      this.weatherOverlay = this.add.rectangle(0, 0, this.scale.width, this.scale.height, tint[weather], 0.12)
+        .setOrigin(0).setScrollFactor(0).setDepth(35);
+    }
+  }
+
+  /** End-of-turn weather: sandstorm chip + countdown, clearing when it expires. */
+  private async applyEndOfTurnWeather(): Promise<void> {
+    if (this.weather === "none") return;
+
+    if (this.weather === "sandstorm") {
+      const immune = (m: PokemonInstance) =>
+        m.types.includes("rock") || m.types.includes("ground") || m.types.includes("steel");
+      let chipped = false;
+      for (const m of [this.playerMon, this.enemyMon]) {
+        if (m.hp > 0 && !immune(m)) {
+          m.hp = Math.max(0, m.hp - Math.max(1, Math.floor(m.maxHp / 16)));
+          chipped = true;
+        }
+      }
+      if (chipped) {
+        this.updateHpText();
+        this.setMessage("The sandstorm rages!");
+        await this.wait(500);
+      }
+    }
+
+    this.weatherTurns -= 1;
+    if (this.weatherTurns <= 0) {
+      const ended: Record<string, string> = {
+        rain: "The rain stopped.", sun: "The sunlight faded.",
+        sandstorm: "The sandstorm subsided.", none: ""
+      };
+      this.setMessage(ended[this.weather] ?? "");
+      this.weather = "none";
+      this.weatherOverlay?.destroy();
+      this.weatherOverlay = undefined;
+      await this.wait(500);
+    }
   }
 
   private updatePlayerSprite(): void {

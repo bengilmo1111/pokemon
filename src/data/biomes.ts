@@ -24,6 +24,7 @@ export const BIOMES: Record<string, BiomeData> = {
       { id: "pichu", weight: 2, min: 3, max: 5 },
       { id: "nidoran_f", weight: 2, min: 3, max: 6 },
       { id: "nidoran_m", weight: 2, min: 3, max: 6 },
+      { id: "meowth", weight: 2, min: 3, max: 6 },
       { id: "jigglypuff", weight: 1, min: 5, max: 8 }
     ],
     props: ["tree", "tree", "bush", "flower", "flower"]
@@ -35,7 +36,9 @@ export const BIOMES: Record<string, BiomeData> = {
     spawns: [
       { id: "caterpie", weight: 4, min: 3, max: 6 },
       { id: "weedle", weight: 4, min: 3, max: 6 },
-      { id: "bulbasaur", weight: 2, min: 5, max: 8 },
+      { id: "oddish", weight: 3, min: 4, max: 7 },
+      { id: "bellsprout", weight: 3, min: 4, max: 7 },
+      { id: "venonat", weight: 2, min: 4, max: 7 },
       { id: "pidgey", weight: 3, min: 4, max: 7 },
       { id: "pikachu", weight: 1, min: 6, max: 9 },
       { id: "eevee", weight: 1, min: 8, max: 12 }
@@ -47,9 +50,11 @@ export const BIOMES: Record<string, BiomeData> = {
     name: "Crystal Cavern",
     color: 0x6f7f9c,
     spawns: [
+      { id: "zubat", weight: 5, min: 6, max: 10 },
       { id: "geodude", weight: 5, min: 6, max: 10 },
       { id: "diglett", weight: 3, min: 5, max: 8 },
       { id: "machop", weight: 2, min: 7, max: 10 },
+      { id: "onix", weight: 2, min: 8, max: 12 },
       { id: "gastly", weight: 2, min: 8, max: 12 },
       { id: "abra", weight: 1, min: 8, max: 11 }
     ],
@@ -61,7 +66,8 @@ export const BIOMES: Record<string, BiomeData> = {
     color: 0x4f7fc9,
     spawns: [
       { id: "magikarp", weight: 6, min: 3, max: 8 },
-      { id: "squirtle", weight: 2, min: 5, max: 9 },
+      { id: "staryu", weight: 3, min: 5, max: 9 },
+      { id: "slowpoke", weight: 3, min: 6, max: 10 },
       { id: "psyduck", weight: 3, min: 6, max: 10 },
       { id: "seel", weight: 2, min: 7, max: 11 },
       { id: "lapras", weight: 1, min: 15, max: 20 }
@@ -74,7 +80,8 @@ export const BIOMES: Record<string, BiomeData> = {
     color: 0xb7d3e8,
     spawns: [
       { id: "seel", weight: 3, min: 8, max: 12 },
-      { id: "pikachu", weight: 2, min: 6, max: 10 },
+      { id: "shellder", weight: 3, min: 8, max: 12 },
+      { id: "jynx", weight: 2, min: 10, max: 14 },
       { id: "clefairy", weight: 2, min: 8, max: 12 },
       { id: "jigglypuff", weight: 2, min: 7, max: 11 },
       { id: "articuno", weight: 0.05, min: 50, max: 50 }
@@ -101,6 +108,9 @@ export const BIOMES: Record<string, BiomeData> = {
     spawns: [
       { id: "geodude", weight: 4, min: 8, max: 12 },
       { id: "machop", weight: 3, min: 8, max: 12 },
+      { id: "rhyhorn", weight: 3, min: 10, max: 14 },
+      { id: "onix", weight: 2, min: 10, max: 14 },
+      { id: "golbat", weight: 2, min: 10, max: 14 },
       { id: "pidgeotto", weight: 2, min: 10, max: 14 },
       { id: "dratini", weight: 1, min: 12, max: 16 },
       { id: "zapdos", weight: 0.05, min: 50, max: 50 }
@@ -113,6 +123,7 @@ export const BIOMES: Record<string, BiomeData> = {
     color: 0xffd700,
     spawns: [
       { id: "magnemite", weight: 5, min: 8, max: 12 },
+      { id: "voltorb", weight: 4, min: 8, max: 12 },
       { id: "pikachu", weight: 3, min: 8, max: 12 },
       { id: "pichu", weight: 2, min: 5, max: 8 },
       { id: "zapdos", weight: 0.1, min: 50, max: 50 }
@@ -138,11 +149,12 @@ export const BIOMES: Record<string, BiomeData> = {
     name: "Ancient Ruins",
     color: 0x9a8b72,
     spawns: [
-      { id: "geodude", weight: 5, min: 18, max: 28 },
-      { id: "gastly", weight: 3, min: 20, max: 30 },
+      { id: "gastly", weight: 4, min: 18, max: 28 },
+      { id: "drowzee", weight: 3, min: 20, max: 30 },
       { id: "abra", weight: 2, min: 22, max: 32 },
-      { id: "machop", weight: 2, min: 20, max: 28 },
-      { id: "haunter", weight: 1, min: 25, max: 35 },
+      { id: "geodude", weight: 2, min: 20, max: 28 },
+      { id: "haunter", weight: 2, min: 25, max: 35 },
+      { id: "hypno", weight: 1, min: 28, max: 36 },
     ],
     props: ["rockspire", "rock", "rock", "boulder", "rockspire", "rock"],
   },
@@ -152,9 +164,11 @@ export const BIOMES: Record<string, BiomeData> = {
     color: 0x4a6741,
     spawns: [
       { id: "psyduck", weight: 4, min: 16, max: 24 },
-      { id: "seel", weight: 2, min: 18, max: 26 },
-      { id: "pikachu", weight: 2, min: 16, max: 24 },
+      { id: "exeggcute", weight: 3, min: 18, max: 26 },
+      { id: "tangela", weight: 2, min: 18, max: 26 },
+      { id: "venonat", weight: 2, min: 16, max: 24 },
       { id: "nidoran_m", weight: 2, min: 17, max: 25 },
+      { id: "nidoran_f", weight: 2, min: 17, max: 25 },
       { id: "lapras", weight: 1, min: 28, max: 36 },
     ],
     props: ["reed", "reed", "waterlily", "reed", "bush", "waterlily"],
@@ -177,9 +191,11 @@ export const BIOMES: Record<string, BiomeData> = {
     name: "Volcanic Crater",
     color: 0x8b1a00,
     spawns: [
-      { id: "charmander", weight: 4, min: 20, max: 30 },
-      { id: "geodude", weight: 3, min: 22, max: 32 },
-      { id: "machop", weight: 2, min: 24, max: 34 },
+      { id: "growlithe", weight: 4, min: 20, max: 30 },
+      { id: "vulpix", weight: 3, min: 20, max: 30 },
+      { id: "ponyta", weight: 3, min: 22, max: 32 },
+      { id: "magmar", weight: 2, min: 24, max: 34 },
+      { id: "geodude", weight: 2, min: 22, max: 32 },
       { id: "moltres", weight: 0.05, min: 50, max: 50 },
     ],
     props: ["rock", "rock", "boulder", "rockspire", "boulder"],

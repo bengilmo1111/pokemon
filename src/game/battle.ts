@@ -29,12 +29,15 @@ export interface StatStages {
   spDef: number;
 }
 
+export type Weather = "none" | "rain" | "sun" | "sandstorm";
+
 export function calculateDamage(
   attacker: PokemonInstance,
   defender: PokemonInstance,
   moveId: string,
   attackerStages?: StatStages,
-  defenderStages?: StatStages
+  defenderStages?: StatStages,
+  weather: Weather = "none"
 ): DamageResult {
   const move = MOVES[moveId];
   if (!move || move.power <= 0) {
@@ -63,11 +66,24 @@ export function calculateDamage(
   const defBase = isSpecial ? defender.stats.spDef : defender.stats.def;
 
   const atk = Math.floor(atkBase * stageMultiplier(atkStage));
-  const def = Math.max(1, Math.floor(defBase * stageMultiplier(defStage)));
+  let def = Math.max(1, Math.floor(defBase * stageMultiplier(defStage)));
+  // Sandstorm raises Sp. Def of Rock-type defenders by 50%.
+  if (weather === "sandstorm" && isSpecial && defender.types.includes("rock")) {
+    def = Math.floor(def * 1.5);
+  }
   const levelFactor = (2 * attacker.level) / 5 + 2;
   const base = ((levelFactor * move.power * (atk / def)) / 50) + 2;
 
   let modifier = 1;
+
+  // Weather damage modifiers
+  if (weather === "rain") {
+    if (move.type === "water") modifier *= 1.5;
+    else if (move.type === "fire") modifier *= 0.5;
+  } else if (weather === "sun") {
+    if (move.type === "fire") modifier *= 1.5;
+    else if (move.type === "water") modifier *= 0.5;
+  }
 
   // STAB (Same Type Attack Bonus)
   if (attacker.types.includes(move.type)) modifier *= 1.2;
