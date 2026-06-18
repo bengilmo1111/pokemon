@@ -113,4 +113,19 @@ Phase 3 → Phase 5. Each phase is its own commit(s), type-checked via `npm run 
 
 ## Progress log
 
-- _Phase 1.1 (special split) — in progress._
+- **Phase 1 — DONE.** Special Atk/Def split (all 64 species backfilled with canonical
+  base stats), natures (25-table), IVs, and a curated ability set (Levitate, Intimidate,
+  Static, Blaze/Torrent/Overgrow/Swarm, Thick Fat, Water/Volt Absorb, Flash Fire) wired
+  into damage + send-out hooks. Functional status moves (Sleep Powder, Thunder Wave,
+  Toxic, Will-O-Wisp, Sing, Spore…) and per-move damage status. Save migration → v2.
+  Runtime-verified: special split changes damage as expected; Levitate negates Ground.
+- **Phase 2 — Kanto DONE; Team Rocket + rival re-skin REMAINING.** Region 0 rebuilt as
+  canonical Kanto: official towns/zones/landmarks, the 8 canon Gym Leaders (Brock→
+  Giovanni) with canon types/badges/teams/sprites/titles, dynamic badge-count gating.
+  Elite Four already canon (Lorelei/Bruno/Agatha/Lance). Still to do: Team Rocket villain
+  beats (2.4) and canon rival re-skin (2.5).
+- **Phase 4 — partial.** Done: battle message word-wrap, graphical HP bars above sprites,
+  preload progress bar, New Game confirmation. Remaining: "forget a move" UI (2.5),
+  disabled-button affordance + tooltip clamp.
+- **Phase 3 / Phase 5 — not started.** Evolution methods (stones/friendship), PP system,
+  weather; canon species expansion.
