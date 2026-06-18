@@ -1852,6 +1852,659 @@ export const SPECIES: Record<string, SpeciesData> = {
     ],
     catchRate: 45,
     expYield: 184
+  },
+  spearow: {
+    id: "spearow",
+    name: "Spearow",
+    types: [TYPES.NORMAL, TYPES.FLYING],
+    baseStats: { hp: 40, atk: 60, def: 30, spd: 70, spAtk: 31, spDef: 31 },
+    ability: "keen",
+    moves: ["peck", "growl"],
+    learnableMoves: [
+      { moveId: "peck", level: 1 },
+      { moveId: "growl", level: 1 },
+      { moveId: "fury-attack", level: 12 },
+      { moveId: "wing-attack", level: 22 },
+      { moveId: "fly", level: 34 }
+    ],
+    catchRate: 255,
+    evolution: { to: "fearow", level: 20 },
+    expYield: 52
+  },
+  fearow: {
+    id: "fearow",
+    name: "Fearow",
+    types: [TYPES.NORMAL, TYPES.FLYING],
+    baseStats: { hp: 65, atk: 90, def: 65, spd: 100, spAtk: 61, spDef: 61 },
+    ability: "keen",
+    moves: ["peck", "fury-attack", "wing-attack"],
+    learnableMoves: [
+      { moveId: "peck", level: 1 },
+      { moveId: "fury-attack", level: 1 },
+      { moveId: "wing-attack", level: 26 },
+      { moveId: "fly", level: 38 }
+    ],
+    catchRate: 90,
+    expYield: 155
+  },
+  sandshrew: {
+    id: "sandshrew",
+    name: "Sandshrew",
+    types: [TYPES.GROUND],
+    baseStats: { hp: 50, atk: 75, def: 85, spd: 40, spAtk: 20, spDef: 30 },
+    moves: ["scratch", "defense-curl"],
+    learnableMoves: [
+      { moveId: "scratch", level: 1 },
+      { moveId: "defense-curl", level: 1 },
+      { moveId: "mud-slap", level: 14 },
+      { moveId: "dig", level: 26 },
+      { moveId: "earthquake", level: 38 }
+    ],
+    catchRate: 255,
+    evolution: { to: "sandslash", level: 22 },
+    expYield: 60
+  },
+  sandslash: {
+    id: "sandslash",
+    name: "Sandslash",
+    types: [TYPES.GROUND],
+    baseStats: { hp: 75, atk: 100, def: 110, spd: 65, spAtk: 45, spDef: 55 },
+    moves: ["scratch", "slash", "dig"],
+    learnableMoves: [
+      { moveId: "scratch", level: 1 },
+      { moveId: "dig", level: 1 },
+      { moveId: "slash", level: 28 },
+      { moveId: "earthquake", level: 42 }
+    ],
+    catchRate: 90,
+    expYield: 158
+  },
+  paras: {
+    id: "paras",
+    name: "Paras",
+    types: [TYPES.BUG, TYPES.GRASS],
+    baseStats: { hp: 35, atk: 70, def: 55, spd: 25, spAtk: 45, spDef: 55 },
+    moves: ["scratch", "stun-spore"],
+    learnableMoves: [
+      { moveId: "scratch", level: 1 },
+      { moveId: "stun-spore", level: 1 },
+      { moveId: "bug-bite", level: 13 },
+      { moveId: "spore", level: 22 },
+      { moveId: "solar-beam", level: 35 }
+    ],
+    catchRate: 190,
+    evolution: { to: "parasect", level: 24 },
+    expYield: 57
+  },
+  parasect: {
+    id: "parasect",
+    name: "Parasect",
+    types: [TYPES.BUG, TYPES.GRASS],
+    baseStats: { hp: 60, atk: 95, def: 80, spd: 30, spAtk: 60, spDef: 80 },
+    moves: ["scratch", "spore", "bug-bite"],
+    learnableMoves: [
+      { moveId: "scratch", level: 1 },
+      { moveId: "spore", level: 1 },
+      { moveId: "x-scissor", level: 30 },
+      { moveId: "solar-beam", level: 40 }
+    ],
+    catchRate: 75,
+    expYield: 142
+  },
+  mankey: {
+    id: "mankey",
+    name: "Mankey",
+    types: [TYPES.FIGHTING],
+    baseStats: { hp: 40, atk: 80, def: 35, spd: 70, spAtk: 35, spDef: 45 },
+    ability: "guts",
+    moves: ["scratch", "leer"],
+    learnableMoves: [
+      { moveId: "scratch", level: 1 },
+      { moveId: "leer", level: 1 },
+      { moveId: "karate-chop", level: 15 },
+      { moveId: "brick-break", level: 27 },
+      { moveId: "cross-chop", level: 39 }
+    ],
+    catchRate: 190,
+    evolution: { to: "primeape", level: 28 },
+    expYield: 61
+  },
+  primeape: {
+    id: "primeape",
+    name: "Primeape",
+    types: [TYPES.FIGHTING],
+    baseStats: { hp: 65, atk: 105, def: 60, spd: 95, spAtk: 60, spDef: 70 },
+    ability: "guts",
+    moves: ["karate-chop", "brick-break", "leer"],
+    learnableMoves: [
+      { moveId: "karate-chop", level: 1 },
+      { moveId: "brick-break", level: 1 },
+      { moveId: "cross-chop", level: 32 },
+      { moveId: "thrash", level: 44 }
+    ],
+    catchRate: 75,
+    expYield: 159
+  },
+  poliwag: {
+    id: "poliwag",
+    name: "Poliwag",
+    types: [TYPES.WATER],
+    baseStats: { hp: 40, atk: 50, def: 40, spd: 90, spAtk: 40, spDef: 40 },
+    ability: "water-absorb",
+    moves: ["water-gun", "tail-whip"],
+    learnableMoves: [
+      { moveId: "water-gun", level: 1 },
+      { moveId: "tail-whip", level: 1 },
+      { moveId: "water-pulse", level: 16 },
+      { moveId: "surf", level: 32 },
+      { moveId: "hydro-pump", level: 43 }
+    ],
+    catchRate: 255,
+    evolution: { to: "poliwhirl", level: 25 },
+    expYield: 60
+  },
+  poliwhirl: {
+    id: "poliwhirl",
+    name: "Poliwhirl",
+    types: [TYPES.WATER],
+    baseStats: { hp: 65, atk: 65, def: 65, spd: 90, spAtk: 50, spDef: 50 },
+    ability: "water-absorb",
+    moves: ["water-gun", "water-pulse", "tail-whip"],
+    learnableMoves: [
+      { moveId: "water-gun", level: 1 },
+      { moveId: "water-pulse", level: 1 },
+      { moveId: "surf", level: 33 },
+      { moveId: "hydro-pump", level: 45 }
+    ],
+    catchRate: 120,
+    evolution: { to: "poliwrath", item: "waterstone" },
+    expYield: 135
+  },
+  poliwrath: {
+    id: "poliwrath",
+    name: "Poliwrath",
+    types: [TYPES.WATER, TYPES.FIGHTING],
+    baseStats: { hp: 90, atk: 95, def: 95, spd: 70, spAtk: 70, spDef: 90 },
+    ability: "water-absorb",
+    moves: ["surf", "brick-break", "water-pulse"],
+    learnableMoves: [
+      { moveId: "surf", level: 1 },
+      { moveId: "brick-break", level: 1 },
+      { moveId: "cross-chop", level: 40 },
+      { moveId: "hydro-pump", level: 48 }
+    ],
+    catchRate: 45,
+    expYield: 230
+  },
+  tentacool: {
+    id: "tentacool",
+    name: "Tentacool",
+    types: [TYPES.WATER, TYPES.POISON],
+    baseStats: { hp: 40, atk: 40, def: 35, spd: 70, spAtk: 50, spDef: 100 },
+    moves: ["poison-sting", "water-gun"],
+    learnableMoves: [
+      { moveId: "poison-sting", level: 1 },
+      { moveId: "water-gun", level: 1 },
+      { moveId: "acid", level: 16 },
+      { moveId: "water-pulse", level: 28 },
+      { moveId: "hydro-pump", level: 40 }
+    ],
+    catchRate: 190,
+    evolution: { to: "tentacruel", level: 30 },
+    expYield: 67
+  },
+  tentacruel: {
+    id: "tentacruel",
+    name: "Tentacruel",
+    types: [TYPES.WATER, TYPES.POISON],
+    baseStats: { hp: 80, atk: 70, def: 65, spd: 100, spAtk: 80, spDef: 120 },
+    moves: ["acid", "water-pulse", "poison-sting"],
+    learnableMoves: [
+      { moveId: "acid", level: 1 },
+      { moveId: "water-pulse", level: 1 },
+      { moveId: "sludge-bomb", level: 35 },
+      { moveId: "hydro-pump", level: 45 }
+    ],
+    catchRate: 60,
+    expYield: 180
+  },
+  farfetchd: {
+    id: "farfetchd",
+    name: "Farfetch'd",
+    types: [TYPES.NORMAL, TYPES.FLYING],
+    baseStats: { hp: 52, atk: 90, def: 55, spd: 60, spAtk: 58, spDef: 62 },
+    ability: "keen",
+    moves: ["peck", "slash"],
+    learnableMoves: [
+      { moveId: "peck", level: 1 },
+      { moveId: "slash", level: 1 },
+      { moveId: "wing-attack", level: 20 },
+      { moveId: "swords-dance", level: 32 },
+      { moveId: "fly", level: 40 }
+    ],
+    catchRate: 45,
+    expYield: 132
+  },
+  doduo: {
+    id: "doduo",
+    name: "Doduo",
+    types: [TYPES.NORMAL, TYPES.FLYING],
+    baseStats: { hp: 35, atk: 85, def: 45, spd: 75, spAtk: 35, spDef: 35 },
+    ability: "keen",
+    moves: ["peck", "growl"],
+    learnableMoves: [
+      { moveId: "peck", level: 1 },
+      { moveId: "growl", level: 1 },
+      { moveId: "fury-attack", level: 14 },
+      { moveId: "wing-attack", level: 26 },
+      { moveId: "fly", level: 38 }
+    ],
+    catchRate: 190,
+    evolution: { to: "dodrio", level: 31 },
+    expYield: 62
+  },
+  dodrio: {
+    id: "dodrio",
+    name: "Dodrio",
+    types: [TYPES.NORMAL, TYPES.FLYING],
+    baseStats: { hp: 60, atk: 110, def: 70, spd: 110, spAtk: 60, spDef: 60 },
+    ability: "keen",
+    moves: ["peck", "fury-attack", "wing-attack"],
+    learnableMoves: [
+      { moveId: "peck", level: 1 },
+      { moveId: "fury-attack", level: 1 },
+      { moveId: "wing-attack", level: 33 },
+      { moveId: "fly", level: 45 }
+    ],
+    catchRate: 45,
+    expYield: 165
+  },
+  krabby: {
+    id: "krabby",
+    name: "Krabby",
+    types: [TYPES.WATER],
+    baseStats: { hp: 30, atk: 105, def: 90, spd: 50, spAtk: 25, spDef: 25 },
+    moves: ["water-gun", "leer"],
+    learnableMoves: [
+      { moveId: "water-gun", level: 1 },
+      { moveId: "leer", level: 1 },
+      { moveId: "water-pulse", level: 16 },
+      { moveId: "harden", level: 24 },
+      { moveId: "crunch", level: 36 }
+    ],
+    catchRate: 225,
+    evolution: { to: "kingler", level: 28 },
+    expYield: 65
+  },
+  kingler: {
+    id: "kingler",
+    name: "Kingler",
+    types: [TYPES.WATER],
+    baseStats: { hp: 55, atk: 130, def: 115, spd: 75, spAtk: 50, spDef: 50 },
+    moves: ["water-pulse", "crunch", "harden"],
+    learnableMoves: [
+      { moveId: "water-pulse", level: 1 },
+      { moveId: "crunch", level: 1 },
+      { moveId: "surf", level: 38 },
+      { moveId: "hydro-pump", level: 48 }
+    ],
+    catchRate: 60,
+    expYield: 166
+  },
+  cubone: {
+    id: "cubone",
+    name: "Cubone",
+    types: [TYPES.GROUND],
+    baseStats: { hp: 50, atk: 50, def: 95, spd: 35, spAtk: 40, spDef: 50 },
+    moves: ["mud-slap", "tail-whip"],
+    learnableMoves: [
+      { moveId: "mud-slap", level: 1 },
+      { moveId: "tail-whip", level: 1 },
+      { moveId: "dig", level: 18 },
+      { moveId: "earthquake", level: 32 }
+    ],
+    catchRate: 190,
+    evolution: { to: "marowak", level: 28 },
+    expYield: 64
+  },
+  marowak: {
+    id: "marowak",
+    name: "Marowak",
+    types: [TYPES.GROUND],
+    baseStats: { hp: 60, atk: 80, def: 110, spd: 45, spAtk: 50, spDef: 80 },
+    moves: ["mud-slap", "dig", "leer"],
+    learnableMoves: [
+      { moveId: "mud-slap", level: 1 },
+      { moveId: "dig", level: 1 },
+      { moveId: "earthquake", level: 33 },
+      { moveId: "stone-edge", level: 44 }
+    ],
+    catchRate: 75,
+    expYield: 149
+  },
+  lickitung: {
+    id: "lickitung",
+    name: "Lickitung",
+    types: [TYPES.NORMAL],
+    baseStats: { hp: 90, atk: 55, def: 75, spd: 30, spAtk: 60, spDef: 75 },
+    moves: ["lick", "tail-whip"],
+    learnableMoves: [
+      { moveId: "lick", level: 1 },
+      { moveId: "tail-whip", level: 1 },
+      { moveId: "body-slam", level: 20 },
+      { moveId: "hyper-beam", level: 40 }
+    ],
+    catchRate: 45,
+    expYield: 77
+  },
+  chansey: {
+    id: "chansey",
+    name: "Chansey",
+    types: [TYPES.NORMAL],
+    baseStats: { hp: 250, atk: 5, def: 5, spd: 50, spAtk: 35, spDef: 105 },
+    moves: ["pound", "growl"],
+    learnableMoves: [
+      { moveId: "pound", level: 1 },
+      { moveId: "growl", level: 1 },
+      { moveId: "body-slam", level: 24 },
+      { moveId: "dazzling-gleam", level: 40 }
+    ],
+    catchRate: 30,
+    expYield: 395
+  },
+  kangaskhan: {
+    id: "kangaskhan",
+    name: "Kangaskhan",
+    types: [TYPES.NORMAL],
+    baseStats: { hp: 105, atk: 95, def: 80, spd: 90, spAtk: 40, spDef: 80 },
+    ability: "intimidate",
+    moves: ["pound", "leer"],
+    learnableMoves: [
+      { moveId: "pound", level: 1 },
+      { moveId: "leer", level: 1 },
+      { moveId: "bite", level: 20 },
+      { moveId: "body-slam", level: 34 },
+      { moveId: "earthquake", level: 46 }
+    ],
+    catchRate: 45,
+    expYield: 172
+  },
+  horsea: {
+    id: "horsea",
+    name: "Horsea",
+    types: [TYPES.WATER],
+    baseStats: { hp: 30, atk: 40, def: 70, spd: 60, spAtk: 70, spDef: 25 },
+    moves: ["water-gun", "leer"],
+    learnableMoves: [
+      { moveId: "water-gun", level: 1 },
+      { moveId: "leer", level: 1 },
+      { moveId: "water-pulse", level: 19 },
+      { moveId: "aqua-tail", level: 30 },
+      { moveId: "hydro-pump", level: 42 }
+    ],
+    catchRate: 225,
+    evolution: { to: "seadra", level: 32 },
+    expYield: 59
+  },
+  seadra: {
+    id: "seadra",
+    name: "Seadra",
+    types: [TYPES.WATER],
+    baseStats: { hp: 55, atk: 65, def: 95, spd: 85, spAtk: 95, spDef: 45 },
+    moves: ["water-pulse", "aqua-tail", "leer"],
+    learnableMoves: [
+      { moveId: "water-pulse", level: 1 },
+      { moveId: "aqua-tail", level: 1 },
+      { moveId: "surf", level: 40 },
+      { moveId: "hydro-pump", level: 50 }
+    ],
+    catchRate: 75,
+    expYield: 154
+  },
+  goldeen: {
+    id: "goldeen",
+    name: "Goldeen",
+    types: [TYPES.WATER],
+    baseStats: { hp: 45, atk: 67, def: 60, spd: 63, spAtk: 35, spDef: 50 },
+    moves: ["peck", "tail-whip"],
+    learnableMoves: [
+      { moveId: "peck", level: 1 },
+      { moveId: "tail-whip", level: 1 },
+      { moveId: "horn-attack", level: 19 },
+      { moveId: "aqua-tail", level: 30 },
+      { moveId: "megahorn", level: 41 }
+    ],
+    catchRate: 225,
+    evolution: { to: "seaking", level: 33 },
+    expYield: 64
+  },
+  seaking: {
+    id: "seaking",
+    name: "Seaking",
+    types: [TYPES.WATER],
+    baseStats: { hp: 80, atk: 92, def: 65, spd: 68, spAtk: 65, spDef: 80 },
+    moves: ["horn-attack", "aqua-tail", "tail-whip"],
+    learnableMoves: [
+      { moveId: "horn-attack", level: 1 },
+      { moveId: "aqua-tail", level: 1 },
+      { moveId: "megahorn", level: 41 },
+      { moveId: "hydro-pump", level: 50 }
+    ],
+    catchRate: 60,
+    expYield: 158
+  },
+  scyther: {
+    id: "scyther",
+    name: "Scyther",
+    types: [TYPES.BUG, TYPES.FLYING],
+    baseStats: { hp: 70, atk: 110, def: 80, spd: 105, spAtk: 55, spDef: 80 },
+    ability: "swarm",
+    moves: ["quick-attack", "leer"],
+    learnableMoves: [
+      { moveId: "quick-attack", level: 1 },
+      { moveId: "leer", level: 1 },
+      { moveId: "wing-attack", level: 17 },
+      { moveId: "slash", level: 29 },
+      { moveId: "x-scissor", level: 41 }
+    ],
+    catchRate: 45,
+    expYield: 100
+  },
+  electabuzz: {
+    id: "electabuzz",
+    name: "Electabuzz",
+    types: [TYPES.ELECTRIC],
+    baseStats: { hp: 65, atk: 83, def: 57, spd: 105, spAtk: 95, spDef: 85 },
+    ability: "static",
+    moves: ["thunder-shock", "leer"],
+    learnableMoves: [
+      { moveId: "thunder-shock", level: 1 },
+      { moveId: "leer", level: 1 },
+      { moveId: "thunder-punch", level: 24 },
+      { moveId: "thunderbolt", level: 37 },
+      { moveId: "thunder", level: 49 }
+    ],
+    catchRate: 45,
+    expYield: 172
+  },
+  pinsir: {
+    id: "pinsir",
+    name: "Pinsir",
+    types: [TYPES.BUG],
+    baseStats: { hp: 65, atk: 125, def: 100, spd: 85, spAtk: 55, spDef: 70 },
+    ability: "swarm",
+    moves: ["bug-bite", "harden"],
+    learnableMoves: [
+      { moveId: "bug-bite", level: 1 },
+      { moveId: "harden", level: 1 },
+      { moveId: "x-scissor", level: 25 },
+      { moveId: "swords-dance", level: 37 },
+      { moveId: "megahorn", level: 49 }
+    ],
+    catchRate: 45,
+    expYield: 175
+  },
+  tauros: {
+    id: "tauros",
+    name: "Tauros",
+    types: [TYPES.NORMAL],
+    baseStats: { hp: 75, atk: 100, def: 95, spd: 110, spAtk: 40, spDef: 70 },
+    ability: "intimidate",
+    moves: ["tackle", "tail-whip"],
+    learnableMoves: [
+      { moveId: "tackle", level: 1 },
+      { moveId: "tail-whip", level: 1 },
+      { moveId: "horn-attack", level: 21 },
+      { moveId: "body-slam", level: 35 },
+      { moveId: "earthquake", level: 47 }
+    ],
+    catchRate: 45,
+    expYield: 172
+  },
+  ditto: {
+    id: "ditto",
+    name: "Ditto",
+    types: [TYPES.NORMAL],
+    baseStats: { hp: 48, atk: 48, def: 48, spd: 48, spAtk: 48, spDef: 48 },
+    moves: ["pound", "harden"],
+    learnableMoves: [
+      { moveId: "pound", level: 1 },
+      { moveId: "harden", level: 1 },
+      { moveId: "body-slam", level: 25 }
+    ],
+    catchRate: 35,
+    expYield: 101
+  },
+  porygon: {
+    id: "porygon",
+    name: "Porygon",
+    types: [TYPES.NORMAL],
+    baseStats: { hp: 65, atk: 60, def: 70, spd: 40, spAtk: 85, spDef: 75 },
+    moves: ["tackle", "confusion"],
+    learnableMoves: [
+      { moveId: "tackle", level: 1 },
+      { moveId: "confusion", level: 1 },
+      { moveId: "psybeam", level: 23 },
+      { moveId: "psychic", level: 38 },
+      { moveId: "hyper-beam", level: 50 }
+    ],
+    catchRate: 45,
+    expYield: 79
+  },
+  omanyte: {
+    id: "omanyte",
+    name: "Omanyte",
+    types: [TYPES.ROCK, TYPES.WATER],
+    baseStats: { hp: 35, atk: 40, def: 100, spd: 35, spAtk: 90, spDef: 55 },
+    ability: "sturdy",
+    moves: ["water-gun", "withdraw"],
+    learnableMoves: [
+      { moveId: "water-gun", level: 1 },
+      { moveId: "withdraw", level: 1 },
+      { moveId: "water-pulse", level: 19 },
+      { moveId: "ancient-power", level: 31 },
+      { moveId: "hydro-pump", level: 44 }
+    ],
+    catchRate: 45,
+    evolution: { to: "omastar", level: 40 },
+    expYield: 71
+  },
+  omastar: {
+    id: "omastar",
+    name: "Omastar",
+    types: [TYPES.ROCK, TYPES.WATER],
+    baseStats: { hp: 70, atk: 60, def: 125, spd: 55, spAtk: 115, spDef: 70 },
+    ability: "sturdy",
+    moves: ["water-pulse", "ancient-power", "withdraw"],
+    learnableMoves: [
+      { moveId: "water-pulse", level: 1 },
+      { moveId: "ancient-power", level: 1 },
+      { moveId: "rock-slide", level: 44 },
+      { moveId: "hydro-pump", level: 52 }
+    ],
+    catchRate: 45,
+    expYield: 173
+  },
+  kabuto: {
+    id: "kabuto",
+    name: "Kabuto",
+    types: [TYPES.ROCK, TYPES.WATER],
+    baseStats: { hp: 30, atk: 80, def: 90, spd: 55, spAtk: 55, spDef: 45 },
+    moves: ["scratch", "harden"],
+    learnableMoves: [
+      { moveId: "scratch", level: 1 },
+      { moveId: "harden", level: 1 },
+      { moveId: "water-pulse", level: 19 },
+      { moveId: "ancient-power", level: 31 },
+      { moveId: "aqua-tail", level: 44 }
+    ],
+    catchRate: 45,
+    evolution: { to: "kabutops", level: 40 },
+    expYield: 71
+  },
+  kabutops: {
+    id: "kabutops",
+    name: "Kabutops",
+    types: [TYPES.ROCK, TYPES.WATER],
+    baseStats: { hp: 60, atk: 115, def: 105, spd: 80, spAtk: 65, spDef: 70 },
+    moves: ["slash", "ancient-power", "harden"],
+    learnableMoves: [
+      { moveId: "slash", level: 1 },
+      { moveId: "ancient-power", level: 1 },
+      { moveId: "aqua-tail", level: 44 },
+      { moveId: "stone-edge", level: 52 }
+    ],
+    catchRate: 45,
+    expYield: 173
+  },
+  snorlax: {
+    id: "snorlax",
+    name: "Snorlax",
+    types: [TYPES.NORMAL],
+    baseStats: { hp: 160, atk: 110, def: 65, spd: 30, spAtk: 65, spDef: 110 },
+    ability: "thick-fat",
+    moves: ["tackle", "harden"],
+    learnableMoves: [
+      { moveId: "tackle", level: 1 },
+      { moveId: "harden", level: 1 },
+      { moveId: "body-slam", level: 25 },
+      { moveId: "crunch", level: 40 },
+      { moveId: "hyper-beam", level: 52 }
+    ],
+    catchRate: 25,
+    expYield: 189
+  },
+  mewtwo: {
+    id: "mewtwo",
+    name: "Mewtwo",
+    types: [TYPES.PSYCHIC],
+    baseStats: { hp: 106, atk: 110, def: 90, spd: 130, spAtk: 154, spDef: 90 },
+    moves: ["confusion", "psybeam"],
+    learnableMoves: [
+      { moveId: "confusion", level: 1 },
+      { moveId: "psybeam", level: 1 },
+      { moveId: "psychic", level: 50 },
+      { moveId: "shadow-ball", level: 63 },
+      { moveId: "hyper-beam", level: 70 }
+    ],
+    catchRate: 3,
+    expYield: 306
+  },
+  mew: {
+    id: "mew",
+    name: "Mew",
+    types: [TYPES.PSYCHIC],
+    baseStats: { hp: 100, atk: 100, def: 100, spd: 100, spAtk: 100, spDef: 100 },
+    moves: ["pound", "confusion"],
+    learnableMoves: [
+      { moveId: "pound", level: 1 },
+      { moveId: "confusion", level: 1 },
+      { moveId: "psychic", level: 40 },
+      { moveId: "shadow-ball", level: 50 },
+      { moveId: "hyper-beam", level: 60 }
+    ],
+    catchRate: 45,
+    expYield: 300
   }
 };
 

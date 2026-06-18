@@ -141,5 +141,6 @@ Phase 3 → Phase 5. Each phase is its own commit(s), type-checked via `npm run 
   tuned per Kanto biome (Zubat/Onix caves, Oddish/Bellsprout forest, Voltorb Power Plant,
   Drowzee/Hypno tower, Growlithe/Vulpix/Ponyta volcano, Staryu/Slowpoke lakes, Jynx/Shellder
   tundra, Rhyhorn/Golbat Victory Road).
-- **All planned phases complete.** Optional future work: the remaining Gen-1 dex (~40 species
-  for a complete Pokédex), friendship/trade evolutions, and EV training.
+- **Complete Gen-1 Pokédex.** Added the final 40 species (Spearow→Mew), so the dex now covers
+  National Dex 1–151 (152 with Pichu). All build and resolve cleanly.
+- **All planned phases complete.** Optional future work: friendship/trade evolutions and EV training.
