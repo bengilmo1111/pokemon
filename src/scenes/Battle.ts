@@ -63,6 +63,8 @@ export default class Battle extends Phaser.Scene {
   private messageText!: Phaser.GameObjects.Text;
   private playerHpText!: Phaser.GameObjects.Text;
   private enemyHpText!: Phaser.GameObjects.Text;
+  private playerHpBar?: Phaser.GameObjects.Graphics;
+  private enemyHpBar?: Phaser.GameObjects.Graphics;
   private playerExpText!: Phaser.GameObjects.Text;
   private playerStatusText!: Phaser.GameObjects.Text;
   private enemyStatusText!: Phaser.GameObjects.Text;
@@ -257,7 +259,8 @@ export default class Battle extends Phaser.Scene {
     this.messageText = this.add.text(24, 24, introText, {
       fontFamily: "monospace",
       fontSize: "18px",
-      color: "#e5e7eb"
+      color: "#e5e7eb",
+      wordWrap: { width: this.scale.width - 48 }
     });
 
     // Play encounter sound and start battle music
@@ -301,6 +304,10 @@ export default class Battle extends Phaser.Scene {
       fontSize: "12px",
       color: "#fbbf24"
     });
+
+    // Graphical HP bars floating above each combatant.
+    this.playerHpBar = this.add.graphics().setDepth(40);
+    this.enemyHpBar = this.add.graphics().setDepth(40);
 
     this.updateHpText();
     this.createMenu();
@@ -1749,6 +1756,38 @@ export default class Battle extends Phaser.Scene {
     if (this.enemyMon.status !== "none") {
       this.enemyStatusText.setColor(`#${getStatusColor(this.enemyMon.status).toString(16)}`);
     }
+
+    this.drawHpBars();
+  }
+
+  /** Draw colour-coded HP bars above the two Pokémon sprites. */
+  private drawHpBars(): void {
+    const barW = 130;
+    const barH = 12;
+    const draw = (
+      g: Phaser.GameObjects.Graphics | undefined,
+      cx: number,
+      cy: number,
+      ratio: number
+    ) => {
+      if (!g) return;
+      const x = cx - barW / 2;
+      const r = Math.max(0, Math.min(1, ratio));
+      const color = r > 0.5 ? 0x22c55e : r > 0.2 ? 0xfbbf24 : 0xef4444;
+      g.clear();
+      g.fillStyle(0x000000, 0.55);
+      g.fillRoundedRect(x - 2, cy - 2, barW + 4, barH + 4, 4);
+      g.fillStyle(0x1f2937, 1);
+      g.fillRect(x, cy, barW, barH);
+      g.fillStyle(color, 1);
+      g.fillRect(x, cy, barW * r, barH);
+      g.lineStyle(1, 0xffffff, 0.6);
+      g.strokeRect(x, cy, barW, barH);
+    };
+    draw(this.playerHpBar, this.scale.width * 0.25, this.scale.height * 0.45 - 100,
+      this.playerMon.hp / this.playerMon.maxHp);
+    draw(this.enemyHpBar, this.scale.width * 0.7, this.scale.height * 0.3 - 110,
+      this.enemyMon.hp / this.enemyMon.maxHp);
   }
 
   private updatePlayerSprite(): void {
