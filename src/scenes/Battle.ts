@@ -463,10 +463,14 @@ export default class Battle extends Phaser.Scene {
         this.tooltipText.setText(tooltipContent);
         this.tooltipText.setColor(typeHex);
 
-        // Position tooltip above the button
-        const tx = x;
-        const ty = y - 60;
-        this.tooltipBg.setPosition(tx, ty).setSize(220, 72).setVisible(true);
+        // Position tooltip above the button, clamped to stay on-screen.
+        const tw = 220;
+        const th = 72;
+        const tx = Phaser.Math.Clamp(x, tw / 2 + 8, this.scale.width - tw / 2 - 8);
+        let ty = y - 60;
+        if (ty - th / 2 < 8) ty = y + 60; // flip below if it would clip the top
+        ty = Phaser.Math.Clamp(ty, th / 2 + 8, this.scale.height - th / 2 - 8);
+        this.tooltipBg.setPosition(tx, ty).setSize(tw, th).setVisible(true);
         this.tooltipText.setPosition(tx, ty).setVisible(true);
       });
       text.on("pointerout", () => {
@@ -526,13 +530,13 @@ export default class Battle extends Phaser.Scene {
         fontFamily: "monospace",
         fontSize: "22px",
         color: enabled ? "#f9fafb" : "#6b7280",
-        backgroundColor: "#374151",
+        backgroundColor: enabled ? "#374151" : "#1f2937",
         align: "center",
         fixedWidth: btnWidth,
         padding: { top: 9, bottom: 9 }
       });
-      text.setOrigin(0.5).setDepth(100);
-      text.setInteractive({ useHandCursor: true });
+      text.setOrigin(0.5).setDepth(100).setAlpha(enabled ? 1 : 0.6);
+      text.setInteractive({ useHandCursor: enabled });
       if (enabled) text.on("pointerdown", onTap);
       this.ballMenuItems.push(text);
       y += rowH;
@@ -615,11 +619,11 @@ export default class Battle extends Phaser.Scene {
         fontFamily: "monospace",
         fontSize: "13px",
         color: isDisabled ? "#6b7280" : "#f9fafb",
-        backgroundColor: "#374151",
+        backgroundColor: isDisabled ? "#1f2937" : "#374151",
         padding: { left: 6, right: 6, top: 2, bottom: 2 }
       });
-      text.setDepth(100);
-      text.setInteractive({ useHandCursor: true });
+      text.setDepth(100).setAlpha(isDisabled ? 0.6 : 1);
+      text.setInteractive({ useHandCursor: !isDisabled });
       if (!isDisabled) {
         text.on("pointerdown", () => this.handleSwitch(index));
         text.on("pointerover", () => text.setStyle({ backgroundColor: "#4b5563" }));
