@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { MOVES } from "../data/moves";
 import { SPECIES } from "../data/species";
+import { getAbility } from "../data/abilities";
 import { gameState } from "../game/store";
 import * as Sound from "../game/sound";
 import {
@@ -809,6 +810,9 @@ export default class Battle extends Phaser.Scene {
       this.updateEnemySprite();
       await this.showEntranceAnimation(this.enemySprite!, false);
       await this.wait(300);
+      if (this.applyIntimidate(this.enemyMon, this.playerStages, this.playerMon.nickname || this.playerMon.name)) {
+        await this.wait(600);
+      }
       this.busy = false;
       return;
     }
@@ -1171,6 +1175,10 @@ export default class Battle extends Phaser.Scene {
     this.updatePlayerSprite();
     await this.wait(400);
 
+    if (this.applyIntimidate(this.playerMon, this.enemyStages, this.enemyMon.name)) {
+      await this.wait(600);
+    }
+
     const enemyMove = this.pickEnemyMove();
     await this.executeEnemyTurn(enemyMove);
     if (await this.resolvePlayerFaint()) return;
@@ -1384,6 +1392,29 @@ export default class Battle extends Phaser.Scene {
         await this.wait(500);
       }
     }
+
+    // Defender ability: Static may paralyze a physical (contact) attacker.
+    const defAbility = getAbility(defender.ability);
+    if (defAbility?.contactParalyze && move.category === "physical" &&
+        attacker.status === "none" && Math.random() < defAbility.contactParalyze) {
+      if (tryInflictStatus(attacker, "paralysis")) {
+        const atkName = attacker === this.playerMon ? (attacker.nickname || attacker.name) : attacker.name;
+        this.setMessage(`${atkName} was paralyzed by ${defAbility.name}!`);
+        this.updateHpText();
+        await this.wait(500);
+      }
+    }
+  }
+
+  /** Intimidate: lower the opposing Pokémon's Attack by one stage on entry. */
+  private applyIntimidate(enteringMon: PokemonInstance, opposingStages: StatStages, opposingName: string): boolean {
+    if (getAbility(enteringMon.ability)?.intimidate && opposingStages.atk > -6) {
+      opposingStages.atk = Math.max(-6, opposingStages.atk - 1);
+      const enterName = enteringMon === this.playerMon ? (enteringMon.nickname || enteringMon.name) : enteringMon.name;
+      this.setMessage(`${enterName}'s Intimidate cut ${opposingName}'s Attack!`);
+      return true;
+    }
+    return false;
   }
 
   private async showAttackAnimation(attacker: Phaser.GameObjects.Sprite, target: Phaser.GameObjects.Sprite, isCritical: boolean, moveType?: string): Promise<void> {
