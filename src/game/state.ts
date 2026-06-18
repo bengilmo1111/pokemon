@@ -123,6 +123,7 @@ export interface GameState {
   money: number;  // Player's current money (Pokedollars)
   e4Progress: number;  // 0–4: how many E4 trainers have been defeated
   e4Trainers: NpcTrainer[];  // The four Elite Four trainers
+  storyFlags: Record<string, boolean>;  // One-off scripted story beats (e.g. Team Rocket)
 }
 
 // ---------- Held Items ----------
@@ -343,7 +344,8 @@ export function createInitialState(): GameState {
     tutorialSeen: false,
     money: 500,
     e4Progress: 0,
-    e4Trainers: []
+    e4Trainers: [],
+    storyFlags: {}
   };
 }
 
@@ -589,6 +591,48 @@ export function generateNpcTrainers(): NpcTrainer[] {
       ],
       defeated: false,
       dialogue: "I want to be the very best!"
+    },
+
+    // ---- Team Rocket ----
+    // Grunts stationed at canon Rocket hotspots; Giovanni (Viridian Gym) is the
+    // arc's boss payoff.
+    {
+      id: "rocket-mtmoon",
+      name: "Team Rocket Grunt",
+      sprite: "trainer-ace",
+      x: -14, y: -22,
+      team: [
+        { speciesId: "rattata", level: 13 },
+        { speciesId: "gastly", level: 14 }
+      ],
+      defeated: false,
+      dialogue: "Team Rocket's after the Moon Stones! Beat it, kid — or battle me!"
+    },
+    {
+      id: "rocket-hideout",
+      name: "Team Rocket Grunt",
+      sprite: "trainer-ace",
+      x: 12, y: 10,
+      team: [
+        { speciesId: "raticate", level: 28 },
+        { speciesId: "machop", level: 28 },
+        { speciesId: "haunter", level: 29 }
+      ],
+      defeated: false,
+      dialogue: "This is the Rocket Hideout! The boss won't like you snooping around."
+    },
+    {
+      id: "rocket-silph",
+      name: "Team Rocket Grunt",
+      sprite: "trainer-psychic",
+      x: 18, y: -8,
+      team: [
+        { speciesId: "raticate", level: 40 },
+        { speciesId: "haunter", level: 41 },
+        { speciesId: "nidoking", level: 42 }
+      ],
+      defeated: false,
+      dialogue: "Silph Co. belongs to Team Rocket now! Giovanni's orders!"
     }
   ];
 }
