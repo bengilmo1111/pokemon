@@ -1213,7 +1213,7 @@ export default class Overworld extends Phaser.Scene {
     });
 
     // Add name label
-    const nameLabel = this.add.text(x, y + 35, "RIVAL", {
+    const nameLabel = this.add.text(x, y + 35, "BLUE", {
       fontFamily: "monospace",
       fontSize: "10px",
       color: "#3b82f6",

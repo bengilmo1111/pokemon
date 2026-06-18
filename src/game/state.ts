@@ -724,35 +724,35 @@ export function generateRivalEncounters(): RivalEncounter[] {
   return [
     {
       id: "rival-1",
-      x: -35,
-      y: 5,
+      x: -42,
+      y: 8,
       battleNumber: 1,
-      dialogue: "Hey! I've been looking for you! Let's see how strong you've gotten!",
-      defeatDialogue: "Not bad... but I'll beat you next time!"
+      dialogue: "Yo! I'm Blue — your rival! Smell ya later? Not before I crush you!",
+      defeatDialogue: "What?! I picked the better starter... Whatever. Smell ya later!"
     },
     {
       id: "rival-2",
-      x: 0,
-      y: 25,
+      x: 2,
+      y: -20,
       battleNumber: 2,
-      dialogue: "We meet again! My Pokemon have gotten way stronger!",
-      defeatDialogue: "Tch... You got lucky! I'll train harder!"
+      dialogue: "Heh, you again. My Pokémon are way tougher now. Try to keep up!",
+      defeatDialogue: "Tch... lucky win. I'm still gonna be the Champion!"
     },
     {
       id: "rival-3",
-      x: 30,
-      y: 15,
+      x: 8,
+      y: 0,
       battleNumber: 3,
-      dialogue: "This time I won't lose! Prepare yourself!",
-      defeatDialogue: "How can this be?! I trained so hard..."
+      dialogue: "You're slowing me down. Time to remind you who's boss!",
+      defeatDialogue: "No way! How are you this strong already?!"
     },
     {
       id: "rival-4",
       x: 42,
-      y: 38,
+      y: 32,
       battleNumber: 4,
-      dialogue: "You've made it far... But this is where your journey ends!",
-      defeatDialogue: "You've become a true Pokemon Master... I respect that."
+      dialogue: "So you made it to the Plateau too. This is the end of the road for you!",
+      defeatDialogue: "...You really are something. Fine — you've earned it. Go be Champion."
     }
   ];
 }
