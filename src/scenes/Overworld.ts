@@ -65,6 +65,8 @@ export default class Overworld extends Phaser.Scene {
   private zoneMap: Map<string, { x: number; y: number; r: number }> = new Map();
   private zoneMapRegion = -1;
   private lastHudText = "";
+  // Dedicated UI camera (zoom 1) so the device camera zoom never shrinks/recentres the HUD & controls.
+  private uiCamera?: Phaser.Cameras.Scene2D.Camera;
   private props: Array<{ x: number; y: number; type: string; variant: number; scale: number }> = [];
   private mapOpen = false;
   private starterOpen = false;
@@ -208,10 +210,11 @@ export default class Overworld extends Phaser.Scene {
 
     this.hudText = this.add.text(16, 16, "", {
       fontFamily: "monospace",
-      fontSize: "14px",
-      color: "#e8e8e8",
-      backgroundColor: "#0f172a80",
-      padding: { left: 8, right: 8, top: 4, bottom: 4 }
+      fontSize: "16px",
+      color: "#ffffff",
+      backgroundColor: "#0f172acc",
+      padding: { left: 10, right: 10, top: 6, bottom: 6 },
+      lineSpacing: 2
     });
     this.hudText.setScrollFactor(0);
 
@@ -323,6 +326,10 @@ export default class Overworld extends Phaser.Scene {
   }
 
   update(): void {
+    // Keep UI (scrollFactor 0) on the un-zoomed UI camera and world on the main
+    // camera — runs every frame so dynamically opened menus are caught too.
+    this.refreshCameraAssignments();
+
     if (this.starterOpen || this.isPaused) {
       return;
     }
@@ -1191,6 +1198,7 @@ export default class Overworld extends Phaser.Scene {
     // After the swirl, fade to black, then switch region (smoother than a snap).
     this.time.delayedCall(1400, () => {
       this.cameras.main.fadeOut(300, 0, 0, 0);
+      this.uiCamera?.fadeOut(300, 0, 0, 0);
       this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
         // Clear wild Pokemon for the new region
         gameState.wildMons = [];
@@ -2351,6 +2359,38 @@ export default class Overworld extends Phaser.Scene {
     const minSide = Math.min(this.scale.width, this.scale.height);
     const zoom = Phaser.Math.Clamp(minSide / 600, 0.75, 2.2);
     this.cameras.main.setZoom(zoom);
+
+    // The UI camera always stays at zoom 1, full-viewport, no scroll — so HUD
+    // and on-screen controls render at true screen size and edge positions,
+    // unaffected by the world camera's zoom.
+    if (!this.uiCamera) {
+      this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+      this.uiCamera.setScroll(0, 0);
+    } else {
+      this.uiCamera.setSize(this.scale.width, this.scale.height);
+    }
+    this.refreshCameraAssignments();
+  }
+
+  /**
+   * Partition the display list between the two cameras by scroll factor:
+   * scrollFactor-0 objects are UI (rendered only by the UI camera); everything
+   * else is world (rendered only by the main, zoomed camera). Idempotent —
+   * Phaser stores the ignore flag as a per-object bitmask — so it can be
+   * re-run cheaply to catch dynamically created menus/overlays.
+   */
+  private refreshCameraAssignments(): void {
+    if (!this.uiCamera) return;
+    const main = this.cameras.main;
+    const ui = this.uiCamera;
+    for (const obj of this.children.list) {
+      const sf = (obj as unknown as { scrollFactorX?: number }).scrollFactorX;
+      if (sf === 0) {
+        main.ignore(obj); // UI: hide from the zoomed world camera
+      } else {
+        ui.ignore(obj);   // world: hide from the UI camera
+      }
+    }
   }
 
   private createVignette(): void {
