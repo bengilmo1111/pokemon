@@ -125,18 +125,21 @@ Phase 3 → Phase 5. Each phase is its own commit(s), type-checked via `npm run 
   **Team Rocket** grunts added at canon sites (Mt. Moon, Rocket Hideout, Silph Co.) via the
   NpcTrainer pipeline + `storyFlags`; rival **re-skinned to canon Blue** (cocky voice, Kanto
   beats, counter-starter teams retained).
-- **Phase 3 — Evolution methods DONE; PP + weather REMAINING.** Item-based evolution via
-  stones (Fire/Water/Thunder/Leaf/Moon): shared `evolveMon`/`tryItemEvolution`, Mart sells
-  stones, team-screen "Use Stone" action; Pikachu/Clefairy/Jigglypuff/Eevee switched to
-  canon stone evolutions (Eevee branches by stone: Fire→Flareon, Water→Vaporeon,
-  Thunder→Jolteon). v3 save migration. Runtime-verified. PP system and weather not started.
+- **Phase 3 — DONE.** Item-based evolution via stones (shared `evolveMon`/`tryItemEvolution`,
+  Mart + team-screen "Use Stone"; Eevee branches Fire→Flareon/Water→Vaporeon/Thunder→Jolteon;
+  v3 migration). **Weather** (Rain/Sun/Sandstorm: damage modifiers, field tint, sandstorm chip +
+  countdown; taught to Blastoise/Charizard/Ninetales/Golem/Onix). **PP system** as a parallel
+  per-move map (menu shows/dims PP, AI respects it, Struggle fallback, restored on heal; no
+  migration needed). Runtime-verified (rain ×1.5 Water / sun ×0.5; PP drain/restore/Struggle).
 - **Phase 4 — DONE.** Battle message word-wrap, graphical HP bars, preload progress bar,
   New Game confirmation, "forget a move" prompt, **disabled-button affordance**, and
   **move-tooltip clamping**.
 - **Phase 5 — DONE (core).** Added 48 canonical Gen-1 species (sprites already shipped;
   Preload auto-loads by id), and upgraded every gym, the Elite Four, and rival Blue to
   authentic rosters (Brock/Onix, Misty/Starmie, Erika/Vileplume, Koga/Weezing, Blaine/
-  Arcanine, Giovanni/Rhydon, Lance/Aerodactyl, …). 112 species total. Remaining (optional):
-  the rest of the Gen-1 dex + canon wild-spawn pools per route.
-- **Still open:** PP system (Phase 3.2, breaking save change), weather (Phase 3.3), remaining
-  Gen-1 dex + biome spawn tuning (Phase 5 tail).
+  Arcanine, Giovanni/Rhydon, Lance/Aerodactyl, …). 112 species total. **Canon wild spawns**
+  tuned per Kanto biome (Zubat/Onix caves, Oddish/Bellsprout forest, Voltorb Power Plant,
+  Drowzee/Hypno tower, Growlithe/Vulpix/Ponyta volcano, Staryu/Slowpoke lakes, Jynx/Shellder
+  tundra, Rhyhorn/Golbat Victory Road).
+- **All planned phases complete.** Optional future work: the remaining Gen-1 dex (~40 species
+  for a complete Pokédex), friendship/trade evolutions, and EV training.
