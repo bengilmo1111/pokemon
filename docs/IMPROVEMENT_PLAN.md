@@ -119,13 +119,18 @@ Phase 3 → Phase 5. Each phase is its own commit(s), type-checked via `npm run 
   into damage + send-out hooks. Functional status moves (Sleep Powder, Thunder Wave,
   Toxic, Will-O-Wisp, Sing, Spore…) and per-move damage status. Save migration → v2.
   Runtime-verified: special split changes damage as expected; Levitate negates Ground.
-- **Phase 2 — Kanto DONE; Team Rocket + rival re-skin REMAINING.** Region 0 rebuilt as
-  canonical Kanto: official towns/zones/landmarks, the 8 canon Gym Leaders (Brock→
-  Giovanni) with canon types/badges/teams/sprites/titles, dynamic badge-count gating.
-  Elite Four already canon (Lorelei/Bruno/Agatha/Lance). Still to do: Team Rocket villain
-  beats (2.4) and canon rival re-skin (2.5).
-- **Phase 4 — partial.** Done: battle message word-wrap, graphical HP bars above sprites,
-  preload progress bar, New Game confirmation. Remaining: "forget a move" UI (2.5),
-  disabled-button affordance + tooltip clamp.
-- **Phase 3 / Phase 5 — not started.** Evolution methods (stones/friendship), PP system,
-  weather; canon species expansion.
+- **Phase 2 — DONE.** Region 0 rebuilt as canonical Kanto: official towns/zones/landmarks,
+  the 8 canon Gym Leaders (Brock→Giovanni) with canon types/badges/teams/sprites/titles,
+  dynamic badge-count gating. Elite Four already canon (Lorelei/Bruno/Agatha/Lance).
+  **Team Rocket** grunts added at canon sites (Mt. Moon, Rocket Hideout, Silph Co.) via the
+  NpcTrainer pipeline + `storyFlags`; rival **re-skinned to canon Blue** (cocky voice, Kanto
+  beats, counter-starter teams retained).
+- **Phase 3 — Evolution methods DONE; PP + weather REMAINING.** Item-based evolution via
+  stones (Fire/Water/Thunder/Leaf/Moon): shared `evolveMon`/`tryItemEvolution`, Mart sells
+  stones, team-screen "Use Stone" action; Pikachu/Clefairy/Jigglypuff/Eevee switched to
+  canon stone evolutions. v3 save migration. Runtime-verified. PP system and weather not
+  started.
+- **Phase 4 — DONE (core).** Battle message word-wrap, graphical HP bars, preload progress
+  bar, New Game confirmation, and **"forget a move" prompt** at full moveset. Remaining
+  (minor): disabled-button affordance + tooltip clamp.
+- **Phase 5 — not started.** Canon species expansion.
