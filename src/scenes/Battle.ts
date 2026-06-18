@@ -776,6 +776,11 @@ export default class Battle extends Phaser.Scene {
         await this.wait(800);
       }
 
+      // Handle moves learned at full capacity — let the player choose.
+      for (const pendingId of result.pendingMoves) {
+        await this.promptForgetMove(mon, pendingId);
+      }
+
       // Handle evolution
       if (result.evolved && result.newName) {
         Sound.playEvolution();
@@ -787,6 +792,57 @@ export default class Battle extends Phaser.Scene {
 
     void levelBefore; // suppress unused warning
     this.updateHpText();
+  }
+
+  /**
+   * When a Pokémon at full moves (4) wants to learn another, prompt the player
+   * to forget one move or skip learning. Resolves once a choice is made.
+   */
+  private promptForgetMove(mon: PokemonInstance, newMoveId: string): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const W = this.scale.width;
+      const H = this.scale.height;
+      const name = mon.nickname || mon.name;
+      const newName = MOVES[newMoveId]?.name ?? newMoveId;
+      const els: Phaser.GameObjects.GameObject[] = [];
+
+      els.push(this.add.rectangle(0, 0, W, H, 0x000000, 0.72)
+        .setOrigin(0).setScrollFactor(0).setDepth(900).setInteractive());
+      els.push(this.add.text(W / 2, H * 0.24,
+        `${name} wants to learn ${newName},\nbut already knows 4 moves.\nForget a move?`, {
+          fontFamily: "monospace", fontSize: "18px", color: "#e5e7eb",
+          align: "center", lineSpacing: 4, wordWrap: { width: W - 60 }
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(901));
+
+      const cleanup = () => els.forEach((e) => e.destroy());
+      const mkBtn = (y: number, label: string, bg: string, onClick: () => void) => {
+        const btn = this.add.text(W / 2, y, label, {
+          fontFamily: "monospace", fontSize: "16px", color: "#0f172a",
+          backgroundColor: bg, align: "center",
+          padding: { left: 12, right: 12, top: 8, bottom: 8 }
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(901)
+          .setInteractive({ useHandCursor: true });
+        btn.on("pointerdown", onClick);
+        els.push(btn);
+      };
+
+      mon.moves.forEach((mId, i) => {
+        const m = MOVES[mId];
+        mkBtn(H * 0.4 + i * 52, `${m?.name ?? mId}  (${m?.type ?? "?"})`, "#fbbf24", () => {
+          const forgotten = m?.name ?? mId;
+          mon.moves[i] = newMoveId;
+          cleanup();
+          Sound.playMenuSelect();
+          this.setMessage(`${name} forgot ${forgotten} and learned ${newName}!`);
+          this.time.delayedCall(1000, resolve);
+        });
+      });
+      mkBtn(H * 0.4 + 4 * 52, `Don't learn ${newName}`, "#94a3b8", () => {
+        cleanup();
+        this.setMessage(`${name} did not learn ${newName}.`);
+        this.time.delayedCall(800, resolve);
+      });
+    });
   }
 
   private async handleEnemyFainted(): Promise<void> {

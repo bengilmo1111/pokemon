@@ -254,6 +254,8 @@ export interface LevelUpResult {
   newSpeciesId?: string;
   oldName?: string;
   newName?: string;
+  /** Moves learned at full capacity (4 moves) — the player chooses what to forget. */
+  pendingMoves: string[];
 }
 
 export function gainExp(mon: PokemonInstance, amount: number): LevelUpResult {
@@ -263,6 +265,7 @@ export function gainExp(mon: PokemonInstance, amount: number): LevelUpResult {
   const result: LevelUpResult = {
     levelsGained: 0,
     newMoves: [],
+    pendingMoves: [],
     evolved: false
   };
 
@@ -287,12 +290,11 @@ export function gainExp(mon: PokemonInstance, amount: number): LevelUpResult {
     if (newMove && !mon.moves.includes(newMove.moveId)) {
       if (mon.moves.length < 4) {
         mon.moves.push(newMove.moveId);
+        result.newMoves.push(newMove.moveId);
       } else {
-        // Replace oldest move
-        mon.moves.shift();
-        mon.moves.push(newMove.moveId);
+        // Moveset is full: defer to the player to choose what to forget.
+        result.pendingMoves.push(newMove.moveId);
       }
-      result.newMoves.push(newMove.moveId);
     }
 
     // Check for evolution
