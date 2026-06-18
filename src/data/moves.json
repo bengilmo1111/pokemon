@@ -115,5 +115,9 @@
   { "id": "dazzling-gleam", "name": "Dazzling Gleam", "type": "fairy", "category": "special", "power": 80, "accuracy": 1, "pp": 10 },
   { "id": "moonblast", "name": "Moonblast", "type": "fairy", "category": "special", "power": 95, "accuracy": 1, "pp": 15 },
   { "id": "flash-cannon", "name": "Flash Cannon", "type": "steel", "category": "special", "power": 80, "accuracy": 1, "pp": 10 },
-  { "id": "sleep-powder", "name": "Sleep Powder", "type": "grass", "category": "status", "power": 0, "accuracy": 0.75, "pp": 15, "effect": { "status": "sleep" } }
+  { "id": "sleep-powder", "name": "Sleep Powder", "type": "grass", "category": "status", "power": 0, "accuracy": 0.75, "pp": 15, "effect": { "status": "sleep" } },
+  { "id": "rain-dance", "name": "Rain Dance", "type": "water", "category": "status", "power": 0, "accuracy": 1, "pp": 5, "effect": { "weather": "rain" } },
+  { "id": "sunny-day", "name": "Sunny Day", "type": "fire", "category": "status", "power": 0, "accuracy": 1, "pp": 5, "effect": { "weather": "sun" } },
+  { "id": "sandstorm", "name": "Sandstorm", "type": "rock", "category": "status", "power": 0, "accuracy": 1, "pp": 10, "effect": { "weather": "sandstorm" } },
+  { "id": "struggle", "name": "Struggle", "type": "normal", "category": "physical", "power": 50, "accuracy": 1, "pp": 1 }
 ]

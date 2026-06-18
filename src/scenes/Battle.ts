@@ -13,7 +13,8 @@ import {
   getStatusDisplayText,
   getStatusColor,
   tryInflictStatus,
-  StatStages
+  StatStages,
+  Weather
 } from "../game/battle";
 import {
   addToBox,
@@ -65,6 +66,9 @@ export default class Battle extends Phaser.Scene {
   private enemyHpText!: Phaser.GameObjects.Text;
   private playerHpBar?: Phaser.GameObjects.Graphics;
   private enemyHpBar?: Phaser.GameObjects.Graphics;
+  private weather: Weather = "none";
+  private weatherTurns = 0;
+  private weatherOverlay?: Phaser.GameObjects.Rectangle;
   private playerExpText!: Phaser.GameObjects.Text;
   private playerStatusText!: Phaser.GameObjects.Text;
   private enemyStatusText!: Phaser.GameObjects.Text;
@@ -138,6 +142,10 @@ export default class Battle extends Phaser.Scene {
     // Reset tooltip
     this.tooltipBg = undefined;
     this.tooltipText = undefined;
+    // Reset weather
+    this.weather = "none";
+    this.weatherTurns = 0;
+    this.weatherOverlay = undefined;
     // Reset held item state
     this.usedOranBerry = false;
     // Reset stat stages
@@ -682,6 +690,10 @@ export default class Battle extends Phaser.Scene {
     // Enemy turn
     const enemyMove = this.pickEnemyMove();
     await this.executeEnemyTurn(enemyMove);
+
+    // End-of-turn weather (sandstorm chip + countdown)
+    await this.applyEndOfTurnWeather();
+    if (this.enemyMon.hp <= 0) { await this.handleEnemyFainted(); return; }
 
     if (await this.resolvePlayerFaint()) return;
     this.busy = false;
@@ -1357,6 +1369,13 @@ export default class Battle extends Phaser.Scene {
       return;
     }
 
+    // Weather-setting moves (Rain Dance / Sunny Day / Sandstorm).
+    if (move.category === "status" && move.effect?.weather) {
+      this.setWeather(move.effect.weather);
+      await this.wait(700);
+      return;
+    }
+
     // Any other status move with no implemented effect: just show its message.
     if (move.category === "status") {
       await this.wait(400);
@@ -1365,7 +1384,7 @@ export default class Battle extends Phaser.Scene {
 
     const attackerStages = attacker === this.playerMon ? this.playerStages : this.enemyStages;
     const defenderStages = defender === this.playerMon ? this.playerStages : this.enemyStages;
-    const result = calculateDamage(attacker, defender, moveId, attackerStages, defenderStages);
+    const result = calculateDamage(attacker, defender, moveId, attackerStages, defenderStages, this.weather);
     const moveType = MOVES[moveId]?.type || "normal";
 
     // Show attack animation with type-based effects
@@ -1848,6 +1867,62 @@ export default class Battle extends Phaser.Scene {
       this.playerMon.hp / this.playerMon.maxHp);
     draw(this.enemyHpBar, this.scale.width * 0.7, this.scale.height * 0.3 - 110,
       this.enemyMon.hp / this.enemyMon.maxHp);
+  }
+
+  /** Set the active weather, show a message, and tint the field. */
+  private setWeather(weather: Weather): void {
+    this.weather = weather;
+    this.weatherTurns = 5;
+    const msg: Record<string, string> = {
+      rain: "It started to rain!",
+      sun: "The sunlight turned harsh!",
+      sandstorm: "A sandstorm kicked up!",
+      none: ""
+    };
+    this.setMessage(msg[weather] ?? "");
+    const tint: Record<string, number> = {
+      rain: 0x3b5bdb, sun: 0xf59e0b, sandstorm: 0xb59f6b, none: 0x000000
+    };
+    this.weatherOverlay?.destroy();
+    if (weather !== "none") {
+      this.weatherOverlay = this.add.rectangle(0, 0, this.scale.width, this.scale.height, tint[weather], 0.12)
+        .setOrigin(0).setScrollFactor(0).setDepth(35);
+    }
+  }
+
+  /** End-of-turn weather: sandstorm chip + countdown, clearing when it expires. */
+  private async applyEndOfTurnWeather(): Promise<void> {
+    if (this.weather === "none") return;
+
+    if (this.weather === "sandstorm") {
+      const immune = (m: PokemonInstance) =>
+        m.types.includes("rock") || m.types.includes("ground") || m.types.includes("steel");
+      let chipped = false;
+      for (const m of [this.playerMon, this.enemyMon]) {
+        if (m.hp > 0 && !immune(m)) {
+          m.hp = Math.max(0, m.hp - Math.max(1, Math.floor(m.maxHp / 16)));
+          chipped = true;
+        }
+      }
+      if (chipped) {
+        this.updateHpText();
+        this.setMessage("The sandstorm rages!");
+        await this.wait(500);
+      }
+    }
+
+    this.weatherTurns -= 1;
+    if (this.weatherTurns <= 0) {
+      const ended: Record<string, string> = {
+        rain: "The rain stopped.", sun: "The sunlight faded.",
+        sandstorm: "The sandstorm subsided.", none: ""
+      };
+      this.setMessage(ended[this.weather] ?? "");
+      this.weather = "none";
+      this.weatherOverlay?.destroy();
+      this.weatherOverlay = undefined;
+      await this.wait(500);
+    }
   }
 
   private updatePlayerSprite(): void {

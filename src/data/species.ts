@@ -138,6 +138,7 @@ export const SPECIES: Record<string, SpeciesData> = {
       { moveId: "flamethrower", level: 1 },
       { moveId: "fire-blast", level: 1 },
       { moveId: "fly", level: 1 },
+      { moveId: "sunny-day", level: 42 },
       { moveId: "dragon-claw", level: 50 }
     ],
     catchRate: 45,
@@ -192,6 +193,7 @@ export const SPECIES: Record<string, SpeciesData> = {
       { moveId: "aqua-tail", level: 1 },
       { moveId: "hydro-pump", level: 1 },
       { moveId: "water-pulse", level: 1 },
+      { moveId: "rain-dance", level: 42 },
       { moveId: "ice-beam", level: 50 }
     ],
     catchRate: 45,
@@ -349,7 +351,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     learnableMoves: [
       { moveId: "earthquake", level: 1 },
       { moveId: "stone-edge", level: 1 },
-      { moveId: "rock-slide", level: 1 }
+      { moveId: "rock-slide", level: 1 },
+      { moveId: "sandstorm", level: 40 }
     ],
     catchRate: 45,
     expYield: 223
