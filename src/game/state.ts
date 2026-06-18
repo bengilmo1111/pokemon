@@ -36,6 +36,38 @@ export interface PokemonInstance {
   ivs?: { hp: number; atk: number; def: number; spd: number; spAtk: number; spDef: number };
   /** Friendship 0–255, for friendship-based evolution and flavor. */
   friendship?: number;
+  /** Current PP per move id (max comes from MOVES[id].pp). Lazy-initialized. */
+  pp?: Record<string, number>;
+}
+
+const DEFAULT_PP = 20;
+
+/** Max PP for a move (from the move DB, with a sane fallback). */
+export function getMaxPp(moveId: string): number {
+  return MOVES[moveId]?.pp ?? DEFAULT_PP;
+}
+
+/** Current PP for a move, lazily initialized to its max. */
+export function getMovePp(mon: PokemonInstance, moveId: string): number {
+  if (!mon.pp) mon.pp = {};
+  if (mon.pp[moveId] === undefined) mon.pp[moveId] = getMaxPp(moveId);
+  return mon.pp[moveId];
+}
+
+/** Spend one PP for a move (floored at 0). */
+export function usePp(mon: PokemonInstance, moveId: string): void {
+  const cur = getMovePp(mon, moveId);
+  mon.pp![moveId] = Math.max(0, cur - 1);
+}
+
+/** Whether the Pokémon has any move with PP left. */
+export function hasUsableMove(mon: PokemonInstance): boolean {
+  return mon.moves.some((id) => getMovePp(mon, id) > 0);
+}
+
+/** Restore all PP (clearing the map re-lazy-inits each move to its max). */
+export function restoreAllPp(mon: PokemonInstance): void {
+  mon.pp = {};
 }
 
 export interface WildPokemon {
@@ -417,6 +449,7 @@ export function healTeam(state: GameState): void {
   state.team.forEach((mon) => {
     mon.hp = mon.maxHp;
     mon.status = "none";
+    restoreAllPp(mon);
   });
 }
 

@@ -27,7 +27,11 @@ import {
   markSeen,
   markCaught,
   LevelUpResult,
-  StatusEffect
+  StatusEffect,
+  getMovePp,
+  getMaxPp,
+  usePp,
+  hasUsableMove
 } from "../game/state";
 
 interface BattleData {
@@ -442,21 +446,24 @@ export default class Battle extends Phaser.Scene {
 
     moveIds.forEach((moveId, index) => {
       const move = MOVES[moveId];
-      const label = move ? `${move.name}\n${move.type.toUpperCase()}` : moveId;
+      const pp = getMovePp(this.playerMon, moveId);
+      const maxPp = getMaxPp(moveId);
+      const disabled = pp <= 0;
+      const label = move ? `${move.name}\n${move.type.toUpperCase()}  PP ${pp}/${maxPp}` : moveId;
       const x = colX[index % 2];
       const y = rowY[Math.floor(index / 2)];
       const text = this.add.text(x, y, label, {
         fontFamily: "monospace",
         fontSize: "20px",
-        color: "#f9fafb",
-        backgroundColor: "#374151",
+        color: disabled ? "#6b7280" : "#f9fafb",
+        backgroundColor: disabled ? "#1f2937" : "#374151",
         align: "center",
         fixedWidth: btnWidth,
         padding: { top: 10, bottom: 10 }
       });
-      text.setOrigin(0.5).setDepth(100);
-      text.setInteractive({ useHandCursor: true });
-      text.on("pointerdown", () => this.handleFight(moveId));
+      text.setOrigin(0.5).setDepth(100).setAlpha(disabled ? 0.6 : 1);
+      text.setInteractive({ useHandCursor: !disabled });
+      if (!disabled) text.on("pointerdown", () => this.handleFight(moveId));
 
       // Tooltip on hover
       text.on("pointerover", () => {
@@ -488,6 +495,17 @@ export default class Battle extends Phaser.Scene {
 
       this.moveMenuItems.push(text);
     });
+
+    // If every move is out of PP, offer Struggle.
+    if (!hasUsableMove(this.playerMon)) {
+      const struggle = this.add.text(this.scale.width * 0.5, this.scale.height - 168, "STRUGGLE", {
+        fontFamily: "monospace", fontSize: "20px", color: "#fca5a5",
+        backgroundColor: "#7f1d1d", align: "center",
+        fixedWidth: this.scale.width * 0.6, padding: { top: 10, bottom: 10 }
+      }).setOrigin(0.5).setDepth(100).setInteractive({ useHandCursor: true });
+      struggle.on("pointerdown", () => this.handleFight("struggle"));
+      this.moveMenuItems.push(struggle);
+    }
 
     const backText = this.add.text(this.scale.width * 0.5, this.scale.height - 56, "◀ Back", {
       fontFamily: "monospace",
@@ -1309,6 +1327,9 @@ export default class Battle extends Phaser.Scene {
       return;
     }
 
+    // Spend PP (Struggle has none to spend).
+    if (moveId !== "struggle") usePp(attacker, moveId);
+
     const attackerDisplayName = attacker === this.playerMon ? (attacker.nickname || attacker.name) : attacker.name;
     this.setMessage(`${attackerDisplayName} used ${move.name}!`);
     await this.wait(450);
@@ -1721,8 +1742,9 @@ export default class Battle extends Phaser.Scene {
   }
 
   private pickEnemyMove(): string {
-    const moves = this.enemyMon.moves.filter(m => MOVES[m]);
-    if (moves.length === 0) return this.enemyMon.moves[0] ?? "tackle";
+    // Only moves the enemy still has PP for; Struggle if all are depleted.
+    const moves = this.enemyMon.moves.filter(m => MOVES[m] && getMovePp(this.enemyMon, m) > 0);
+    if (moves.length === 0) return "struggle";
 
     // Simple AI: prefer super-effective moves
     const playerTypes = this.playerMon.types;
