@@ -1,8 +1,10 @@
-import { GameState } from "./state";
+import { GameState, PokemonInstance, calculateStats } from "./state";
+import { SPECIES } from "../data/species";
+import { randomNature } from "../data/natures";
 import { gameState } from "./store";
 
 const SAVE_KEY = "pokemon_game_save";
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 
 interface SaveData {
   version: number;
@@ -32,18 +34,42 @@ export function loadGame(): boolean {
 
     const saveData: SaveData = JSON.parse(saved);
 
-    // Version migration if needed
-    if (saveData.version !== SAVE_VERSION) {
-      console.warn("Save version mismatch, attempting migration...");
-    }
-
     // Copy all properties from saved state to current gameState
     Object.assign(gameState, saveData.state);
+
+    // Version migration: v1 saves predate the special Atk/Def split, natures,
+    // abilities and IVs. Backfill those fields and recompute derived stats so
+    // older teams gain the new attributes without losing progress.
+    if (saveData.version < 2) {
+      migrateToV2(gameState);
+    }
     return true;
   } catch (e) {
     console.error("Failed to load game:", e);
     return false;
   }
+}
+
+/** Backfill v1 Pokémon with nature/IVs/ability and recompute split stats. */
+function migrateToV2(state: GameState): void {
+  const upgrade = (mon: PokemonInstance) => {
+    if (!mon) return;
+    if (!mon.nature) mon.nature = randomNature();
+    if (!mon.ivs) {
+      const r = () => Math.floor(Math.random() * 32);
+      mon.ivs = { hp: r(), atk: r(), def: r(), spd: r(), spAtk: r(), spDef: r() };
+    }
+    if (mon.ability === undefined) mon.ability = SPECIES[mon.speciesId]?.ability;
+    if (mon.friendship === undefined) mon.friendship = 70;
+    // Recompute stats (now including spAtk/spDef), preserving current HP ratio.
+    const ratio = mon.maxHp > 0 ? mon.hp / mon.maxHp : 1;
+    const stats = calculateStats(mon.speciesId, mon.level, mon.ivs, mon.nature);
+    mon.stats = stats;
+    mon.maxHp = stats.hp;
+    mon.hp = Math.max(1, Math.round(stats.hp * ratio));
+  };
+  state.team?.forEach(upgrade);
+  state.box?.forEach(upgrade);
 }
 
 export function hasSaveData(): boolean {

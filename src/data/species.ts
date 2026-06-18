@@ -2,7 +2,14 @@ import { TYPES, TypeId } from "./types";
 
 export interface EvolutionData {
   to: string;
-  level: number;
+  /** Level-up evolution threshold. Omit for item/friendship/trade evolutions. */
+  level?: number;
+  /** Inventory item id that triggers the evolution when used on the Pokémon. */
+  item?: string;
+  /** Friendship threshold (0–255) required to evolve on level-up. */
+  friendship?: number;
+  /** True if this is a trade evolution (emulated via the in-game trader). */
+  trade?: boolean;
 }
 
 export interface LearnableMove {
@@ -14,12 +21,16 @@ export interface SpeciesData {
   id: string;
   name: string;
   types: TypeId[];
-  baseStats: { hp: number; atk: number; def: number; spd: number };
+  // spAtk/spDef are optional: when omitted they fall back to atk/def in
+  // calculateStats, so any species without canonical values keeps working.
+  baseStats: { hp: number; atk: number; def: number; spd: number; spAtk?: number; spDef?: number };
   moves: string[];
   learnableMoves: LearnableMove[];
   catchRate: number;
   evolution?: EvolutionData;
   expYield: number;
+  /** Canonical primary ability id (see data/abilities.ts). */
+  ability?: string;
 }
 
 export const SPECIES: Record<string, SpeciesData> = {
@@ -28,7 +39,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "bulbasaur",
     name: "Bulbasaur",
     types: [TYPES.GRASS, TYPES.POISON],
-    baseStats: { hp: 45, atk: 49, def: 49, spd: 45 },
+    baseStats: { hp: 45, atk: 49, def: 49, spd: 45, spAtk: 65, spDef: 65 },
+    ability: "overgrow",
     moves: ["tackle", "vine-whip"],
     learnableMoves: [
       { moveId: "tackle", level: 1 },
@@ -45,7 +57,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "ivysaur",
     name: "Ivysaur",
     types: [TYPES.GRASS, TYPES.POISON],
-    baseStats: { hp: 60, atk: 62, def: 63, spd: 60 },
+    baseStats: { hp: 60, atk: 62, def: 63, spd: 60, spAtk: 80, spDef: 80 },
+    ability: "overgrow",
     moves: ["vine-whip", "razor-leaf", "poison-powder"],
     learnableMoves: [
       { moveId: "vine-whip", level: 1 },
@@ -62,7 +75,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "venusaur",
     name: "Venusaur",
     types: [TYPES.GRASS, TYPES.POISON],
-    baseStats: { hp: 80, atk: 82, def: 83, spd: 80 },
+    baseStats: { hp: 80, atk: 82, def: 83, spd: 80, spAtk: 100, spDef: 100 },
+    ability: "overgrow",
     moves: ["energy-ball", "petal-blizzard", "razor-leaf", "poison-powder"],
     learnableMoves: [
       { moveId: "energy-ball", level: 1 },
@@ -79,7 +93,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "charmander",
     name: "Charmander",
     types: [TYPES.FIRE],
-    baseStats: { hp: 39, atk: 52, def: 43, spd: 65 },
+    baseStats: { hp: 39, atk: 52, def: 43, spd: 65, spAtk: 60, spDef: 50 },
+    ability: "blaze",
     moves: ["scratch", "ember"],
     learnableMoves: [
       { moveId: "scratch", level: 1 },
@@ -96,7 +111,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "charmeleon",
     name: "Charmeleon",
     types: [TYPES.FIRE],
-    baseStats: { hp: 58, atk: 64, def: 58, spd: 80 },
+    baseStats: { hp: 58, atk: 64, def: 58, spd: 80, spAtk: 80, spDef: 65 },
+    ability: "blaze",
     moves: ["ember", "fire-fang", "slash"],
     learnableMoves: [
       { moveId: "ember", level: 1 },
@@ -113,7 +129,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "charizard",
     name: "Charizard",
     types: [TYPES.FIRE, TYPES.FLYING],
-    baseStats: { hp: 78, atk: 84, def: 78, spd: 100 },
+    baseStats: { hp: 78, atk: 84, def: 78, spd: 100, spAtk: 109, spDef: 85 },
+    ability: "blaze",
     moves: ["flamethrower", "fire-blast", "fly", "slash"],
     learnableMoves: [
       { moveId: "flamethrower", level: 1 },
@@ -130,7 +147,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "squirtle",
     name: "Squirtle",
     types: [TYPES.WATER],
-    baseStats: { hp: 44, atk: 48, def: 65, spd: 43 },
+    baseStats: { hp: 44, atk: 48, def: 65, spd: 43, spAtk: 50, spDef: 64 },
+    ability: "torrent",
     moves: ["tackle", "water-gun"],
     learnableMoves: [
       { moveId: "tackle", level: 1 },
@@ -147,7 +165,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "wartortle",
     name: "Wartortle",
     types: [TYPES.WATER],
-    baseStats: { hp: 59, atk: 63, def: 80, spd: 58 },
+    baseStats: { hp: 59, atk: 63, def: 80, spd: 58, spAtk: 65, spDef: 80 },
+    ability: "torrent",
     moves: ["water-gun", "water-pulse", "bite"],
     learnableMoves: [
       { moveId: "water-gun", level: 1 },
@@ -164,7 +183,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "blastoise",
     name: "Blastoise",
     types: [TYPES.WATER],
-    baseStats: { hp: 79, atk: 83, def: 100, spd: 78 },
+    baseStats: { hp: 79, atk: 83, def: 100, spd: 78, spAtk: 85, spDef: 105 },
+    ability: "torrent",
     moves: ["aqua-tail", "hydro-pump", "water-pulse", "bite"],
     learnableMoves: [
       { moveId: "aqua-tail", level: 1 },
@@ -181,7 +201,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "pichu",
     name: "Pichu",
     types: [TYPES.ELECTRIC],
-    baseStats: { hp: 20, atk: 40, def: 15, spd: 60 },
+    baseStats: { hp: 20, atk: 40, def: 15, spd: 60, spAtk: 35, spDef: 35 },
+    ability: "static",
     moves: ["thunder-shock", "tail-whip"],
     learnableMoves: [
       { moveId: "thunder-shock", level: 1 },
@@ -196,7 +217,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "pikachu",
     name: "Pikachu",
     types: [TYPES.ELECTRIC],
-    baseStats: { hp: 35, atk: 55, def: 40, spd: 90 },
+    baseStats: { hp: 35, atk: 55, def: 40, spd: 90, spAtk: 50, spDef: 50 },
+    ability: "static",
     moves: ["thunder-shock", "spark", "quick-attack"],
     learnableMoves: [
       { moveId: "thunder-shock", level: 1 },
@@ -213,7 +235,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "raichu",
     name: "Raichu",
     types: [TYPES.ELECTRIC],
-    baseStats: { hp: 60, atk: 90, def: 55, spd: 110 },
+    baseStats: { hp: 60, atk: 90, def: 55, spd: 110, spAtk: 90, spDef: 80 },
+    ability: "static",
     moves: ["thunderbolt", "thunder", "quick-attack", "spark"],
     learnableMoves: [
       { moveId: "thunderbolt", level: 1 },
@@ -229,7 +252,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "pidgey",
     name: "Pidgey",
     types: [TYPES.NORMAL, TYPES.FLYING],
-    baseStats: { hp: 40, atk: 45, def: 40, spd: 56 },
+    baseStats: { hp: 40, atk: 45, def: 40, spd: 56, spAtk: 35, spDef: 35 },
+    ability: "keen",
     moves: ["tackle", "gust"],
     learnableMoves: [
       { moveId: "tackle", level: 1 },
@@ -246,7 +270,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "pidgeotto",
     name: "Pidgeotto",
     types: [TYPES.NORMAL, TYPES.FLYING],
-    baseStats: { hp: 63, atk: 60, def: 55, spd: 71 },
+    baseStats: { hp: 63, atk: 60, def: 55, spd: 71, spAtk: 50, spDef: 50 },
+    ability: "keen",
     moves: ["gust", "quick-attack", "wing-attack"],
     learnableMoves: [
       { moveId: "gust", level: 1 },
@@ -263,7 +288,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "pidgeot",
     name: "Pidgeot",
     types: [TYPES.NORMAL, TYPES.FLYING],
-    baseStats: { hp: 83, atk: 80, def: 75, spd: 101 },
+    baseStats: { hp: 83, atk: 80, def: 75, spd: 101, spAtk: 70, spDef: 70 },
+    ability: "keen",
     moves: ["fly", "air-slash", "wing-attack", "quick-attack"],
     learnableMoves: [
       { moveId: "fly", level: 1 },
@@ -280,7 +306,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "geodude",
     name: "Geodude",
     types: [TYPES.ROCK, TYPES.GROUND],
-    baseStats: { hp: 40, atk: 80, def: 100, spd: 20 },
+    baseStats: { hp: 40, atk: 80, def: 100, spd: 20, spAtk: 30, spDef: 30 },
+    ability: "sturdy",
     moves: ["tackle", "rock-throw"],
     learnableMoves: [
       { moveId: "tackle", level: 1 },
@@ -296,7 +323,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "graveler",
     name: "Graveler",
     types: [TYPES.ROCK, TYPES.GROUND],
-    baseStats: { hp: 55, atk: 95, def: 115, spd: 35 },
+    baseStats: { hp: 55, atk: 95, def: 115, spd: 35, spAtk: 45, spDef: 45 },
+    ability: "sturdy",
     moves: ["rock-throw", "rock-slide", "magnitude"],
     learnableMoves: [
       { moveId: "rock-throw", level: 1 },
@@ -313,7 +341,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "golem",
     name: "Golem",
     types: [TYPES.ROCK, TYPES.GROUND],
-    baseStats: { hp: 80, atk: 120, def: 130, spd: 45 },
+    baseStats: { hp: 80, atk: 120, def: 130, spd: 45, spAtk: 55, spDef: 65 },
+    ability: "sturdy",
     moves: ["earthquake", "stone-edge", "rock-slide", "magnitude"],
     learnableMoves: [
       { moveId: "earthquake", level: 1 },
@@ -329,7 +358,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "caterpie",
     name: "Caterpie",
     types: [TYPES.BUG],
-    baseStats: { hp: 45, atk: 30, def: 35, spd: 45 },
+    baseStats: { hp: 45, atk: 30, def: 35, spd: 45, spAtk: 20, spDef: 20 },
     moves: ["tackle", "string-shot"],
     learnableMoves: [
       { moveId: "tackle", level: 1 },
@@ -344,7 +373,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "metapod",
     name: "Metapod",
     types: [TYPES.BUG],
-    baseStats: { hp: 50, atk: 20, def: 55, spd: 30 },
+    baseStats: { hp: 50, atk: 20, def: 55, spd: 30, spAtk: 25, spDef: 25 },
     moves: ["tackle", "harden"],
     learnableMoves: [
       { moveId: "tackle", level: 1 },
@@ -358,7 +387,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "butterfree",
     name: "Butterfree",
     types: [TYPES.BUG, TYPES.FLYING],
-    baseStats: { hp: 60, atk: 45, def: 50, spd: 70 },
+    baseStats: { hp: 60, atk: 45, def: 50, spd: 70, spAtk: 90, spDef: 80 },
     moves: ["gust", "confusion", "sleep-powder", "psybeam"],
     learnableMoves: [
       { moveId: "gust", level: 1 },
@@ -374,7 +403,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "weedle",
     name: "Weedle",
     types: [TYPES.BUG, TYPES.POISON],
-    baseStats: { hp: 40, atk: 35, def: 30, spd: 50 },
+    baseStats: { hp: 40, atk: 35, def: 30, spd: 50, spAtk: 20, spDef: 20 },
     moves: ["poison-sting", "string-shot"],
     learnableMoves: [
       { moveId: "poison-sting", level: 1 },
@@ -389,7 +418,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "kakuna",
     name: "Kakuna",
     types: [TYPES.BUG, TYPES.POISON],
-    baseStats: { hp: 45, atk: 25, def: 50, spd: 35 },
+    baseStats: { hp: 45, atk: 25, def: 50, spd: 35, spAtk: 25, spDef: 25 },
     moves: ["poison-sting", "harden"],
     learnableMoves: [
       { moveId: "poison-sting", level: 1 },
@@ -403,7 +432,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "beedrill",
     name: "Beedrill",
     types: [TYPES.BUG, TYPES.POISON],
-    baseStats: { hp: 65, atk: 90, def: 40, spd: 75 },
+    baseStats: { hp: 65, atk: 90, def: 40, spd: 75, spAtk: 45, spDef: 80 },
+    ability: "swarm",
     moves: ["poison-jab", "x-scissor", "fury-attack", "twineedle"],
     learnableMoves: [
       { moveId: "poison-jab", level: 1 },
@@ -420,7 +450,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "rattata",
     name: "Rattata",
     types: [TYPES.NORMAL],
-    baseStats: { hp: 30, atk: 56, def: 35, spd: 72 },
+    baseStats: { hp: 30, atk: 56, def: 35, spd: 72, spAtk: 25, spDef: 35 },
+    ability: "guts",
     moves: ["tackle", "quick-attack"],
     learnableMoves: [
       { moveId: "tackle", level: 1 },
@@ -436,7 +467,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "raticate",
     name: "Raticate",
     types: [TYPES.NORMAL],
-    baseStats: { hp: 55, atk: 81, def: 60, spd: 97 },
+    baseStats: { hp: 55, atk: 81, def: 60, spd: 97, spAtk: 50, spDef: 70 },
+    ability: "guts",
     moves: ["quick-attack", "bite", "hyper-fang", "crunch"],
     learnableMoves: [
       { moveId: "quick-attack", level: 1 },
@@ -451,7 +483,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "eevee",
     name: "Eevee",
     types: [TYPES.NORMAL],
-    baseStats: { hp: 55, atk: 55, def: 50, spd: 55 },
+    baseStats: { hp: 55, atk: 55, def: 50, spd: 55, spAtk: 45, spDef: 65 },
     moves: ["tackle", "quick-attack", "bite"],
     learnableMoves: [
       { moveId: "tackle", level: 1 },
@@ -467,7 +499,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "flareon",
     name: "Flareon",
     types: [TYPES.FIRE],
-    baseStats: { hp: 65, atk: 130, def: 60, spd: 65 },
+    baseStats: { hp: 65, atk: 130, def: 60, spd: 65, spAtk: 95, spDef: 110 },
+    ability: "flash-fire",
     moves: ["flamethrower", "fire-fang", "quick-attack", "bite"],
     learnableMoves: [
       { moveId: "flamethrower", level: 1 },
@@ -483,7 +516,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "nidoran_f",
     name: "Nidoran F",
     types: [TYPES.POISON],
-    baseStats: { hp: 55, atk: 47, def: 52, spd: 41 },
+    baseStats: { hp: 55, atk: 47, def: 52, spd: 41, spAtk: 40, spDef: 40 },
     moves: ["scratch", "poison-sting"],
     learnableMoves: [
       { moveId: "scratch", level: 1 },
@@ -499,7 +532,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "nidorina",
     name: "Nidorina",
     types: [TYPES.POISON],
-    baseStats: { hp: 70, atk: 62, def: 67, spd: 56 },
+    baseStats: { hp: 70, atk: 62, def: 67, spd: 56, spAtk: 55, spDef: 55 },
     moves: ["poison-sting", "bite", "poison-jab"],
     learnableMoves: [
       { moveId: "poison-sting", level: 1 },
@@ -515,7 +548,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "nidoqueen",
     name: "Nidoqueen",
     types: [TYPES.POISON, TYPES.GROUND],
-    baseStats: { hp: 90, atk: 92, def: 87, spd: 76 },
+    baseStats: { hp: 90, atk: 92, def: 87, spd: 76, spAtk: 75, spDef: 85 },
     moves: ["poison-jab", "earthquake", "crunch", "body-slam"],
     learnableMoves: [
       { moveId: "poison-jab", level: 1 },
@@ -529,7 +562,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "nidoran_m",
     name: "Nidoran M",
     types: [TYPES.POISON],
-    baseStats: { hp: 46, atk: 57, def: 40, spd: 50 },
+    baseStats: { hp: 46, atk: 57, def: 40, spd: 50, spAtk: 40, spDef: 40 },
     moves: ["peck", "poison-sting"],
     learnableMoves: [
       { moveId: "peck", level: 1 },
@@ -545,7 +578,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "nidorino",
     name: "Nidorino",
     types: [TYPES.POISON],
-    baseStats: { hp: 61, atk: 72, def: 57, spd: 65 },
+    baseStats: { hp: 61, atk: 72, def: 57, spd: 65, spAtk: 55, spDef: 55 },
     moves: ["poison-sting", "horn-attack", "poison-jab"],
     learnableMoves: [
       { moveId: "poison-sting", level: 1 },
@@ -561,7 +594,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "nidoking",
     name: "Nidoking",
     types: [TYPES.POISON, TYPES.GROUND],
-    baseStats: { hp: 81, atk: 102, def: 77, spd: 85 },
+    baseStats: { hp: 81, atk: 102, def: 77, spd: 85, spAtk: 85, spDef: 75 },
     moves: ["poison-jab", "earthquake", "megahorn", "thrash"],
     learnableMoves: [
       { moveId: "poison-jab", level: 1 },
@@ -577,7 +610,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "abra",
     name: "Abra",
     types: [TYPES.PSYCHIC],
-    baseStats: { hp: 25, atk: 20, def: 15, spd: 90 },
+    baseStats: { hp: 25, atk: 20, def: 15, spd: 90, spAtk: 105, spDef: 55 },
     moves: ["confusion"],
     learnableMoves: [
       { moveId: "confusion", level: 1 },
@@ -591,7 +624,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "kadabra",
     name: "Kadabra",
     types: [TYPES.PSYCHIC],
-    baseStats: { hp: 40, atk: 35, def: 30, spd: 105 },
+    baseStats: { hp: 40, atk: 35, def: 30, spd: 105, spAtk: 120, spDef: 70 },
     moves: ["confusion", "psybeam", "psychic"],
     learnableMoves: [
       { moveId: "confusion", level: 1 },
@@ -606,7 +639,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "alakazam",
     name: "Alakazam",
     types: [TYPES.PSYCHIC],
-    baseStats: { hp: 55, atk: 50, def: 45, spd: 120 },
+    baseStats: { hp: 55, atk: 50, def: 45, spd: 120, spAtk: 135, spDef: 95 },
     moves: ["psychic", "psybeam", "shadow-ball", "dazzling-gleam"],
     learnableMoves: [
       { moveId: "psychic", level: 1 },
@@ -622,7 +655,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "gastly",
     name: "Gastly",
     types: [TYPES.GHOST, TYPES.POISON],
-    baseStats: { hp: 30, atk: 35, def: 30, spd: 80 },
+    baseStats: { hp: 30, atk: 35, def: 30, spd: 80, spAtk: 100, spDef: 35 },
+    ability: "levitate",
     moves: ["lick", "confuse-ray"],
     learnableMoves: [
       { moveId: "lick", level: 1 },
@@ -637,7 +671,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "haunter",
     name: "Haunter",
     types: [TYPES.GHOST, TYPES.POISON],
-    baseStats: { hp: 45, atk: 50, def: 45, spd: 95 },
+    baseStats: { hp: 45, atk: 50, def: 45, spd: 95, spAtk: 115, spDef: 55 },
+    ability: "levitate",
     moves: ["lick", "shadow-ball", "confuse-ray"],
     learnableMoves: [
       { moveId: "lick", level: 1 },
@@ -653,7 +688,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "gengar",
     name: "Gengar",
     types: [TYPES.GHOST, TYPES.POISON],
-    baseStats: { hp: 60, atk: 65, def: 60, spd: 110 },
+    baseStats: { hp: 60, atk: 65, def: 60, spd: 110, spAtk: 130, spDef: 75 },
+    ability: "levitate",
     moves: ["shadow-ball", "sludge-bomb", "dream-eater", "confuse-ray"],
     learnableMoves: [
       { moveId: "shadow-ball", level: 1 },
@@ -669,7 +705,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "machop",
     name: "Machop",
     types: [TYPES.FIGHTING],
-    baseStats: { hp: 70, atk: 80, def: 50, spd: 35 },
+    baseStats: { hp: 70, atk: 80, def: 50, spd: 35, spAtk: 35, spDef: 35 },
+    ability: "guts",
     moves: ["karate-chop", "low-kick"],
     learnableMoves: [
       { moveId: "karate-chop", level: 1 },
@@ -685,7 +722,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "machoke",
     name: "Machoke",
     types: [TYPES.FIGHTING],
-    baseStats: { hp: 80, atk: 100, def: 70, spd: 45 },
+    baseStats: { hp: 80, atk: 100, def: 70, spd: 45, spAtk: 50, spDef: 60 },
+    ability: "guts",
     moves: ["karate-chop", "brick-break", "cross-chop"],
     learnableMoves: [
       { moveId: "karate-chop", level: 1 },
@@ -701,7 +739,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "machamp",
     name: "Machamp",
     types: [TYPES.FIGHTING],
-    baseStats: { hp: 90, atk: 130, def: 80, spd: 55 },
+    baseStats: { hp: 90, atk: 130, def: 80, spd: 55, spAtk: 65, spDef: 85 },
+    ability: "guts",
     moves: ["cross-chop", "dynamic-punch", "brick-break", "earthquake"],
     learnableMoves: [
       { moveId: "cross-chop", level: 1 },
@@ -717,7 +756,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "dratini",
     name: "Dratini",
     types: [TYPES.DRAGON],
-    baseStats: { hp: 41, atk: 64, def: 45, spd: 50 },
+    baseStats: { hp: 41, atk: 64, def: 45, spd: 50, spAtk: 50, spDef: 50 },
     moves: ["twister", "dragon-rage"],
     learnableMoves: [
       { moveId: "twister", level: 1 },
@@ -733,7 +772,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "dragonair",
     name: "Dragonair",
     types: [TYPES.DRAGON],
-    baseStats: { hp: 61, atk: 84, def: 65, spd: 70 },
+    baseStats: { hp: 61, atk: 84, def: 65, spd: 70, spAtk: 70, spDef: 70 },
     moves: ["dragon-rage", "dragon-breath", "dragon-claw"],
     learnableMoves: [
       { moveId: "dragon-rage", level: 1 },
@@ -749,7 +788,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "dragonite",
     name: "Dragonite",
     types: [TYPES.DRAGON, TYPES.FLYING],
-    baseStats: { hp: 91, atk: 134, def: 95, spd: 80 },
+    baseStats: { hp: 91, atk: 134, def: 95, spd: 80, spAtk: 100, spDef: 100 },
+    ability: "intimidate",
     moves: ["outrage", "dragon-claw", "fly", "thunder-punch"],
     learnableMoves: [
       { moveId: "outrage", level: 1 },
@@ -766,7 +806,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "seel",
     name: "Seel",
     types: [TYPES.WATER],
-    baseStats: { hp: 65, atk: 45, def: 55, spd: 45 },
+    baseStats: { hp: 65, atk: 45, def: 55, spd: 45, spAtk: 45, spDef: 70 },
+    ability: "thick-fat",
     moves: ["water-gun", "icy-wind"],
     learnableMoves: [
       { moveId: "water-gun", level: 1 },
@@ -782,7 +823,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "dewgong",
     name: "Dewgong",
     types: [TYPES.WATER, TYPES.ICE],
-    baseStats: { hp: 90, atk: 70, def: 80, spd: 70 },
+    baseStats: { hp: 90, atk: 70, def: 80, spd: 70, spAtk: 70, spDef: 95 },
+    ability: "thick-fat",
     moves: ["ice-beam", "aurora-beam", "aqua-tail", "icy-wind"],
     learnableMoves: [
       { moveId: "ice-beam", level: 1 },
@@ -799,7 +841,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "articuno",
     name: "Articuno",
     types: [TYPES.ICE, TYPES.FLYING],
-    baseStats: { hp: 90, atk: 85, def: 100, spd: 85 },
+    baseStats: { hp: 90, atk: 85, def: 100, spd: 85, spAtk: 95, spDef: 125 },
     moves: ["ice-beam", "blizzard", "fly", "ancient-power"],
     learnableMoves: [
       { moveId: "ice-beam", level: 1 },
@@ -813,7 +855,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "zapdos",
     name: "Zapdos",
     types: [TYPES.ELECTRIC, TYPES.FLYING],
-    baseStats: { hp: 90, atk: 90, def: 85, spd: 100 },
+    baseStats: { hp: 90, atk: 90, def: 85, spd: 100, spAtk: 125, spDef: 90 },
     moves: ["thunderbolt", "thunder", "fly", "ancient-power"],
     learnableMoves: [
       { moveId: "thunderbolt", level: 1 },
@@ -827,7 +869,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "moltres",
     name: "Moltres",
     types: [TYPES.FIRE, TYPES.FLYING],
-    baseStats: { hp: 90, atk: 100, def: 90, spd: 90 },
+    baseStats: { hp: 90, atk: 100, def: 90, spd: 90, spAtk: 125, spDef: 85 },
     moves: ["flamethrower", "fire-blast", "fly", "ancient-power"],
     learnableMoves: [
       { moveId: "flamethrower", level: 1 },
@@ -843,7 +885,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "clefairy",
     name: "Clefairy",
     types: [TYPES.FAIRY],
-    baseStats: { hp: 70, atk: 45, def: 48, spd: 35 },
+    baseStats: { hp: 70, atk: 45, def: 48, spd: 35, spAtk: 60, spDef: 65 },
     moves: ["pound", "disarming-voice"],
     learnableMoves: [
       { moveId: "pound", level: 1 },
@@ -859,7 +901,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "clefable",
     name: "Clefable",
     types: [TYPES.FAIRY],
-    baseStats: { hp: 95, atk: 70, def: 73, spd: 60 },
+    baseStats: { hp: 95, atk: 70, def: 73, spd: 60, spAtk: 95, spDef: 90 },
     moves: ["moonblast", "dazzling-gleam", "disarming-voice", "pound"],
     learnableMoves: [
       { moveId: "moonblast", level: 1 },
@@ -872,7 +914,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "jigglypuff",
     name: "Jigglypuff",
     types: [TYPES.NORMAL, TYPES.FAIRY],
-    baseStats: { hp: 115, atk: 45, def: 20, spd: 20 },
+    baseStats: { hp: 115, atk: 45, def: 20, spd: 20, spAtk: 45, spDef: 25 },
     moves: ["pound", "sing", "disarming-voice"],
     learnableMoves: [
       { moveId: "pound", level: 1 },
@@ -888,7 +930,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "wigglytuff",
     name: "Wigglytuff",
     types: [TYPES.NORMAL, TYPES.FAIRY],
-    baseStats: { hp: 140, atk: 70, def: 45, spd: 45 },
+    baseStats: { hp: 140, atk: 70, def: 45, spd: 45, spAtk: 85, spDef: 50 },
     moves: ["dazzling-gleam", "disarming-voice", "body-slam", "sing"],
     learnableMoves: [
       { moveId: "dazzling-gleam", level: 1 },
@@ -904,7 +946,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "diglett",
     name: "Diglett",
     types: [TYPES.GROUND],
-    baseStats: { hp: 10, atk: 55, def: 25, spd: 95 },
+    baseStats: { hp: 10, atk: 55, def: 25, spd: 95, spAtk: 35, spDef: 45 },
     moves: ["scratch", "mud-slap"],
     learnableMoves: [
       { moveId: "scratch", level: 1 },
@@ -920,7 +962,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "dugtrio",
     name: "Dugtrio",
     types: [TYPES.GROUND],
-    baseStats: { hp: 35, atk: 100, def: 50, spd: 120 },
+    baseStats: { hp: 35, atk: 100, def: 50, spd: 120, spAtk: 50, spDef: 70 },
     moves: ["earthquake", "dig", "slash", "mud-slap"],
     learnableMoves: [
       { moveId: "earthquake", level: 1 },
@@ -936,7 +978,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "magikarp",
     name: "Magikarp",
     types: [TYPES.WATER],
-    baseStats: { hp: 20, atk: 10, def: 55, spd: 80 },
+    baseStats: { hp: 20, atk: 10, def: 55, spd: 80, spAtk: 15, spDef: 20 },
     moves: ["splash", "tackle"],
     learnableMoves: [
       { moveId: "splash", level: 1 },
@@ -950,7 +992,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "gyarados",
     name: "Gyarados",
     types: [TYPES.WATER, TYPES.FLYING],
-    baseStats: { hp: 95, atk: 125, def: 79, spd: 81 },
+    baseStats: { hp: 95, atk: 125, def: 79, spd: 81, spAtk: 60, spDef: 100 },
+    ability: "intimidate",
     moves: ["hydro-pump", "dragon-rage", "bite", "thrash"],
     learnableMoves: [
       { moveId: "hydro-pump", level: 1 },
@@ -965,7 +1008,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "lapras",
     name: "Lapras",
     types: [TYPES.WATER, TYPES.ICE],
-    baseStats: { hp: 130, atk: 85, def: 80, spd: 60 },
+    baseStats: { hp: 130, atk: 85, def: 80, spd: 60, spAtk: 85, spDef: 95 },
+    ability: "water-absorb",
     moves: ["ice-beam", "hydro-pump", "body-slam", "sing"],
     learnableMoves: [
       { moveId: "ice-beam", level: 1 },
@@ -980,7 +1024,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "psyduck",
     name: "Psyduck",
     types: [TYPES.WATER],
-    baseStats: { hp: 50, atk: 52, def: 48, spd: 55 },
+    baseStats: { hp: 50, atk: 52, def: 48, spd: 55, spAtk: 65, spDef: 50 },
     moves: ["water-gun", "confusion", "scratch"],
     learnableMoves: [
       { moveId: "water-gun", level: 1 },
@@ -996,7 +1040,7 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "golduck",
     name: "Golduck",
     types: [TYPES.WATER],
-    baseStats: { hp: 80, atk: 82, def: 78, spd: 85 },
+    baseStats: { hp: 80, atk: 82, def: 78, spd: 85, spAtk: 95, spDef: 80 },
     moves: ["hydro-pump", "psychic", "confusion", "water-gun"],
     learnableMoves: [
       { moveId: "hydro-pump", level: 1 },
@@ -1012,7 +1056,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "magnemite",
     name: "Magnemite",
     types: [TYPES.ELECTRIC, TYPES.STEEL],
-    baseStats: { hp: 25, atk: 35, def: 70, spd: 45 },
+    baseStats: { hp: 25, atk: 35, def: 70, spd: 45, spAtk: 95, spDef: 55 },
+    ability: "sturdy",
     moves: ["thunder-shock", "tackle"],
     learnableMoves: [
       { moveId: "thunder-shock", level: 1 },
@@ -1028,7 +1073,8 @@ export const SPECIES: Record<string, SpeciesData> = {
     id: "magneton",
     name: "Magneton",
     types: [TYPES.ELECTRIC, TYPES.STEEL],
-    baseStats: { hp: 50, atk: 60, def: 95, spd: 70 },
+    baseStats: { hp: 50, atk: 60, def: 95, spd: 70, spAtk: 120, spDef: 70 },
+    ability: "sturdy",
     moves: ["thunderbolt", "flash-cannon", "spark", "thunder-shock"],
     learnableMoves: [
       { moveId: "thunderbolt", level: 1 },
@@ -1045,8 +1091,10 @@ export function getSpecies(id: string): SpeciesData | undefined {
 }
 
 export function canEvolve(speciesId: string, level: number): boolean {
-  const species = SPECIES[speciesId];
-  return !!(species?.evolution && level >= species.evolution.level);
+  const evo = SPECIES[speciesId]?.evolution;
+  // Only level-up evolutions trigger automatically on level gain. Item/trade/
+  // friendship evolutions are handled separately.
+  return !!(evo && evo.level !== undefined && level >= evo.level);
 }
 
 export function getEvolution(speciesId: string): string | undefined {

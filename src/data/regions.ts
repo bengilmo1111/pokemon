@@ -1,4 +1,5 @@
 import { BIOMES } from "./biomes";
+import { TypeId } from "./types";
 
 export interface ZoneData {
   id: string;
@@ -20,6 +21,12 @@ export interface GymData {
   leader: string;
   badge: string;
   team: { speciesId: string; level: number }[];
+  /** Specialist type, for flavor/UI. */
+  type?: TypeId;
+  /** Leader title shown before the name, e.g. "the Rock-Solid". */
+  title?: string;
+  /** Trainer sprite key (assets/trainers) for the leader. */
+  sprite?: string;
 }
 
 export interface TownData {
@@ -80,80 +87,181 @@ export interface RegionData {
 
 export const REGIONS: RegionData[] = [
   {
-    id: "aurora",
-    name: "Aurora Vale",
+    id: "kanto",
+    name: "Kanto",
     zones: [
-      { id: "route-1", name: "Route 1", biome: "plains", x: -42, y: 6, r: 22, shape: "ellipse", rotation: 30 },
-      { id: "verdant", name: "Verdant Forest", biome: "forest", x: -26, y: 26, r: 18, shape: "blob" },
-      { id: "crystal", name: "Crystal Cavern", biome: "cave", x: 8, y: 10, r: 16, shape: "rounded" },
-      { id: "mirror", name: "Mirror Lake", biome: "lake", x: 12, y: -10, r: 16, shape: "ellipse", rotation: -20 },
-      { id: "frost", name: "Frost Tundra", biome: "tundra", x: -8, y: 44, r: 18, shape: "blob" },
-      { id: "dunes", name: "Sunbaked Dunes", biome: "desert", x: 42, y: -6, r: 20, shape: "ellipse", rotation: 45 },
-      { id: "peaks", name: "Highridge Peaks", biome: "mountain", x: 30, y: 30, r: 18, shape: "rounded" }
+      { id: "route-1", name: "Route 1", biome: "plains", x: -40, y: 20, r: 18, shape: "ellipse", rotation: 30 },
+      { id: "viridian-forest", name: "Viridian Forest", biome: "forest", x: -38, y: -2, r: 18, shape: "blob" },
+      { id: "mt-moon", name: "Mt. Moon", biome: "cave", x: -14, y: -22, r: 16, shape: "rounded" },
+      { id: "cerulean-cape", name: "Cerulean Cape", biome: "lake", x: 6, y: -26, r: 16, shape: "ellipse", rotation: -20 },
+      { id: "rock-tunnel", name: "Rock Tunnel", biome: "cave", x: 22, y: -16, r: 14, shape: "rounded" },
+      { id: "power-plant", name: "Power Plant", biome: "powerplant", x: 30, y: -4, r: 14, shape: "rounded" },
+      { id: "pokemon-tower", name: "Pokémon Tower", biome: "ruins", x: 26, y: 6, r: 13, shape: "rounded" },
+      { id: "safari-zone", name: "Safari Zone", biome: "marsh", x: -4, y: 30, r: 18, shape: "blob" },
+      { id: "seafoam", name: "Seafoam Islands", biome: "tundra", x: -16, y: 40, r: 14, shape: "blob" },
+      { id: "cinnabar-volcano", name: "Cinnabar Volcano", biome: "volcano", x: 2, y: 46, r: 14, shape: "rounded" },
+      { id: "victory-road", name: "Victory Road", biome: "mountain", x: 40, y: 28, r: 16, shape: "rounded" }
     ],
     towns: [
-      { id: "sprout", name: "Sprout Town", x: -46, y: -2, services: ["center", "mart"] },
-      { id: "lumen", name: "Lumen City", x: 2, y: 2, services: ["center", "mart", "school"] },
-      { id: "ridge", name: "Ridgepost", x: 36, y: 22, services: ["center", "mart"] }
+      { id: "pallet", name: "Pallet Town", x: -44, y: 30, services: ["center", "mart"] },
+      { id: "viridian", name: "Viridian City", x: -42, y: 10, services: ["center", "mart"] },
+      { id: "pewter", name: "Pewter City", x: -26, y: -14, services: ["center", "mart"] },
+      { id: "cerulean", name: "Cerulean City", x: 0, y: -20, services: ["center", "mart"] },
+      { id: "vermilion", name: "Vermilion City", x: 6, y: -2, services: ["center", "mart", "school"] },
+      { id: "lavender", name: "Lavender Town", x: 30, y: 2, services: ["center"] },
+      { id: "celadon", name: "Celadon City", x: 14, y: 8, services: ["center", "mart", "school"] },
+      { id: "saffron", name: "Saffron City", x: 16, y: -6, services: ["center", "mart"] },
+      { id: "fuchsia", name: "Fuchsia City", x: 4, y: 22, services: ["center", "mart"] },
+      { id: "cinnabar", name: "Cinnabar Island", x: -6, y: 44, services: ["center", "mart"] }
     ],
     landmarks: [
-      { id: "ember-ruins", name: "Ember Ruins", x: 24, y: -20, color: 0xff9248 },
-      { id: "old-tower", name: "Old Watchtower", x: -20, y: 38, color: 0xa3a3a3 },
-      { id: "spark-plant", name: "Spark Plant", x: 50, y: 10, color: 0x60a5fa }
+      { id: "indigo-plateau", name: "Indigo Plateau", x: 46, y: 34, color: 0xffd700 },
+      { id: "silph-co", name: "Silph Co.", x: 18, y: -8, color: 0x60a5fa },
+      { id: "game-corner", name: "Celadon Game Corner", x: 12, y: 10, color: 0xff5277 },
+      { id: "pokemon-mansion", name: "Pokémon Mansion", x: -8, y: 46, color: 0xa3a3a3 }
     ],
     routes: [
-      { id: "route-a", name: "Route A", from: "sprout", to: "lumen", color: 0xf9fafb },
-      { id: "route-b", name: "Route B", from: "lumen", to: "ridge", color: 0xf9fafb },
-      { id: "route-c", name: "Route C", from: "lumen", to: "old-tower", color: 0xf9fafb }
+      { id: "route-1r", name: "Route 1", from: "pallet", to: "viridian", color: 0xf9fafb },
+      { id: "route-2r", name: "Route 2", from: "viridian", to: "pewter", color: 0xf9fafb },
+      { id: "route-4r", name: "Route 4", from: "pewter", to: "cerulean", color: 0xf9fafb },
+      { id: "route-6r", name: "Route 6", from: "saffron", to: "vermilion", color: 0xf9fafb },
+      { id: "route-7r", name: "Route 7", from: "celadon", to: "saffron", color: 0xf9fafb }
     ],
     gyms: [
       {
-        id: "ember-gym",
-        name: "Ember Gym",
-        x: 26,
-        y: -14,
-        color: 0xff0055,
-        leader: "Kai",
-        badge: "Ember Badge",
+        id: "pewter-gym",
+        name: "Pewter Gym",
+        x: -24, y: -16,
+        color: 0xb8a038,
+        leader: "Brock",
+        title: "the Rock-Solid",
+        type: "rock",
+        sprite: "trainer-brock",
+        badge: "Boulder Badge",
         team: [
-          { speciesId: "charmander", level: 8 },
-          { speciesId: "geodude", level: 10 }
+          { speciesId: "geodude", level: 11 },
+          { speciesId: "graveler", level: 13 }
         ]
       },
       {
-        id: "glacier-gym",
-        name: "Glacier Gym",
-        x: -10,
-        y: 36,
-        color: 0x00d1ff,
-        leader: "Nari",
-        badge: "Frost Badge",
+        id: "cerulean-gym",
+        name: "Cerulean Gym",
+        x: 2, y: -22,
+        color: 0x6890f0,
+        leader: "Misty",
+        title: "the Tomboyish Mermaid",
+        type: "water",
+        sprite: "trainer-misty",
+        badge: "Cascade Badge",
         team: [
-          { speciesId: "squirtle", level: 10 },
-          { speciesId: "pikachu", level: 12 }
+          { speciesId: "psyduck", level: 18 },
+          { speciesId: "golduck", level: 21 }
         ]
       },
       {
-        id: "summit-gym",
-        name: "Summit Gym",
-        x: 34,
-        y: 34,
-        color: 0xffaa00,
-        leader: "Rook",
-        badge: "Summit Badge",
+        id: "vermilion-gym",
+        name: "Vermilion Gym",
+        x: 8, y: 0,
+        color: 0xf8d030,
+        leader: "Lt. Surge",
+        title: "the Lightning American",
+        type: "electric",
+        sprite: "trainer-ace",
+        badge: "Thunder Badge",
         team: [
-          { speciesId: "geodude", level: 12 },
-          { speciesId: "pidgey", level: 14 }
+          { speciesId: "magnemite", level: 21 },
+          { speciesId: "pikachu", level: 18 },
+          { speciesId: "raichu", level: 24 }
+        ]
+      },
+      {
+        id: "celadon-gym",
+        name: "Celadon Gym",
+        x: 16, y: 10,
+        color: 0x78c850,
+        leader: "Erika",
+        title: "the Nature-Loving Princess",
+        type: "grass",
+        sprite: "trainer-erika",
+        badge: "Rainbow Badge",
+        team: [
+          { speciesId: "bulbasaur", level: 27 },
+          { speciesId: "ivysaur", level: 29 },
+          { speciesId: "venusaur", level: 31 }
+        ]
+      },
+      {
+        id: "fuchsia-gym",
+        name: "Fuchsia Gym",
+        x: 6, y: 24,
+        color: 0xa040a0,
+        leader: "Koga",
+        title: "the Poisonous Ninja Master",
+        type: "poison",
+        sprite: "trainer-koga",
+        badge: "Soul Badge",
+        team: [
+          { speciesId: "beedrill", level: 37 },
+          { speciesId: "nidoqueen", level: 39 },
+          { speciesId: "nidoking", level: 43 }
+        ]
+      },
+      {
+        id: "saffron-gym",
+        name: "Saffron Gym",
+        x: 18, y: -4,
+        color: 0xf85888,
+        leader: "Sabrina",
+        title: "the Master of Psychic",
+        type: "psychic",
+        sprite: "trainer-sabrina",
+        badge: "Marsh Badge",
+        team: [
+          { speciesId: "kadabra", level: 41 },
+          { speciesId: "alakazam", level: 46 }
+        ]
+      },
+      {
+        id: "cinnabar-gym",
+        name: "Cinnabar Gym",
+        x: -6, y: 46,
+        color: 0xf08030,
+        leader: "Blaine",
+        title: "the Hotheaded Quiz Master",
+        type: "fire",
+        sprite: "trainer-ace",
+        badge: "Volcano Badge",
+        team: [
+          { speciesId: "charmeleon", level: 45 },
+          { speciesId: "flareon", level: 47 },
+          { speciesId: "charizard", level: 50 }
+        ]
+      },
+      {
+        id: "viridian-gym",
+        name: "Viridian Gym",
+        x: -44, y: 6,
+        color: 0xe0c068,
+        leader: "Giovanni",
+        title: "the Boss of Team Rocket",
+        type: "ground",
+        sprite: "trainer-giovanni",
+        badge: "Earth Badge",
+        team: [
+          { speciesId: "dugtrio", level: 50 },
+          { speciesId: "golem", level: 52 },
+          { speciesId: "nidoqueen", level: 53 },
+          { speciesId: "nidoking", level: 55 }
         ]
       }
     ],
     powerSpots: [
-      { id: "spot-alpha", name: "Healing Spring", x: -48, y: -14, color: 0x9f5bff, effect: "heal" },
-      { id: "spot-beta", name: "Ancient Shrine", x: 18, y: 20, color: 0xffcc00, effect: "xpboost" },
-      { id: "spot-gamma", name: "Pokemon Sanctuary", x: 50, y: 6, color: 0x4ade80, effect: "rarepokemon" }
+      { id: "spot-alpha", name: "Pallet Spring", x: -46, y: 36, color: 0x9f5bff, effect: "heal" },
+      { id: "spot-beta", name: "Celadon Tower", x: 12, y: 12, color: 0xffcc00, effect: "xpboost" },
+      { id: "spot-gamma", name: "Cerulean Cave", x: 10, y: -28, color: 0x4ade80, effect: "rarepokemon" }
     ],
     portals: [
-      { id: "portal-shadow", name: "Portal to Shadow Isles", x: 55, y: -15, targetRegionIndex: 1, targetX: -20, targetY: 0, color: 0x9f5bff }
+      { id: "portal-sevii", name: "Ferry to the Sevii Islands", x: -10, y: 50, targetRegionIndex: 1, targetX: -20, targetY: 0, color: 0x9f5bff }
     ]
   },
   {

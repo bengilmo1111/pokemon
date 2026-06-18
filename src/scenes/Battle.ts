@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { MOVES } from "../data/moves";
 import { SPECIES } from "../data/species";
+import { getAbility } from "../data/abilities";
 import { gameState } from "../game/store";
 import * as Sound from "../game/sound";
 import {
@@ -37,6 +38,16 @@ interface BattleData {
   trainerTeam?: { speciesId: string; level: number }[];
 }
 
+type StatStageKey = keyof StatStages;
+
+const STAT_LABELS: Record<StatStageKey, string> = {
+  atk: "Attack",
+  def: "Defense",
+  spd: "Speed",
+  spAtk: "Sp. Atk",
+  spDef: "Sp. Def"
+};
+
 export default class Battle extends Phaser.Scene {
   private wildId!: string;
   private playerMon!: PokemonInstance;
@@ -52,6 +63,8 @@ export default class Battle extends Phaser.Scene {
   private messageText!: Phaser.GameObjects.Text;
   private playerHpText!: Phaser.GameObjects.Text;
   private enemyHpText!: Phaser.GameObjects.Text;
+  private playerHpBar?: Phaser.GameObjects.Graphics;
+  private enemyHpBar?: Phaser.GameObjects.Graphics;
   private playerExpText!: Phaser.GameObjects.Text;
   private playerStatusText!: Phaser.GameObjects.Text;
   private enemyStatusText!: Phaser.GameObjects.Text;
@@ -91,8 +104,8 @@ export default class Battle extends Phaser.Scene {
   private usedOranBerry = false;
 
   // Stat stages (per battle, reset on switch)
-  private playerStages: StatStages = { atk: 0, def: 0, spd: 0 };
-  private enemyStages: StatStages = { atk: 0, def: 0, spd: 0 };
+  private playerStages: StatStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
+  private enemyStages: StatStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
 
   // XP bar graphics
   private xpBarBg?: Phaser.GameObjects.Rectangle;
@@ -128,8 +141,8 @@ export default class Battle extends Phaser.Scene {
     // Reset held item state
     this.usedOranBerry = false;
     // Reset stat stages
-    this.playerStages = { atk: 0, def: 0, spd: 0 };
-    this.enemyStages = { atk: 0, def: 0, spd: 0 };
+    this.playerStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
+    this.enemyStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
     // Reset XP bar refs
     this.xpBarBg = undefined;
     this.xpBarFill = undefined;
@@ -167,7 +180,7 @@ export default class Battle extends Phaser.Scene {
         return;
       }
       this.wildId = gym.id;
-      this.trainerName = gym.leader;
+      this.trainerName = `Leader ${gym.leader}`;
       this.enemyTeam = gym.team.map((entry) => {
         markSeen(gameState, entry.speciesId);
         return makePokemon(entry.speciesId, entry.level);
@@ -246,7 +259,8 @@ export default class Battle extends Phaser.Scene {
     this.messageText = this.add.text(24, 24, introText, {
       fontFamily: "monospace",
       fontSize: "18px",
-      color: "#e5e7eb"
+      color: "#e5e7eb",
+      wordWrap: { width: this.scale.width - 48 }
     });
 
     // Play encounter sound and start battle music
@@ -290,6 +304,10 @@ export default class Battle extends Phaser.Scene {
       fontSize: "12px",
       color: "#fbbf24"
     });
+
+    // Graphical HP bars floating above each combatant.
+    this.playerHpBar = this.add.graphics().setDepth(40);
+    this.enemyHpBar = this.add.graphics().setDepth(40);
 
     this.updateHpText();
     this.createMenu();
@@ -794,11 +812,14 @@ export default class Battle extends Phaser.Scene {
       this.enemyIndex += 1;
       this.enemyMon = this.enemyTeam[this.enemyIndex];
       // Reset enemy stat stages on switch
-      this.enemyStages = { atk: 0, def: 0, spd: 0 };
+      this.enemyStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
       this.setMessage(`${this.trainerName} sent out ${this.enemyMon.name}!`);
       this.updateEnemySprite();
       await this.showEntranceAnimation(this.enemySprite!, false);
       await this.wait(300);
+      if (this.applyIntimidate(this.enemyMon, this.playerStages, this.playerMon.nickname || this.playerMon.name)) {
+        await this.wait(600);
+      }
       this.busy = false;
       return;
     }
@@ -1156,10 +1177,14 @@ export default class Battle extends Phaser.Scene {
     this.playerIndex = index;
     this.playerMon = gameState.team[this.playerIndex];
     // Reset player stat stages on switch
-    this.playerStages = { atk: 0, def: 0, spd: 0 };
+    this.playerStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
     this.setMessage(`Go ${this.playerMon.nickname || this.playerMon.name}!`);
     this.updatePlayerSprite();
     await this.wait(400);
+
+    if (this.applyIntimidate(this.playerMon, this.enemyStages, this.enemyMon.name)) {
+      await this.wait(600);
+    }
 
     const enemyMove = this.pickEnemyMove();
     await this.executeEnemyTurn(enemyMove);
@@ -1167,7 +1192,7 @@ export default class Battle extends Phaser.Scene {
     this.busy = false;
   }
 
-  private readonly STAT_MOVES: Record<string, { target: "user" | "foe"; stat: "atk" | "def" | "spd"; stages: number }> = {
+  private readonly STAT_MOVES: Record<string, { target: "user" | "foe"; stat: StatStageKey; stages: number }> = {
     "growl":        { target: "foe",  stat: "atk", stages: -1 },
     "leer":         { target: "foe",  stat: "def", stages: -1 },
     "tail-whip":    { target: "foe",  stat: "def", stages: -1 },
@@ -1177,8 +1202,12 @@ export default class Battle extends Phaser.Scene {
     "withdraw":     { target: "user", stat: "def", stages: +1 },
     "defense-curl": { target: "user", stat: "def", stages: +1 },
     "swords-dance": { target: "user", stat: "atk", stages: +2 },
-    "growth":       { target: "user", stat: "atk", stages: +1 },
+    "growth":       { target: "user", stat: "spAtk", stages: +1 },
     "agility":      { target: "user", stat: "spd", stages: +2 },
+    "amnesia":      { target: "user", stat: "spDef", stages: +2 },
+    "calm-mind":    { target: "user", stat: "spAtk", stages: +1 },
+    "nasty-plot":   { target: "user", stat: "spAtk", stages: +2 },
+    "charm":        { target: "foe",  stat: "atk", stages: -2 },
   };
 
   private showFloatingText(text: string, x: number, y: number, color = "#ffffff"): void {
@@ -1232,7 +1261,7 @@ export default class Battle extends Phaser.Scene {
       stages[statDef.stat] = Math.max(-6, Math.min(6, stages[statDef.stat] + statDef.stages));
 
       // Build message
-      const statName = statDef.stat === "atk" ? "Attack" : statDef.stat === "def" ? "Defense" : "Speed";
+      const statName = STAT_LABELS[statDef.stat];
       const changeWord = statDef.stages > 1 ? "sharply rose" : statDef.stages === 1 ? "rose" :
                          statDef.stages < -1 ? "sharply fell" : "fell";
       const displayName = targetMon.nickname || targetMon.name;
@@ -1249,7 +1278,26 @@ export default class Battle extends Phaser.Scene {
       return;
     }
 
-    // For non-stat-change status moves, just show message and skip damage
+    // Status-inflicting moves (sleep-powder, thunder-wave, toxic, will-o-wisp…):
+    // apply the move's declared status to the defender via the shared engine.
+    if (move.category === "status" && move.effect?.status) {
+      const inflicted = tryInflictStatus(defender, move.effect.status, moveId);
+      const defenderName = defender === this.playerMon ? (defender.nickname || defender.name) : defender.name;
+      if (inflicted) {
+        this.updateHpText();
+        const verb: Record<string, string> = {
+          poison: "was poisoned", burn: "was burned", paralysis: "was paralyzed",
+          sleep: "fell asleep", freeze: "was frozen solid"
+        };
+        this.setMessage(`${defenderName} ${verb[move.effect.status] ?? "was afflicted"}!`);
+      } else {
+        this.setMessage("But it failed!");
+      }
+      await this.wait(700);
+      return;
+    }
+
+    // Any other status move with no implemented effect: just show its message.
     if (move.category === "status") {
       await this.wait(400);
       return;
@@ -1351,6 +1399,29 @@ export default class Battle extends Phaser.Scene {
         await this.wait(500);
       }
     }
+
+    // Defender ability: Static may paralyze a physical (contact) attacker.
+    const defAbility = getAbility(defender.ability);
+    if (defAbility?.contactParalyze && move.category === "physical" &&
+        attacker.status === "none" && Math.random() < defAbility.contactParalyze) {
+      if (tryInflictStatus(attacker, "paralysis")) {
+        const atkName = attacker === this.playerMon ? (attacker.nickname || attacker.name) : attacker.name;
+        this.setMessage(`${atkName} was paralyzed by ${defAbility.name}!`);
+        this.updateHpText();
+        await this.wait(500);
+      }
+    }
+  }
+
+  /** Intimidate: lower the opposing Pokémon's Attack by one stage on entry. */
+  private applyIntimidate(enteringMon: PokemonInstance, opposingStages: StatStages, opposingName: string): boolean {
+    if (getAbility(enteringMon.ability)?.intimidate && opposingStages.atk > -6) {
+      opposingStages.atk = Math.max(-6, opposingStages.atk - 1);
+      const enterName = enteringMon === this.playerMon ? (enteringMon.nickname || enteringMon.name) : enteringMon.name;
+      this.setMessage(`${enterName}'s Intimidate cut ${opposingName}'s Attack!`);
+      return true;
+    }
+    return false;
   }
 
   private async showAttackAnimation(attacker: Phaser.GameObjects.Sprite, target: Phaser.GameObjects.Sprite, isCritical: boolean, moveType?: string): Promise<void> {
@@ -1685,6 +1756,38 @@ export default class Battle extends Phaser.Scene {
     if (this.enemyMon.status !== "none") {
       this.enemyStatusText.setColor(`#${getStatusColor(this.enemyMon.status).toString(16)}`);
     }
+
+    this.drawHpBars();
+  }
+
+  /** Draw colour-coded HP bars above the two Pokémon sprites. */
+  private drawHpBars(): void {
+    const barW = 130;
+    const barH = 12;
+    const draw = (
+      g: Phaser.GameObjects.Graphics | undefined,
+      cx: number,
+      cy: number,
+      ratio: number
+    ) => {
+      if (!g) return;
+      const x = cx - barW / 2;
+      const r = Math.max(0, Math.min(1, ratio));
+      const color = r > 0.5 ? 0x22c55e : r > 0.2 ? 0xfbbf24 : 0xef4444;
+      g.clear();
+      g.fillStyle(0x000000, 0.55);
+      g.fillRoundedRect(x - 2, cy - 2, barW + 4, barH + 4, 4);
+      g.fillStyle(0x1f2937, 1);
+      g.fillRect(x, cy, barW, barH);
+      g.fillStyle(color, 1);
+      g.fillRect(x, cy, barW * r, barH);
+      g.lineStyle(1, 0xffffff, 0.6);
+      g.strokeRect(x, cy, barW, barH);
+    };
+    draw(this.playerHpBar, this.scale.width * 0.25, this.scale.height * 0.45 - 100,
+      this.playerMon.hp / this.playerMon.maxHp);
+    draw(this.enemyHpBar, this.scale.width * 0.7, this.scale.height * 0.3 - 110,
+      this.enemyMon.hp / this.enemyMon.maxHp);
   }
 
   private updatePlayerSprite(): void {

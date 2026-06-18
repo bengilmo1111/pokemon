@@ -87,8 +87,13 @@ export default class Title extends Phaser.Scene {
     const btnY = H / 2 + 40;
 
     this.makeButton(W / 2, btnY, btnW, btnH, 0xfbbf24, "▶  New Game", "#0f172a", () => {
-      deleteSave();
-      this.scene.start("Boot");
+      // Guard against wiping an existing save by accident.
+      if (hasSaveData()) {
+        this.confirmNewGame();
+      } else {
+        deleteSave();
+        this.scene.start("Boot");
+      }
     });
 
     // "Continue" button — only if save data exists
@@ -101,6 +106,39 @@ export default class Title extends Phaser.Scene {
     }
   }
 
+  /** Modal asking the player to confirm overwriting an existing save. */
+  private confirmNewGame(): void {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const depth = 50;
+
+    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.7)
+      .setOrigin(0).setScrollFactor(0).setDepth(depth).setInteractive();
+
+    const panelW = Math.min(420, W * 0.85);
+    const panelH = 240;
+    const panel = this.add.graphics().setScrollFactor(0).setDepth(depth + 1);
+    panel.fillStyle(0x1a1a2e, 0.98);
+    panel.fillRoundedRect(W / 2 - panelW / 2, H / 2 - panelH / 2, panelW, panelH, 14);
+    panel.lineStyle(3, 0xef4444, 1);
+    panel.strokeRoundedRect(W / 2 - panelW / 2, H / 2 - panelH / 2, panelW, panelH, 14);
+
+    const text = this.add.text(W / 2, H / 2 - 60,
+      "Start a New Game?\n\nThis will erase your\nexisting saved game.", {
+        fontFamily: "monospace", fontSize: "18px", color: "#e5e7eb",
+        align: "center", lineSpacing: 4
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2);
+
+    const els: Phaser.GameObjects.GameObject[] = [overlay, panel, text];
+    const dismiss = () => els.forEach((e) => e.destroy());
+
+    this.makeButton(W / 2 - 95, H / 2 + 40, 170, 48, 0xef4444, "Erase & Start", "#ffffff", () => {
+      deleteSave();
+      this.scene.start("Boot");
+    }, depth + 2, els);
+    this.makeButton(W / 2 + 95, H / 2 + 40, 170, 48, 0x334155, "Cancel", "#e5e7eb", dismiss, depth + 2, els);
+  }
+
   private makeButton(
     cx: number,
     cy: number,
@@ -109,24 +147,28 @@ export default class Title extends Phaser.Scene {
     fillColor: number,
     label: string,
     textColor: string,
-    onDown: () => void
+    onDown: () => void,
+    depthBase = 10,
+    collect?: Phaser.GameObjects.GameObject[]
   ): void {
     const x = cx - w / 2;
     const y = cy;
 
-    const bg = this.add.graphics().setScrollFactor(0).setDepth(10);
+    const bg = this.add.graphics().setScrollFactor(0).setDepth(depthBase);
     bg.fillStyle(fillColor, 1);
     bg.fillRoundedRect(x, y, w, h, 10);
 
-    this.add.text(cx, cy + h / 2, label, {
+    const txt = this.add.text(cx, cy + h / 2, label, {
       fontFamily: "monospace",
       fontSize: "20px",
       color: textColor,
       fontStyle: "bold"
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(11);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(depthBase + 1);
 
     const hit = this.add.rectangle(cx, cy + h / 2, w, h, 0x000000, 0)
-      .setScrollFactor(0).setDepth(12).setInteractive({ useHandCursor: true });
+      .setScrollFactor(0).setDepth(depthBase + 2).setInteractive({ useHandCursor: true });
+
+    collect?.push(bg, txt, hit);
 
     const hoverColor = Phaser.Display.Color.ValueToColor(fillColor);
     hoverColor.darken(15);
