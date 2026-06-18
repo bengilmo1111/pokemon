@@ -33,6 +33,7 @@ import {
   tryItemEvolution
 } from "../game/state";
 import { pickWeighted } from "../game/utils";
+import { getStatusColor, getStatusDisplayText } from "../game/battle";
 import * as Sound from "../game/sound";
 import { saveGame, loadGame } from "../game/persistence";
 import { TouchControls } from "../game/touch";
@@ -60,6 +61,10 @@ export default class Overworld extends Phaser.Scene {
   private rivalSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private rivalEncounters: RivalEncounter[] = [];
   private encounterCooldown = 0;
+  // Perf caches: O(1) zone lookup per region, and skip HUD re-layout when unchanged.
+  private zoneMap: Map<string, { x: number; y: number; r: number }> = new Map();
+  private zoneMapRegion = -1;
+  private lastHudText = "";
   private props: Array<{ x: number; y: number; type: string; variant: number; scale: number }> = [];
   private mapOpen = false;
   private starterOpen = false;
@@ -114,6 +119,8 @@ export default class Overworld extends Phaser.Scene {
   }
 
   create(): void {
+    // Smooth fade-in (pairs with the portal/scene fade-out).
+    this.cameras.main.fadeIn(250, 0, 0, 0);
     const region = getRegion(gameState);
     const bounds = this.getWorldBounds(region);
     this.worldBounds = bounds;
@@ -233,9 +240,12 @@ export default class Overworld extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.RESUME, () => {
       if (!this.starterOpen && !this.isPaused) {
         this.touch?.setVisible(true);
-        // Auto-save after battle ends
-        saveGame();
-        this.showNotification("💾 Auto-saved", 1200);
+        // Auto-save after battle ends (report honestly if storage is full)
+        if (saveGame()) {
+          this.showNotification("💾 Auto-saved", 1200);
+        } else {
+          this.showNotification("⚠ Auto-save failed (storage full?)", 2500);
+        }
       }
     });
 
@@ -466,8 +476,13 @@ export default class Overworld extends Phaser.Scene {
 
   private updateWildMons(): void {
     const region = getRegion(gameState);
+    // Build/refresh the O(1) zone lookup when the region changes.
+    if (this.zoneMapRegion !== gameState.regionIndex) {
+      this.zoneMap = new Map(region.zones.map((z) => [z.id, { x: z.x, y: z.y, r: z.r }]));
+      this.zoneMapRegion = gameState.regionIndex;
+    }
     for (const wild of gameState.wildMons) {
-      const zone = region.zones.find((z) => z.id === wild.zoneId);
+      const zone = this.zoneMap.get(wild.zoneId);
       if (!zone) continue;
       const jitter = 0.3;
       wild.vx += (Math.random() - 0.5) * jitter;
@@ -559,11 +574,19 @@ export default class Overworld extends Phaser.Scene {
             result.item === "revive" ? "Revive" : result.item;
           this.showNotification(`Found ${result.amount}x ${itemName}!`);
 
-          // Remove item sprite
+          // Remove item sprite with a little pop animation
           const sprite = this.itemSprites.get(item.id);
           if (sprite) {
-            sprite.destroy();
             this.itemSprites.delete(item.id);
+            this.tweens.add({
+              targets: sprite,
+              y: sprite.y - 16,
+              scale: 0,
+              alpha: 0,
+              duration: 220,
+              ease: "Back.easeIn",
+              onComplete: () => sprite.destroy()
+            });
           }
         }
       }
@@ -1165,21 +1188,24 @@ export default class Overworld extends Phaser.Scene {
       }
     });
 
-    // After animation, switch region
+    // After the swirl, fade to black, then switch region (smoother than a snap).
     this.time.delayedCall(1400, () => {
-      // Clear wild Pokemon for the new region
-      gameState.wildMons = [];
+      this.cameras.main.fadeOut(300, 0, 0, 0);
+      this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+        // Clear wild Pokemon for the new region
+        gameState.wildMons = [];
 
-      // Set target position and region
-      gameState.portalTargetX = portal.targetX;
-      gameState.portalTargetY = portal.targetY;
-      gameState.regionIndex = portal.targetRegionIndex;
+        // Set target position and region
+        gameState.portalTargetX = portal.targetX;
+        gameState.portalTargetY = portal.targetY;
+        gameState.regionIndex = portal.targetRegionIndex;
 
-      // Auto-save on portal transition
-      saveGame();
+        // Auto-save on portal transition
+        saveGame();
 
-      // Restart scene to load new region
-      this.scene.restart();
+        // Restart scene to load new region
+        this.scene.restart();
+      });
     });
   }
 
@@ -2298,7 +2324,12 @@ export default class Overworld extends Phaser.Scene {
       "[M] Map | [T] Team | [D] Pokedex"
     ].filter(line => line !== "");
 
-    this.hudText.setText(hudLines.join("\n"));
+    // Only re-layout the HUD text when its content actually changes.
+    const hudStr = hudLines.join("\n");
+    if (hudStr !== this.lastHudText) {
+      this.hudText.setText(hudStr);
+      this.lastHudText = hudStr;
+    }
 
     // Update player marker on visual map if open
     if (this.mapOpen && this.mapPlayerMarker && this.mapContainer) {
@@ -2710,7 +2741,7 @@ export default class Overworld extends Phaser.Scene {
       const y = centerY - 150 + index * 46;
       const hpPercent = Math.floor((mon.hp / mon.maxHp) * 100);
       const hpColor = hpPercent > 50 ? "#22c55e" : hpPercent > 20 ? "#eab308" : "#ef4444";
-      const statusStr = mon.status !== "none" ? ` [${mon.status.toUpperCase()}]` : "";
+      const statusStr = "";
       const isSelected = selected?.source === "team" && selected.index === index;
       const heldStr = mon.heldItem ? ` [${HELD_ITEMS[mon.heldItem]?.name ?? mon.heldItem}]` : "";
 
@@ -2737,6 +2768,13 @@ export default class Overworld extends Phaser.Scene {
         `   HP: ${mon.hp}/${mon.maxHp} (${hpPercent}%)${statusStr}`, {
         fontFamily: "monospace", fontSize: "11px", color: hpColor
       }));
+      // Colour-coded status badge, matching the battle screen.
+      if (mon.status !== "none") {
+        push(this.add.text(centerX + 230, y + 16, getStatusDisplayText(mon.status), {
+          fontFamily: "monospace", fontSize: "12px", fontStyle: "bold",
+          color: `#${getStatusColor(mon.status).toString(16).padStart(6, "0")}`
+        }).setOrigin(0.5));
+      }
     });
 
     // Action panel when a team mon is selected

@@ -108,6 +108,8 @@ export class TouchControls {
         entry.pressed = true;
         bg.setScale(0.88);
         bg.setFillStyle(color, 0.85);
+        // Light haptic pulse on supported devices.
+        if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(10);
         ev?.stopPropagation();
       });
       const release = () => {
