@@ -2,7 +2,13 @@ import { MOVES } from "../data/moves";
 import { REGIONS } from "../data/regions";
 import { SPECIES, canEvolve, getEvolution } from "../data/species";
 import { TypeId } from "../data/types";
+import { NATURES, randomNature } from "../data/natures";
 import { randRange } from "./utils";
+
+function randomIvs(): NonNullable<PokemonInstance["ivs"]> {
+  const r = () => Math.floor(Math.random() * 32);
+  return { hp: r(), atk: r(), def: r(), spd: r(), spAtk: r(), spDef: r() };
+}
 
 export type StatusEffect = "none" | "poison" | "burn" | "paralysis" | "sleep" | "freeze";
 
@@ -18,10 +24,18 @@ export interface PokemonInstance {
   moves: string[];
   maxHp: number;
   hp: number;
-  stats: { hp: number; atk: number; def: number; spd: number };
+  stats: { hp: number; atk: number; def: number; spd: number; spAtk: number; spDef: number };
   catchRate: number;
   status: StatusEffect;
   heldItem?: string;
+  /** Nature id (see data/natures.ts); affects stat calculation. */
+  nature?: string;
+  /** Ability id (see data/abilities.ts). */
+  ability?: string;
+  /** Individual values 0–31 per stat, added into calculateStats. */
+  ivs?: { hp: number; atk: number; def: number; spd: number; spAtk: number; spDef: number };
+  /** Friendship 0–255, for friendship-based evolution and flavor. */
+  friendship?: number;
 }
 
 export interface WildPokemon {
@@ -133,20 +147,44 @@ export function calculateExpGain(defeatedSpeciesId: string, defeatedLevel: numbe
   return Math.floor((baseExp * defeatedLevel / 7) * trainerBonus * xpMultiplier);
 }
 
-export function calculateStats(speciesId: string, level: number) {
+export function calculateStats(
+  speciesId: string,
+  level: number,
+  ivs?: PokemonInstance["ivs"],
+  nature?: string
+) {
   const species = SPECIES[speciesId];
+  const bs = species.baseStats;
   const scale = 1 + (level - 1) * 0.08;
+  // spAtk/spDef fall back to physical atk/def for species without canonical values.
+  const baseSpAtk = bs.spAtk ?? bs.atk;
+  const baseSpDef = bs.spDef ?? bs.def;
+  const nat = nature ? NATURES[nature] : undefined;
+  const natMod = (stat: keyof typeof bs): number => {
+    if (!nat) return 1;
+    if (nat.up === stat) return 1.1;
+    if (nat.down === stat) return 0.9;
+    return 1;
+  };
+  // IVs add a small flat bonus per stat (0–31), scaled gently to fit the
+  // existing balance curve rather than the canonical level/100 formula.
+  const iv = (stat: keyof NonNullable<PokemonInstance["ivs"]>): number =>
+    Math.floor(((ivs?.[stat] ?? 0) / 31) * (level / 8));
   return {
-    hp: Math.floor(species.baseStats.hp * scale + 10 + level),
-    atk: Math.floor(species.baseStats.atk * scale),
-    def: Math.floor(species.baseStats.def * scale),
-    spd: Math.floor(species.baseStats.spd * scale)
+    hp: Math.floor(bs.hp * scale + 10 + level) + iv("hp"),
+    atk: Math.floor(bs.atk * scale * natMod("atk")) + iv("atk"),
+    def: Math.floor(bs.def * scale * natMod("def")) + iv("def"),
+    spd: Math.floor(bs.spd * scale * natMod("spd")) + iv("spd"),
+    spAtk: Math.floor(baseSpAtk * scale * natMod("spAtk")) + iv("spAtk"),
+    spDef: Math.floor(baseSpDef * scale * natMod("spDef")) + iv("spDef")
   };
 }
 
 export function makePokemon(speciesId: string, level: number): PokemonInstance {
   const species = SPECIES[speciesId];
-  const stats = calculateStats(speciesId, level);
+  const nature = randomNature();
+  const ivs = randomIvs();
+  const stats = calculateStats(speciesId, level, ivs, nature);
 
   // Get starting moves (up to 4 moves the Pokemon can learn at or below current level)
   const availableMoves = species.learnableMoves
@@ -163,6 +201,10 @@ export function makePokemon(speciesId: string, level: number): PokemonInstance {
     speciesId,
     name: species.name,
     types: species.types,
+    nature,
+    ivs,
+    ability: species.ability,
+    friendship: 70,
     level,
     exp: 0,
     expToNext: calculateExpToNext(level),
@@ -216,7 +258,7 @@ export function gainExp(mon: PokemonInstance, amount: number): LevelUpResult {
     mon.expToNext = calculateExpToNext(mon.level);
 
     // Update stats
-    const newStats = calculateStats(mon.speciesId, mon.level);
+    const newStats = calculateStats(mon.speciesId, mon.level, mon.ivs, mon.nature);
     const hpIncrease = newStats.hp - mon.maxHp;
     mon.maxHp = newStats.hp;
     mon.hp = Math.min(mon.maxHp, mon.hp + hpIncrease);
@@ -252,7 +294,9 @@ export function gainExp(mon: PokemonInstance, amount: number): LevelUpResult {
         result.newName = newSpecies.name;
 
         // Recalculate stats with new species
-        const evolvedStats = calculateStats(newSpeciesId, mon.level);
+        const evolvedStats = calculateStats(newSpeciesId, mon.level, mon.ivs, mon.nature);
+        // Evolution adopts the new species' ability if the old one wasn't custom.
+        if (newSpecies.ability) mon.ability = newSpecies.ability;
         const hpRatio = mon.hp / mon.maxHp;
         mon.maxHp = evolvedStats.hp;
         mon.hp = Math.floor(mon.maxHp * hpRatio);

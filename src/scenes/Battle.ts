@@ -37,6 +37,16 @@ interface BattleData {
   trainerTeam?: { speciesId: string; level: number }[];
 }
 
+type StatStageKey = keyof StatStages;
+
+const STAT_LABELS: Record<StatStageKey, string> = {
+  atk: "Attack",
+  def: "Defense",
+  spd: "Speed",
+  spAtk: "Sp. Atk",
+  spDef: "Sp. Def"
+};
+
 export default class Battle extends Phaser.Scene {
   private wildId!: string;
   private playerMon!: PokemonInstance;
@@ -91,8 +101,8 @@ export default class Battle extends Phaser.Scene {
   private usedOranBerry = false;
 
   // Stat stages (per battle, reset on switch)
-  private playerStages: StatStages = { atk: 0, def: 0, spd: 0 };
-  private enemyStages: StatStages = { atk: 0, def: 0, spd: 0 };
+  private playerStages: StatStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
+  private enemyStages: StatStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
 
   // XP bar graphics
   private xpBarBg?: Phaser.GameObjects.Rectangle;
@@ -128,8 +138,8 @@ export default class Battle extends Phaser.Scene {
     // Reset held item state
     this.usedOranBerry = false;
     // Reset stat stages
-    this.playerStages = { atk: 0, def: 0, spd: 0 };
-    this.enemyStages = { atk: 0, def: 0, spd: 0 };
+    this.playerStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
+    this.enemyStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
     // Reset XP bar refs
     this.xpBarBg = undefined;
     this.xpBarFill = undefined;
@@ -794,7 +804,7 @@ export default class Battle extends Phaser.Scene {
       this.enemyIndex += 1;
       this.enemyMon = this.enemyTeam[this.enemyIndex];
       // Reset enemy stat stages on switch
-      this.enemyStages = { atk: 0, def: 0, spd: 0 };
+      this.enemyStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
       this.setMessage(`${this.trainerName} sent out ${this.enemyMon.name}!`);
       this.updateEnemySprite();
       await this.showEntranceAnimation(this.enemySprite!, false);
@@ -1156,7 +1166,7 @@ export default class Battle extends Phaser.Scene {
     this.playerIndex = index;
     this.playerMon = gameState.team[this.playerIndex];
     // Reset player stat stages on switch
-    this.playerStages = { atk: 0, def: 0, spd: 0 };
+    this.playerStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
     this.setMessage(`Go ${this.playerMon.nickname || this.playerMon.name}!`);
     this.updatePlayerSprite();
     await this.wait(400);
@@ -1167,7 +1177,7 @@ export default class Battle extends Phaser.Scene {
     this.busy = false;
   }
 
-  private readonly STAT_MOVES: Record<string, { target: "user" | "foe"; stat: "atk" | "def" | "spd"; stages: number }> = {
+  private readonly STAT_MOVES: Record<string, { target: "user" | "foe"; stat: StatStageKey; stages: number }> = {
     "growl":        { target: "foe",  stat: "atk", stages: -1 },
     "leer":         { target: "foe",  stat: "def", stages: -1 },
     "tail-whip":    { target: "foe",  stat: "def", stages: -1 },
@@ -1177,8 +1187,12 @@ export default class Battle extends Phaser.Scene {
     "withdraw":     { target: "user", stat: "def", stages: +1 },
     "defense-curl": { target: "user", stat: "def", stages: +1 },
     "swords-dance": { target: "user", stat: "atk", stages: +2 },
-    "growth":       { target: "user", stat: "atk", stages: +1 },
+    "growth":       { target: "user", stat: "spAtk", stages: +1 },
     "agility":      { target: "user", stat: "spd", stages: +2 },
+    "amnesia":      { target: "user", stat: "spDef", stages: +2 },
+    "calm-mind":    { target: "user", stat: "spAtk", stages: +1 },
+    "nasty-plot":   { target: "user", stat: "spAtk", stages: +2 },
+    "charm":        { target: "foe",  stat: "atk", stages: -2 },
   };
 
   private showFloatingText(text: string, x: number, y: number, color = "#ffffff"): void {
@@ -1232,7 +1246,7 @@ export default class Battle extends Phaser.Scene {
       stages[statDef.stat] = Math.max(-6, Math.min(6, stages[statDef.stat] + statDef.stages));
 
       // Build message
-      const statName = statDef.stat === "atk" ? "Attack" : statDef.stat === "def" ? "Defense" : "Speed";
+      const statName = STAT_LABELS[statDef.stat];
       const changeWord = statDef.stages > 1 ? "sharply rose" : statDef.stages === 1 ? "rose" :
                          statDef.stages < -1 ? "sharply fell" : "fell";
       const displayName = targetMon.nickname || targetMon.name;
@@ -1249,7 +1263,26 @@ export default class Battle extends Phaser.Scene {
       return;
     }
 
-    // For non-stat-change status moves, just show message and skip damage
+    // Status-inflicting moves (sleep-powder, thunder-wave, toxic, will-o-wisp…):
+    // apply the move's declared status to the defender via the shared engine.
+    if (move.category === "status" && move.effect?.status) {
+      const inflicted = tryInflictStatus(defender, move.effect.status, moveId);
+      const defenderName = defender === this.playerMon ? (defender.nickname || defender.name) : defender.name;
+      if (inflicted) {
+        this.updateHpText();
+        const verb: Record<string, string> = {
+          poison: "was poisoned", burn: "was burned", paralysis: "was paralyzed",
+          sleep: "fell asleep", freeze: "was frozen solid"
+        };
+        this.setMessage(`${defenderName} ${verb[move.effect.status] ?? "was afflicted"}!`);
+      } else {
+        this.setMessage("But it failed!");
+      }
+      await this.wait(700);
+      return;
+    }
+
+    // Any other status move with no implemented effect: just show its message.
     if (move.category === "status") {
       await this.wait(400);
       return;

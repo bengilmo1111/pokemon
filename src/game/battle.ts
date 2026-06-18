@@ -1,6 +1,7 @@
 import { MOVES, MoveData } from "../data/moves";
 import { SPECIES } from "../data/species";
 import { getEffectivenessText, getTypeEffectiveness } from "../data/types";
+import { getAbility } from "../data/abilities";
 import { PokemonInstance, StatusEffect } from "./state";
 
 export interface DamageResult {
@@ -24,6 +25,8 @@ export interface StatStages {
   atk: number;
   def: number;
   spd: number;
+  spAtk: number;
+  spDef: number;
 }
 
 export function calculateDamage(
@@ -38,16 +41,29 @@ export function calculateDamage(
     return { damage: 0, effectivenessText: "", effectiveness: 1, isCritical: false };
   }
 
+  const isSpecial = move.category === "special";
+
+  // Type effectiveness (computed early so abilities can grant immunity)
+  let effectiveness = getTypeEffectiveness(move.type, defender.types);
+
+  // Defender ability: full type immunities (Levitate, Water/Volt Absorb, …)
+  const defAbility = getAbility(defender.ability);
+  if (defAbility?.immuneTo?.includes(move.type) || defAbility?.absorbType === move.type) {
+    return { damage: 0, effectivenessText: "It doesn't affect " + defender.name + "…", effectiveness: 0, isCritical: false };
+  }
+
   // Check for critical hit (6.25% chance, 1.5x damage)
   const isCritical = Math.random() < 0.0625;
   const critMultiplier = isCritical ? 1.5 : 1;
 
-  // Apply stat stages to ATK and DEF
-  const atkStage = attackerStages?.atk ?? 0;
-  const defStage = defenderStages?.def ?? 0;
+  // Pick offensive/defensive stats and stages by move category.
+  const atkStage = (isSpecial ? attackerStages?.spAtk : attackerStages?.atk) ?? 0;
+  const defStage = (isSpecial ? defenderStages?.spDef : defenderStages?.def) ?? 0;
+  const atkBase = isSpecial ? attacker.stats.spAtk : attacker.stats.atk;
+  const defBase = isSpecial ? defender.stats.spDef : defender.stats.def;
 
-  const atk = Math.floor(attacker.stats.atk * stageMultiplier(atkStage));
-  const def = Math.max(1, Math.floor(defender.stats.def * stageMultiplier(defStage)));
+  const atk = Math.floor(atkBase * stageMultiplier(atkStage));
+  const def = Math.max(1, Math.floor(defBase * stageMultiplier(defStage)));
   const levelFactor = (2 * attacker.level) / 5 + 2;
   const base = ((levelFactor * move.power * (atk / def)) / 50) + 2;
 
@@ -57,7 +73,6 @@ export function calculateDamage(
   if (attacker.types.includes(move.type)) modifier *= 1.2;
 
   // Type effectiveness
-  const effectiveness = getTypeEffectiveness(move.type, defender.types);
   modifier *= effectiveness;
 
   // Critical hit
@@ -66,24 +81,36 @@ export function calculateDamage(
   // Random variance (85-100%)
   modifier *= 0.85 + Math.random() * 0.15;
 
-  // Status effect penalties
+  // Burn halves physical damage
   if (attacker.status === "burn" && move.category === "physical") {
+    modifier *= 0.5;
+  }
+
+  // Attacker ability: pinch boost (Blaze/Torrent/Overgrow/Swarm) when low HP
+  const atkAbility = getAbility(attacker.ability);
+  if (atkAbility?.pinchType === move.type && attacker.hp <= attacker.maxHp / 3) {
+    modifier *= 1.5;
+  }
+
+  // Defender ability: Thick Fat softens Fire/Ice
+  if (defAbility?.name === "Thick Fat" && (move.type === "fire" || move.type === "ice")) {
     modifier *= 0.5;
   }
 
   const damage = Math.max(1, Math.floor(base * modifier));
 
-  // Check for status effect infliction from certain moves
+  // Move-driven status infliction (per-move chance + effect), replacing the
+  // old flat type-based heuristic. Falls back to legacy type behavior when a
+  // move declares no explicit effect, so existing content still inflicts status.
   let statusInflicted: StatusEffect | undefined;
-  if (Math.random() < 0.1) { // 10% chance for status from damaging moves
-    if (move.type === "fire" && defender.status === "none") {
-      statusInflicted = "burn";
-    } else if (move.type === "electric" && defender.status === "none") {
-      statusInflicted = "paralysis";
-    } else if (move.type === "ice" && defender.status === "none") {
-      statusInflicted = "freeze";
-    } else if (move.type === "poison" && defender.status === "none") {
-      statusInflicted = "poison";
+  if (defender.status === "none") {
+    if (move.effect?.status && move.effectChance) {
+      if (Math.random() < move.effectChance) statusInflicted = move.effect.status;
+    } else if (!move.effect && Math.random() < 0.1) {
+      if (move.type === "fire") statusInflicted = "burn";
+      else if (move.type === "electric") statusInflicted = "paralysis";
+      else if (move.type === "ice") statusInflicted = "freeze";
+      else if (move.type === "poison") statusInflicted = "poison";
     }
   }
 
