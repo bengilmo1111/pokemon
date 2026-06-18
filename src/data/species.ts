@@ -228,7 +228,7 @@ export const SPECIES: Record<string, SpeciesData> = {
       { moveId: "thunder", level: 42 }
     ],
     catchRate: 190,
-    evolution: { to: "raichu", level: 28 },
+    evolution: { to: "raichu", item: "thunderstone" },
     expYield: 112
   },
   raichu: {
@@ -492,7 +492,7 @@ export const SPECIES: Record<string, SpeciesData> = {
       { moveId: "swift", level: 25 }
     ],
     catchRate: 45,
-    evolution: { to: "flareon", level: 25 },
+    evolution: { to: "flareon", item: "firestone" },
     expYield: 65
   },
   flareon: {
@@ -894,7 +894,7 @@ export const SPECIES: Record<string, SpeciesData> = {
       { moveId: "dazzling-gleam", level: 40 }
     ],
     catchRate: 150,
-    evolution: { to: "clefable", level: 30 },
+    evolution: { to: "clefable", item: "moonstone" },
     expYield: 113
   },
   clefable: {
@@ -923,7 +923,7 @@ export const SPECIES: Record<string, SpeciesData> = {
       { moveId: "dazzling-gleam", level: 32 }
     ],
     catchRate: 170,
-    evolution: { to: "wigglytuff", level: 25 },
+    evolution: { to: "wigglytuff", item: "moonstone" },
     expYield: 95
   },
   wigglytuff: {

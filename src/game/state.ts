@@ -59,6 +59,12 @@ export interface Inventory {
   oranberry: number;
   luckyegg: number;
   shellbell: number;
+  // Evolution stones (consumed when used on a Pokémon)
+  firestone: number;
+  waterstone: number;
+  thunderstone: number;
+  leafstone: number;
+  moonstone: number;
 }
 
 export interface PokedexEntry {
@@ -132,6 +138,16 @@ export const HELD_ITEMS: Record<string, { name: string; desc: string; icon: stri
   oranberry: { name: "Oran Berry",  desc: "Restores 10 HP when HP drops below 50%", icon: "O" },
   luckyegg:  { name: "Lucky Egg",   desc: "Holder earns 1.5x EXP from battles",     icon: "E" },
   shellbell: { name: "Shell Bell",  desc: "Restores 1/8 of damage dealt",            icon: "B" },
+};
+
+// ---------- Evolution Stones ----------
+// Used on a Pokémon to trigger an item-based evolution (see SpeciesData.evolution.item).
+export const EVO_STONES: Record<string, { name: string; desc: string; price: number }> = {
+  firestone:    { name: "Fire Stone",    desc: "Evolves certain Pokémon (e.g. Eevee → Flareon).", price: 2100 },
+  waterstone:   { name: "Water Stone",   desc: "A stone that radiates cool energy.",                price: 2100 },
+  thunderstone: { name: "Thunder Stone", desc: "Evolves certain Pokémon (e.g. Pikachu → Raichu).",  price: 2100 },
+  leafstone:    { name: "Leaf Stone",    desc: "A stone with a leaf pattern.",                       price: 2100 },
+  moonstone:    { name: "Moon Stone",    desc: "Evolves Clefairy and Jigglypuff.",                   price: 2100 },
 };
 
 export const WORLD_SCALE = 32;
@@ -283,31 +299,48 @@ export function gainExp(mon: PokemonInstance, amount: number): LevelUpResult {
     if (canEvolve(mon.speciesId, mon.level)) {
       const newSpeciesId = getEvolution(mon.speciesId);
       if (newSpeciesId) {
-        result.evolved = true;
         result.oldName = mon.name;
         result.newSpeciesId = newSpeciesId;
-
-        // Evolve the Pokemon
-        const newSpecies = SPECIES[newSpeciesId];
-        mon.speciesId = newSpeciesId;
-        mon.name = newSpecies.name;
-        mon.types = newSpecies.types;
-        result.newName = newSpecies.name;
-
-        // Recalculate stats with new species
-        const evolvedStats = calculateStats(newSpeciesId, mon.level, mon.ivs, mon.nature);
-        // Evolution adopts the new species' ability if the old one wasn't custom.
-        if (newSpecies.ability) mon.ability = newSpecies.ability;
-        const hpRatio = mon.hp / mon.maxHp;
-        mon.maxHp = evolvedStats.hp;
-        mon.hp = Math.floor(mon.maxHp * hpRatio);
-        mon.stats = evolvedStats;
-        mon.catchRate = newSpecies.catchRate;
+        evolveMon(mon, newSpeciesId);
+        result.evolved = true;
+        result.newName = mon.name;
       }
     }
   }
 
   return result;
+}
+
+/**
+ * Mutate a Pokémon into its evolved species: update id/name/types/ability and
+ * recalculate stats (preserving the current HP ratio). Shared by level-up and
+ * item-based evolution.
+ */
+export function evolveMon(mon: PokemonInstance, newSpeciesId: string): void {
+  const newSpecies = SPECIES[newSpeciesId];
+  if (!newSpecies) return;
+  mon.speciesId = newSpeciesId;
+  mon.name = newSpecies.name;
+  mon.types = newSpecies.types;
+  if (newSpecies.ability) mon.ability = newSpecies.ability;
+  const hpRatio = mon.maxHp > 0 ? mon.hp / mon.maxHp : 1;
+  const evolvedStats = calculateStats(newSpeciesId, mon.level, mon.ivs, mon.nature);
+  mon.maxHp = evolvedStats.hp;
+  mon.hp = Math.max(1, Math.floor(mon.maxHp * hpRatio));
+  mon.stats = evolvedStats;
+  mon.catchRate = newSpecies.catchRate;
+}
+
+/**
+ * Attempt to evolve a Pokémon using a held/used item (evolution stone).
+ * Returns the old/new names on success, or null if the item doesn't apply.
+ */
+export function tryItemEvolution(mon: PokemonInstance, itemKey: string): { oldName: string; newName: string } | null {
+  const evo = SPECIES[mon.speciesId]?.evolution;
+  if (!evo || evo.item !== itemKey) return null;
+  const oldName = mon.name;
+  evolveMon(mon, evo.to);
+  return { oldName, newName: mon.name };
 }
 
 export function createInitialState(): GameState {
@@ -325,7 +358,12 @@ export function createInitialState(): GameState {
       revive: 1,
       oranberry: 0,
       luckyegg: 0,
-      shellbell: 0
+      shellbell: 0,
+      firestone: 0,
+      waterstone: 0,
+      thunderstone: 0,
+      leafstone: 0,
+      moonstone: 0
     },
     badges: [],
     defeatedGyms: {},
