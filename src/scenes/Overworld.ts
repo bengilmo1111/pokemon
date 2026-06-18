@@ -653,16 +653,17 @@ export default class Overworld extends Phaser.Scene {
   private checkLeagueEntrance(): void {
     if (gameState.isChampion || this.e4CooldownActive) return;
 
-    // Require 3 badges
+    // Require every Gym Badge in the region before the League opens.
+    const gymCount = getRegion(gameState).gyms.length;
     const leagueX = 45 * WORLD_SCALE;
     const leagueY = 35 * WORLD_SCALE;
     const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, leagueX, leagueY);
 
     if (distance < 80) {
-      if (gameState.badges.length < 3) {
+      if (gameState.badges.length < gymCount) {
         // Show "need badges" hint once per approach
         if (!this.e4CooldownActive) {
-          this.showNotification("You need all 3 Gym Badges first!", 2500);
+          this.showNotification(`You need all ${gymCount} Gym Badges first!`, 2500);
           this.e4CooldownActive = true;
           this.time.delayedCall(3000, () => { this.e4CooldownActive = false; });
         }
@@ -2236,8 +2237,9 @@ export default class Overworld extends Phaser.Scene {
       const leagueY = 35 * WORLD_SCALE;
       const distance = Phaser.Math.Distance.Between(playerX, playerY, leagueX, leagueY);
       if (distance < 80) {
-        if (gameState.badges.length < 3) {
-          leagueHint = "Need 3 badges for the Elite Four";
+        const gymCount = getRegion(gameState).gyms.length;
+        if (gameState.badges.length < gymCount) {
+          leagueHint = `Need ${gymCount} badges for the Elite Four`;
         } else if (gameState.e4Progress > 0 && gameState.e4Progress < 4) {
           leagueHint = `[L] Elite Four - Battle ${gameState.e4Progress + 1} of 4`;
         } else if (gameState.e4Progress >= 4) {
@@ -2280,7 +2282,7 @@ export default class Overworld extends Phaser.Scene {
     const hudLines = [
       `Location: ${locationLabel}`,
       gymLabel,
-      `Badges: ${gameState.badges.length}/3  |  Pokedex: ${pokedexCount.caught}  |  ₽${gameState.money ?? 500}`,
+      `Badges: ${gameState.badges.length}/${region.gyms.length}  |  Pokedex: ${pokedexCount.caught}  |  ₽${gameState.money ?? 500}`,
       `Goal: ${objective}`,
       xpBoostLabel,
       "",
@@ -3399,7 +3401,7 @@ export default class Overworld extends Phaser.Scene {
       },
       {
         title: "🏆 Your Goal",
-        desc: "Defeat the 3 Gym Leaders then challenge\nthe Elite Four at the League Entrance!"
+        desc: "Earn all 8 Gym Badges then challenge\nthe Elite Four at the Indigo Plateau!"
       }
     ];
 

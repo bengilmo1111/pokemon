@@ -178,7 +178,7 @@ export default class Battle extends Phaser.Scene {
         return;
       }
       this.wildId = gym.id;
-      this.trainerName = gym.leader;
+      this.trainerName = `Leader ${gym.leader}`;
       this.enemyTeam = gym.team.map((entry) => {
         markSeen(gameState, entry.speciesId);
         return makePokemon(entry.speciesId, entry.level);
