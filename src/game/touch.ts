@@ -169,27 +169,47 @@ export class TouchControls {
     if (!this.active) return;
     const w = this.scene.scale.width;
     const h = this.scene.scale.height;
-    const margin = 30;
-    const colX = w - margin - 46; // shared centre line for the right-edge column
+    // Hug the screen edge on every device: a small fixed gap plus the device's
+    // safe-area insets (notch / rounded corners / gesture bar) read from CSS.
+    const gap = 12;
+    const insetR = gap + TouchControls.safeAreaInset("right");
+    const insetB = gap + TouchControls.safeAreaInset("bottom");
 
     const primaries = this.buttons.filter((b) => b.cfg.primary);
     const secondaries = this.buttons.filter((b) => !b.cfg.primary);
+    const rOf = (b: { cfg: TouchButtonConfig }) => (b.cfg.primary ? 42 : 32);
 
-    // Primary action button: bottom-right corner (within thumb reach).
-    const primaryY = h - margin - 46;
+    // Primary action button: bottom-right corner, rim flush to the safe edge.
+    let primaryY = h - insetB - 42;
     primaries.forEach((b) => {
-      b.bg.setPosition(colX, primaryY);
-      b.text.setPosition(colX, primaryY);
+      const x = w - insetR - rOf(b);
+      primaryY = h - insetB - rOf(b);
+      b.bg.setPosition(x, primaryY);
+      b.text.setPosition(x, primaryY);
     });
 
-    // Utility buttons: stacked vertically above the primary, on the right edge,
-    // clear of the joystick (left) and the HUD text (top-left).
-    let y = primaryY - 96;
+    // Utility buttons stack upward along the right edge, each rim flush too.
+    let y = primaryY - 42 - 32 - 16;
     secondaries.forEach((b) => {
-      b.bg.setPosition(colX, y);
-      b.text.setPosition(colX, y);
-      y -= 74;
+      const r = rOf(b);
+      const x = w - insetR - r;
+      b.bg.setPosition(x, y);
+      b.text.setPosition(x, y);
+      y -= r * 2 + 14;
     });
+  }
+
+  /** Read a CSS `env(safe-area-inset-*)` value in pixels (0 when unsupported). */
+  private static safeAreaInset(side: "right" | "bottom" | "left" | "top"): number {
+    if (typeof document === "undefined") return 0;
+    const probe = document.createElement("div");
+    probe.style.cssText =
+      `position:fixed;${side}:0;width:0;height:0;padding-${side}:env(safe-area-inset-${side},0px);`;
+    document.body.appendChild(probe);
+    const prop = `padding-${side}` as const;
+    const val = parseFloat(getComputedStyle(probe).getPropertyValue(prop)) || 0;
+    probe.remove();
+    return val;
   }
 
   /** Normalised movement vector, components in [-1, 1]. */
