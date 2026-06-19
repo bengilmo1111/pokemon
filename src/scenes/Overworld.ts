@@ -235,7 +235,9 @@ export default class Overworld extends Phaser.Scene {
       fontFamily: "monospace",
       fontSize: "18px",
       color: "#fbbf24",
-      backgroundColor: "#0f172a",
+      backgroundColor: "#0f172add",
+      align: "center",
+      wordWrap: { width: Math.min(this.scale.width - 32, 520) },
       padding: { left: 12, right: 12, top: 8, bottom: 8 }
     });
     this.notificationText.setScrollFactor(0).setOrigin(0.5).setVisible(false);
@@ -360,6 +362,14 @@ export default class Overworld extends Phaser.Scene {
     // Handle notification timer
     if (this.notificationTimer > 0) {
       this.notificationTimer -= delta;
+      // Keep the toast pinned just below the (variable-height) HUD every frame,
+      // so it never drifts onto the status box if the HUD grew after it appeared.
+      if (this.notificationText && this.notificationText.visible && this.hudText) {
+        this.notificationText.setPosition(
+          this.scale.width / 2,
+          this.hudText.y + this.hudText.height + 22
+        );
+      }
       if (this.notificationTimer <= 0) {
         this.notificationText?.setVisible(false);
       }
@@ -504,6 +514,10 @@ export default class Overworld extends Phaser.Scene {
   private showNotification(message: string, duration = 2000): void {
     if (this.notificationText) {
       this.notificationText.setText(message).setVisible(true);
+      // Anchor the toast just under the HUD box so the two never overlap
+      // (the HUD grows/shrinks with contextual hints, so measure it each time).
+      const hudBottom = this.hudText ? this.hudText.y + this.hudText.height : 64;
+      this.notificationText.setPosition(this.scale.width / 2, hudBottom + 22);
       this.notificationTimer = duration;
     }
   }
@@ -1755,18 +1769,31 @@ export default class Overworld extends Phaser.Scene {
 
   private drawRoutes(region: RegionData): void {
     this.routeGraphics.clear();
-    this.routeGraphics.lineStyle(6, 0x0f172a, 0.4);
-    this.routeGraphics.lineStyle(3, 0xf9fafb, 0.7);
-    region.routes.forEach((route) => {
-      const from = this.findTownOrLandmark(region, route.from);
-      const to = this.findTownOrLandmark(region, route.to);
-      if (!from || !to) return;
-      const fromX = from.x * WORLD_SCALE;
-      const fromY = from.y * WORLD_SCALE;
-      const toX = to.x * WORLD_SCALE;
-      const toY = to.y * WORLD_SCALE;
-      this.routeGraphics.strokeLineShape(new Phaser.Geom.Line(fromX, fromY, toX, toY));
-    });
+
+    // Draw each route as a dirt path: a darker earthy border underneath a
+    // lighter sandy track on top. (Previously two lineStyle calls ran back to
+    // back before any stroke, so only the last — a thin 3px white line — ever
+    // drew, which read as a stray scratch across the grass.)
+    const strokeAll = (width: number, color: number, alpha: number) => {
+      this.routeGraphics.lineStyle(width, color, alpha);
+      region.routes.forEach((route) => {
+        const from = this.findTownOrLandmark(region, route.from);
+        const to = this.findTownOrLandmark(region, route.to);
+        if (!from || !to) return;
+        const fromX = from.x * WORLD_SCALE;
+        const fromY = from.y * WORLD_SCALE;
+        const toX = to.x * WORLD_SCALE;
+        const toY = to.y * WORLD_SCALE;
+        this.routeGraphics.strokeLineShape(new Phaser.Geom.Line(fromX, fromY, toX, toY));
+        // Round end-caps so the track blends into towns instead of butting flat.
+        this.routeGraphics.fillStyle(color, alpha);
+        this.routeGraphics.fillCircle(fromX, fromY, width / 2);
+        this.routeGraphics.fillCircle(toX, toY, width / 2);
+      });
+    };
+
+    strokeAll(16, 0x9c7b43, 0.55); // earthy border
+    strokeAll(10, 0xcdb074, 0.95); // sandy track
   }
 
   private drawPointsOfInterest(region: RegionData): void {
@@ -2445,6 +2472,16 @@ export default class Overworld extends Phaser.Scene {
       allGymsDefeated ? "Challenge the Pokemon League!" :
       nextGym ? `Defeat ${nextGym.name}` : "Explore!";
 
+    // On touch devices the player uses the on-screen buttons, so keyboard-key
+    // hints (P/R/M/T/D) are noise — show plain inventory counts instead.
+    const isTouch = !!this.touch?.active;
+    const footerLines = isTouch
+      ? [`Potions: ${gameState.inventory.potion}  |  Revives: ${gameState.inventory.revive}`]
+      : [
+          `[P] Potion (${gameState.inventory.potion}) | [R] Revive (${gameState.inventory.revive})`,
+          "[M] Map | [T] Team | [D] Pokedex"
+        ];
+
     const hudLines = [
       `Location: ${locationLabel}`,
       gymLabel,
@@ -2457,8 +2494,7 @@ export default class Overworld extends Phaser.Scene {
       martHint,
       gymHint,
       leagueHint,
-      `[P] Potion (${gameState.inventory.potion}) | [R] Revive (${gameState.inventory.revive})`,
-      "[M] Map | [T] Team | [D] Pokedex"
+      ...footerLines
     ].filter(line => line !== "");
 
     // Only re-layout the HUD text when its content actually changes.
@@ -2647,12 +2683,14 @@ export default class Overworld extends Phaser.Scene {
       this.mapGraphics!.fillRect(x - 6, y - 3, 12, 10);
       this.mapGraphics!.fillTriangle(x - 8, y - 3, x + 8, y - 3, x, y - 10);
 
-      // Town name
+      // Town name — pill background keeps it legible where labels overlap
       const label = this.add.text(x, y + 12, town.name, {
         fontFamily: "monospace",
         fontSize: "9px",
-        color: "#93c5fd"
-      }).setOrigin(0.5);
+        color: "#bfdbfe",
+        backgroundColor: "#0b1220cc",
+        padding: { left: 3, right: 3, top: 1, bottom: 1 }
+      }).setOrigin(0.5).setDepth(2);
       this.mapContainer!.add(label);
     });
 
@@ -2668,12 +2706,14 @@ export default class Overworld extends Phaser.Scene {
       this.mapGraphics!.lineStyle(2, 0xffffff, 0.8);
       this.mapGraphics!.strokeCircle(x, y, 8);
 
-      // Gym label
-      const label = this.add.text(x, y + 14, isCleared ? "✓" : gym.leader, {
+      // Gym label — pill background + higher depth so leader names stay readable
+      const label = this.add.text(x, y - 16, isCleared ? "✓" : gym.leader, {
         fontFamily: "monospace",
-        fontSize: "8px",
-        color: isCleared ? "#22c55e" : "#fbbf24"
-      }).setOrigin(0.5);
+        fontSize: "9px",
+        color: isCleared ? "#86efac" : "#fde68a",
+        backgroundColor: "#0b1220dd",
+        padding: { left: 3, right: 3, top: 1, bottom: 1 }
+      }).setOrigin(0.5).setDepth(3);
       this.mapContainer!.add(label);
     });
 
@@ -2693,9 +2733,11 @@ export default class Overworld extends Phaser.Scene {
         // Portal label
         const label = this.add.text(x, y + 16, "Portal", {
           fontFamily: "monospace",
-          fontSize: "8px",
-          color: "#c4b5fd"
-        }).setOrigin(0.5);
+          fontSize: "9px",
+          color: "#ddd6fe",
+          backgroundColor: "#0b1220cc",
+          padding: { left: 3, right: 3, top: 1, bottom: 1 }
+        }).setOrigin(0.5).setDepth(2);
         this.mapContainer!.add(label);
       });
     }
