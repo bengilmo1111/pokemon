@@ -1443,6 +1443,7 @@ export default class Overworld extends Phaser.Scene {
 
   private drawZones(region: RegionData): void {
     this.zoneGraphics.clear();
+    const g = this.zoneGraphics;
     region.zones.forEach((zone) => {
       const biome = BIOMES[zone.biome];
       const x = zone.x * WORLD_SCALE;
@@ -1450,9 +1451,25 @@ export default class Overworld extends Phaser.Scene {
       const r = zone.r * WORLD_SCALE;
       const shape = zone.shape || "circle";
       const rotation = (zone.rotation || 0) * Math.PI / 180;
-      this.zoneGraphics.fillStyle(biome.color, 0.92);
-      this.drawZoneShape(this.zoneGraphics, x, y, r, shape, rotation);
+      // Darker rim for a grounded edge, main fill inset, then a soft top
+      // highlight — gives flat biome blobs a sense of depth/curvature.
+      g.fillStyle(this.adjustColor(biome.color, 0.72), 0.92);
+      this.drawZoneShape(g, x, y, r, shape, rotation);
+      g.fillStyle(biome.color, 0.96);
+      this.drawZoneShape(g, x, y, r * 0.94, shape, rotation);
+      g.fillStyle(this.adjustColor(biome.color, 1.18), 0.18);
+      this.drawZoneShape(g, x, y - r * 0.16, r * 0.62, shape, rotation);
     });
+  }
+
+  /** Scale an RGB colour by a factor (>1 brightens, <1 darkens). */
+  private adjustColor(int: number, factor: number): number {
+    const c = Phaser.Display.Color.IntegerToColor(int);
+    return Phaser.Display.Color.GetColor(
+      Phaser.Math.Clamp(Math.round(c.red * factor), 0, 255),
+      Phaser.Math.Clamp(Math.round(c.green * factor), 0, 255),
+      Phaser.Math.Clamp(Math.round(c.blue * factor), 0, 255)
+    );
   }
 
   private createAmbientEffects(region: RegionData): void {
