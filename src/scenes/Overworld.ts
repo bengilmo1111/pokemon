@@ -66,6 +66,9 @@ export default class Overworld extends Phaser.Scene {
   private zoneMap: Map<string, { x: number; y: number; r: number }> = new Map();
   private zoneMapRegion = -1;
   private lastHudText = "";
+  private cameraAssignmentTimer = 0;
+  private poiHudTimer = 0;
+  private nearbyCheckTimer = 0;
   // Dedicated UI camera (zoom 1) so the device camera zoom never shrinks/recentres the HUD & controls.
   private uiCamera?: Phaser.Cameras.Scene2D.Camera;
   private props: Array<{ x: number; y: number; type: string; variant: number; scale: number }> = [];
@@ -335,10 +338,15 @@ export default class Overworld extends Phaser.Scene {
     }
   }
 
-  update(): void {
+  update(_time: number, delta: number): void {
     // Keep UI (scrollFactor 0) on the un-zoomed UI camera and world on the main
-    // camera — runs every frame so dynamically opened menus are caught too.
-    this.refreshCameraAssignments();
+    // camera. This is deliberately throttled because walking every child every
+    // frame gets expensive as the map accumulates sprites, text, and overlays.
+    this.cameraAssignmentTimer -= delta;
+    if (this.cameraAssignmentTimer <= 0) {
+      this.refreshCameraAssignments();
+      this.cameraAssignmentTimer = 250;
+    }
 
     if (this.starterOpen || this.isPaused) {
       return;
@@ -351,7 +359,7 @@ export default class Overworld extends Phaser.Scene {
 
     // Handle notification timer
     if (this.notificationTimer > 0) {
-      this.notificationTimer -= this.game.loop.delta;
+      this.notificationTimer -= delta;
       if (this.notificationTimer <= 0) {
         this.notificationText?.setVisible(false);
       }
@@ -359,7 +367,7 @@ export default class Overworld extends Phaser.Scene {
 
     // Handle XP boost timer
     if (this.xpBoostActive && this.xpBoostTimer > 0) {
-      this.xpBoostTimer -= this.game.loop.delta;
+      this.xpBoostTimer -= delta;
       if (this.xpBoostTimer <= 0) {
         this.xpBoostActive = false;
         gameState.xpMultiplier = 1;
@@ -368,7 +376,7 @@ export default class Overworld extends Phaser.Scene {
     }
 
     // Update total play time and check for item respawns
-    gameState.totalPlayTime += this.game.loop.delta;
+    gameState.totalPlayTime += delta;
     const respawnedItems = checkItemRespawns(gameState);
     if (respawnedItems.length > 0) {
       this.createItemSpritesForIds(respawnedItems);
@@ -377,23 +385,31 @@ export default class Overworld extends Phaser.Scene {
     // Update power spot cooldowns
     for (const [spotId, cooldown] of this.powerSpotCooldowns.entries()) {
       if (cooldown > 0) {
-        this.powerSpotCooldowns.set(spotId, cooldown - this.game.loop.delta);
+        this.powerSpotCooldowns.set(spotId, cooldown - delta);
       }
     }
 
     this.updatePlayer();
     this.updateWildMons();
-    this.updatePoiHud();
+    this.poiHudTimer -= delta;
+    if (this.poiHudTimer <= 0 || this.interactPressed) {
+      this.updatePoiHud();
+      this.poiHudTimer = 125;
+    }
     this.handleHealing();
-    this.checkTrainerEncounters();
-    this.checkRivalEncounters();
-    this.checkItemPickups();
-    this.checkPowerSpots();
-    this.checkLeagueEntrance();
-    this.checkPortals();
+    this.nearbyCheckTimer -= delta;
+    if (this.nearbyCheckTimer <= 0) {
+      this.checkTrainerEncounters();
+      this.checkRivalEncounters();
+      this.checkItemPickups();
+      this.checkPowerSpots();
+      this.checkLeagueEntrance();
+      this.checkPortals();
+      this.nearbyCheckTimer = 100;
+    }
 
     if (this.encounterCooldown > 0) {
-      this.encounterCooldown -= this.game.loop.delta;
+      this.encounterCooldown -= delta;
     }
   }
 
@@ -627,8 +643,9 @@ export default class Overworld extends Phaser.Scene {
       }
 
       if (this.encounterCooldown <= 0) {
-        const distanceToPlayer = Phaser.Math.Distance.Between(this.player.x, this.player.y, wild.x, wild.y);
-        if (distanceToPlayer < 32) {
+        const dxPlayer = this.player.x - wild.x;
+        const dyPlayer = this.player.y - wild.y;
+        if (dxPlayer * dxPlayer + dyPlayer * dyPlayer < 32 * 32) {
           this.startBattle(wild.id);
           break;
         }
@@ -642,9 +659,9 @@ export default class Overworld extends Phaser.Scene {
     for (const trainer of gameState.npcTrainers) {
       const trainerX = trainer.x * WORLD_SCALE;
       const trainerY = trainer.y * WORLD_SCALE;
-      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, trainerX, trainerY);
-
-      if (distance < 60) {
+      const dx = this.player.x - trainerX;
+      const dy = this.player.y - trainerY;
+      if (dx * dx + dy * dy < 60 * 60) {
         const alreadyDefeated = !!gameState.defeatedTrainers[trainer.id];
 
         // Rematch: available when player has 2+ badges and trainer already defeated
@@ -668,9 +685,9 @@ export default class Overworld extends Phaser.Scene {
 
       const itemX = item.x * WORLD_SCALE;
       const itemY = item.y * WORLD_SCALE;
-      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, itemX, itemY);
-
-      if (distance < 30) {
+      const dx = this.player.x - itemX;
+      const dy = this.player.y - itemY;
+      if (dx * dx + dy * dy < 30 * 30) {
         const result = collectItem(gameState, item.id);
         if (result) {
           Sound.playItemGet();
@@ -709,9 +726,9 @@ export default class Overworld extends Phaser.Scene {
     for (const spot of region.powerSpots) {
       const spotX = spot.x * WORLD_SCALE;
       const spotY = spot.y * WORLD_SCALE;
-      const distance = Phaser.Math.Distance.Between(playerX, playerY, spotX, spotY);
-
-      if (distance < 35) {
+      const dx = playerX - spotX;
+      const dy = playerY - spotY;
+      if (dx * dx + dy * dy < 35 * 35) {
         const cooldown = this.powerSpotCooldowns.get(spot.id) || 0;
         if (cooldown <= 0) {
           this.activatePowerSpot(spot);
@@ -791,9 +808,10 @@ export default class Overworld extends Phaser.Scene {
     const gymCount = getRegion(gameState).gyms.length;
     const leagueX = 45 * WORLD_SCALE;
     const leagueY = 35 * WORLD_SCALE;
-    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, leagueX, leagueY);
+    const dx = this.player.x - leagueX;
+    const dy = this.player.y - leagueY;
 
-    if (distance < 80) {
+    if (dx * dx + dy * dy < 80 * 80) {
       if (gameState.badges.length < gymCount) {
         // Show "need badges" hint once per approach
         if (!this.e4CooldownActive) {
@@ -1219,9 +1237,9 @@ export default class Overworld extends Phaser.Scene {
     for (const portal of region.portals) {
       const portalX = portal.x * WORLD_SCALE;
       const portalY = portal.y * WORLD_SCALE;
-      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, portalX, portalY);
-
-      if (distance < 30) {
+      const dx = this.player.x - portalX;
+      const dy = this.player.y - portalY;
+      if (dx * dx + dy * dy < 30 * 30) {
         this.triggerPortalTransition(portal);
         break;
       }
@@ -1375,9 +1393,9 @@ export default class Overworld extends Phaser.Scene {
 
     const rivalX = encounter.x * WORLD_SCALE;
     const rivalY = encounter.y * WORLD_SCALE;
-    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, rivalX, rivalY);
-
-    if (distance < 50) {
+    const dx = this.player.x - rivalX;
+    const dy = this.player.y - rivalY;
+    if (dx * dx + dy * dy < 50 * 50) {
       this.showNotification(`RIVAL: "${encounter.dialogue}"`, 3000);
       this.startRivalBattle(encounter);
     }
@@ -2321,10 +2339,14 @@ export default class Overworld extends Phaser.Scene {
     let leagueHint = "";
     let powerSpotHint = "";
     let xpBoostLabel = "";
+    const distSq = (x: number, y: number) => {
+      const dx = playerX - x * WORLD_SCALE;
+      const dy = playerY - y * WORLD_SCALE;
+      return dx * dx + dy * dy;
+    };
 
     for (const gym of region.gyms) {
-      const distance = Phaser.Math.Distance.Between(playerX, playerY, gym.x * WORLD_SCALE, gym.y * WORLD_SCALE);
-      if (distance < 90 && !gameState.defeatedGyms[gym.id]) {
+      if (distSq(gym.x, gym.y) < 90 * 90 && !gameState.defeatedGyms[gym.id]) {
         gymLabel = `Gym: ${gym.name} (${gym.leader})`;
         gymHint = "[E/A] Challenge Gym";
         if ((this.keyE && this.input.keyboard?.checkDown(this.keyE, 250)) || this.interactPressed) {
@@ -2338,13 +2360,13 @@ export default class Overworld extends Phaser.Scene {
 
     let martHint = "";
     for (const town of region.towns) {
-      const distance = Phaser.Math.Distance.Between(playerX, playerY, town.x * WORLD_SCALE, town.y * WORLD_SCALE);
-      if (distance < 70) {
+      const distanceSq = distSq(town.x, town.y);
+      if (distanceSq < 70 * 70) {
         locationLabel = town.name;
         if (town.services.includes("center")) {
           healHint = "[H] Pokemon Center";
         }
-        if (town.services.includes("mart") && distance < 50) {
+        if (town.services.includes("mart") && distanceSq < 50 * 50) {
           martHint = "[E/A] Poke Mart";
           if ((this.keyE && this.input.keyboard?.checkDown(this.keyE, 250)) || this.interactPressed) {
             // Don't consume interact if gym is also nearby (gym takes priority)
@@ -2360,8 +2382,7 @@ export default class Overworld extends Phaser.Scene {
 
     if (locationLabel === "Wilderness") {
       for (const landmark of region.landmarks) {
-        const distance = Phaser.Math.Distance.Between(playerX, playerY, landmark.x * WORLD_SCALE, landmark.y * WORLD_SCALE);
-        if (distance < 70) {
+        if (distSq(landmark.x, landmark.y) < 70 * 70) {
           locationLabel = landmark.name;
           break;
         }
@@ -2370,7 +2391,7 @@ export default class Overworld extends Phaser.Scene {
 
     if (locationLabel === "Wilderness") {
       const zone = region.zones.find((z) =>
-        Phaser.Math.Distance.Between(playerX, playerY, z.x * WORLD_SCALE, z.y * WORLD_SCALE) < z.r * WORLD_SCALE
+        distSq(z.x, z.y) < (z.r * WORLD_SCALE) * (z.r * WORLD_SCALE)
       );
       if (zone) locationLabel = zone.name;
     }
@@ -2380,9 +2401,10 @@ export default class Overworld extends Phaser.Scene {
     if (!gameState.isChampion) {
       const leagueX = 45 * WORLD_SCALE;
       const leagueY = 35 * WORLD_SCALE;
-      const distance = Phaser.Math.Distance.Between(playerX, playerY, leagueX, leagueY);
-      if (distance < 80) {
-        const gymCount = getRegion(gameState).gyms.length;
+      const dx = playerX - leagueX;
+      const dy = playerY - leagueY;
+      if (dx * dx + dy * dy < 80 * 80) {
+        const gymCount = region.gyms.length;
         if (gameState.badges.length < gymCount) {
           leagueHint = `Need ${gymCount} badges for the Elite Four`;
         } else if (gameState.e4Progress > 0 && gameState.e4Progress < 4) {
@@ -2397,8 +2419,7 @@ export default class Overworld extends Phaser.Scene {
 
     // Check for nearby power spots
     for (const spot of region.powerSpots) {
-      const distance = Phaser.Math.Distance.Between(playerX, playerY, spot.x * WORLD_SCALE, spot.y * WORLD_SCALE);
-      if (distance < 60) {
+      if (distSq(spot.x, spot.y) < 60 * 60) {
         const cooldown = this.powerSpotCooldowns.get(spot.id) || 0;
         if (cooldown <= 0) {
           const effectDesc = spot.effect === "heal" ? "Healing aura nearby!" :
@@ -2533,10 +2554,12 @@ export default class Overworld extends Phaser.Scene {
 
     const healActivated = (this.keyH && this.input.keyboard?.checkDown(this.keyH, 250)) || this.interactPressed;
     if (healActivated) {
-      const town = region.towns.find((t) =>
-        t.services.includes("center") &&
-        Phaser.Math.Distance.Between(playerX, playerY, t.x * WORLD_SCALE, t.y * WORLD_SCALE) < 70
-      );
+      const town = region.towns.find((t) => {
+        if (!t.services.includes("center")) return false;
+        const dx = playerX - t.x * WORLD_SCALE;
+        const dy = playerY - t.y * WORLD_SCALE;
+        return dx * dx + dy * dy < 70 * 70;
+      });
       if (town) {
         this.interactPressed = false;
         Sound.playHeal();
