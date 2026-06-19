@@ -37,6 +37,7 @@ import { getStatusColor, getStatusDisplayText } from "../game/battle";
 import * as Sound from "../game/sound";
 import { saveGame, loadGame } from "../game/persistence";
 import { TouchControls } from "../game/touch";
+import { fitMenu, safeAreaInset } from "../game/uiLayout";
 
 type WildSprite = Phaser.Physics.Arcade.Sprite & { wildId: string };
 
@@ -112,6 +113,12 @@ export default class Overworld extends Phaser.Scene {
   private e4CooldownActive = false;
   private championOverlay?: Phaser.GameObjects.Rectangle;
   private championElements: Phaser.GameObjects.GameObject[] = [];
+  // Responsive menu containers: each wraps a full-screen overlay so it can be
+  // uniformly scaled to fit any viewport (see fitOpenMenus / uiLayout.fitMenu).
+  private martContainer?: Phaser.GameObjects.Container;
+  private pokedexContainer?: Phaser.GameObjects.Container;
+  private teamContainer?: Phaser.GameObjects.Container;
+  private championContainer?: Phaser.GameObjects.Container;
   // Box tab for team screen
   private teamTab: "team" | "box" = "team";
   private teamSelectedMon: { source: "team" | "box"; index: number } | null = null;
@@ -771,13 +778,13 @@ export default class Overworld extends Phaser.Scene {
     const centerX = this.scale.width / 2;
     const centerY = this.scale.height / 2;
 
+    // Full-screen dim stays unscaled so it always covers the whole viewport.
     const overlay = this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x000000, 0.85)
       .setScrollFactor(0).setDepth(1200).setInteractive();
     this.championElements.push(overlay);
 
     const gold = this.add.rectangle(centerX, centerY, 560, 320, 0x1a1000, 1)
       .setScrollFactor(0).setDepth(1201).setStrokeStyle(4, 0xffd700);
-    this.championElements.push(gold);
 
     const title = this.add.text(centerX, centerY - 110, "CHAMPION!", {
       fontFamily: "monospace",
@@ -785,7 +792,6 @@ export default class Overworld extends Phaser.Scene {
       color: "#ffd700",
       fontStyle: "bold"
     }).setOrigin(0.5).setScrollFactor(0).setDepth(1202);
-    this.championElements.push(title);
 
     const sub = this.add.text(centerX, centerY - 40, "YOU ARE THE POKEMON CHAMPION!", {
       fontFamily: "monospace",
@@ -793,7 +799,6 @@ export default class Overworld extends Phaser.Scene {
       color: "#ffffff",
       fontStyle: "bold"
     }).setOrigin(0.5).setScrollFactor(0).setDepth(1202);
-    this.championElements.push(sub);
 
     const desc = this.add.text(centerX, centerY + 20,
       "You defeated all four Elite Four members\nand claimed the title of Champion!", {
@@ -803,7 +808,10 @@ export default class Overworld extends Phaser.Scene {
       align: "center",
       lineSpacing: 6
     }).setOrigin(0.5).setScrollFactor(0).setDepth(1202);
-    this.championElements.push(desc);
+
+    // The card scales to fit narrow phones (the dim overlay above does not).
+    this.championContainer = this.add.container(0, 0, [gold, title, sub, desc]).setDepth(1201);
+    fitMenu(this, this.championContainer, 560, 340);
 
     // Sparkle animation
     for (let i = 0; i < 20; i++) {
@@ -826,6 +834,7 @@ export default class Overworld extends Phaser.Scene {
     this.time.delayedCall(5000, () => {
       this.championElements.forEach(el => (el as Phaser.GameObjects.GameObject).destroy());
       this.championElements = [];
+      if (this.championContainer) { this.championContainer.destroy(true); this.championContainer = undefined; }
     });
 
     Sound.playVictory();
@@ -2375,6 +2384,7 @@ export default class Overworld extends Phaser.Scene {
       this.uiCamera.setSize(this.scale.width, this.scale.height);
     }
     this.refreshCameraAssignments();
+    this.fitOpenMenus();
   }
 
   /**
@@ -2598,6 +2608,35 @@ export default class Overworld extends Phaser.Scene {
       color: "#94a3b8"
     }).setOrigin(0.5);
     this.mapContainer.add(legend);
+
+    // Shrink to fit narrow viewports (re-applied on resize via fitOpenMenus).
+    this.fitMapContainer();
+  }
+
+  /**
+   * Scale the visual-map container to fit the viewport, centred about its local
+   * midpoint (mapWidth/2, mapHeight/2) which is pinned to the screen centre.
+   * Unlike the other menus the map's children use container-local coordinates,
+   * so this re-centres correctly on resize.
+   */
+  private fitMapContainer(): void {
+    if (!this.mapContainer) return;
+    const mw = 400;
+    const mh = 300;
+    const availW = this.scale.width - 32 - safeAreaInset("left") - safeAreaInset("right");
+    const availH = this.scale.height - 32 - safeAreaInset("top") - safeAreaInset("bottom");
+    const s = Math.min(1, availW / (mw + 20), availH / (mh + 60));
+    this.mapContainer.setScale(s);
+    this.mapContainer.setPosition(this.scale.width / 2 - (mw / 2) * s, this.scale.height / 2 - (mh / 2) * s);
+  }
+
+  /** Re-fit any open full-screen menu after a viewport resize/rotation. */
+  private fitOpenMenus(): void {
+    if (this.martContainer) fitMenu(this, this.martContainer, 440, 620);
+    if (this.pokedexContainer) fitMenu(this, this.pokedexContainer, 600, 400);
+    if (this.teamContainer) fitMenu(this, this.teamContainer, 620, 430);
+    if (this.championContainer) fitMenu(this, this.championContainer, 560, 340);
+    if (this.mapOpen) this.fitMapContainer();
   }
 
   private closeVisualMap(): void {
@@ -2719,9 +2758,9 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private renderTeamScreen(): void {
-    // Destroy any existing team UI
-    if (this.teamOverlay) { this.teamOverlay.destroy(); this.teamOverlay = undefined; }
-    this.teamText.forEach(t => t.destroy());
+    // Destroy any existing team UI (this method re-renders on every interaction)
+    if (this.teamContainer) { this.teamContainer.destroy(true); this.teamContainer = undefined; }
+    this.teamOverlay = undefined;
     this.teamText = [];
 
     const width = 620;
@@ -2767,6 +2806,11 @@ export default class Overworld extends Phaser.Scene {
       fontFamily: "monospace", fontSize: "13px", color: "#6b7280"
     }).setScrollFactor(0).setDepth(502);
     this.teamText.push(close);
+
+    // Scale-to-fit container so the 620px-wide panel fits narrow phones.
+    this.teamContainer = this.add.container(0, 0, [this.teamOverlay!, ...this.teamText]);
+    this.teamContainer.setDepth(500);
+    fitMenu(this, this.teamContainer, width, height);
   }
 
   private renderTeamTab(
@@ -3014,8 +3058,8 @@ export default class Overworld extends Phaser.Scene {
     this.teamOpen = false;
     this.teamSelectedMon = null;
     this.touch?.setVisible(true);
-    if (this.teamOverlay) { this.teamOverlay.destroy(); this.teamOverlay = undefined; }
-    this.teamText.forEach((item) => item.destroy());
+    if (this.teamContainer) { this.teamContainer.destroy(true); this.teamContainer = undefined; }
+    this.teamOverlay = undefined;
     this.teamText = [];
   }
 
@@ -3113,13 +3157,21 @@ export default class Overworld extends Phaser.Scene {
     });
     close.setScrollFactor(0);
     this.pokedexText.push(close);
+
+    // Scale-to-fit container so the 600px-wide panel fits narrow phones.
+    this.pokedexContainer = this.add.container(0, 0, [panelG, ...this.pokedexText]);
+    this.pokedexContainer.setDepth(499);
+    fitMenu(this, this.pokedexContainer, width, height);
   }
 
   private closePokedex(): void {
     this.pokedexOpen = false;
     this.touch?.setVisible(true);
-    if (this.pokedexOverlay) this.pokedexOverlay.destroy();
-    this.pokedexText.forEach((item) => item.destroy());
+    if (this.pokedexContainer) {
+      this.pokedexContainer.destroy(true);
+      this.pokedexContainer = undefined;
+    }
+    this.pokedexOverlay = undefined;
     this.pokedexText = [];
   }
 
@@ -3487,16 +3539,21 @@ export default class Overworld extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(951).setInteractive({ useHandCursor: true });
     closeBtn.on("pointerdown", () => this.closeMart());
     this.martElements.push(closeBtn);
+
+    // Wrap everything in a container scaled to fit the viewport on any phone.
+    this.martContainer = this.add.container(0, 0, [this.martOverlay!, ...this.martElements]);
+    this.martContainer.setDepth(950);
+    fitMenu(this, this.martContainer, cardW, cardH);
   }
 
   private closeMart(): void {
     this.martOpen = false;
     this.touch?.setVisible(true);
-    if (this.martOverlay) {
-      this.martOverlay.destroy();
-      this.martOverlay = undefined;
+    if (this.martContainer) {
+      this.martContainer.destroy(true);
+      this.martContainer = undefined;
     }
-    this.martElements.forEach(el => (el as Phaser.GameObjects.GameObject).destroy());
+    this.martOverlay = undefined;
     this.martElements = [];
   }
 

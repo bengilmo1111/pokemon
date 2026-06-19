@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { safeAreaInset } from "./uiLayout";
 
 export interface TouchButtonConfig {
   /** unique id used with wasButtonPressed() */
@@ -172,8 +173,8 @@ export class TouchControls {
     // Hug the screen edge on every device: a small fixed gap plus the device's
     // safe-area insets (notch / rounded corners / gesture bar) read from CSS.
     const gap = 12;
-    const insetR = gap + TouchControls.safeAreaInset("right");
-    const insetB = gap + TouchControls.safeAreaInset("bottom");
+    const insetR = gap + safeAreaInset("right");
+    const insetB = gap + safeAreaInset("bottom");
 
     const primaries = this.buttons.filter((b) => b.cfg.primary);
     const secondaries = this.buttons.filter((b) => !b.cfg.primary);
@@ -197,19 +198,6 @@ export class TouchControls {
       b.text.setPosition(x, y);
       y -= r * 2 + 14;
     });
-  }
-
-  /** Read a CSS `env(safe-area-inset-*)` value in pixels (0 when unsupported). */
-  private static safeAreaInset(side: "right" | "bottom" | "left" | "top"): number {
-    if (typeof document === "undefined") return 0;
-    const probe = document.createElement("div");
-    probe.style.cssText =
-      `position:fixed;${side}:0;width:0;height:0;padding-${side}:env(safe-area-inset-${side},0px);`;
-    document.body.appendChild(probe);
-    const prop = `padding-${side}` as const;
-    const val = parseFloat(getComputedStyle(probe).getPropertyValue(prop)) || 0;
-    probe.remove();
-    return val;
   }
 
   /** Normalised movement vector, components in [-1, 1]. */
