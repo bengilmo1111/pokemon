@@ -1591,6 +1591,18 @@ export default class Overworld extends Phaser.Scene {
       // geometry didn't nest, producing dark seam lines across the map.)
       g.fillStyle(biome.color, 0.92);
       this.drawZoneShape(g, x, y, r, shape, rotation);
+
+      // Lit centre: several lighter, concentric fills *inside* the zone fake a
+      // soft radial gradient for gentle depth. They stay well within the radius
+      // (same shape) so they never bleed onto neighbours the way an outer rim
+      // did. Many thin layers at low alpha keep the falloff smooth (no banding).
+      const layers = 12;
+      for (let i = 1; i <= layers; i++) {
+        const t = i / (layers + 1); // 0..1 inward
+        const lit = Phaser.Display.Color.IntegerToColor(biome.color).lighten(Math.round(24 * t)).color;
+        g.fillStyle(lit, 0.07);
+        this.drawZoneShape(g, x, y, r * (1 - t * 0.85), shape, rotation);
+      }
     });
   }
 
