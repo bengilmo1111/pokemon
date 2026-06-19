@@ -104,6 +104,7 @@ export default class Overworld extends Phaser.Scene {
   private battleStarting = false;
   private walkTime = 0;
   private playerBaseScale = 1;
+  private lastValidPlayerPosition = new Phaser.Math.Vector2();
   private vignette?: Phaser.GameObjects.Graphics;
   private martOpen = false;
   private martOverlay?: Phaser.GameObjects.Rectangle;
@@ -200,6 +201,7 @@ export default class Overworld extends Phaser.Scene {
     this.applyDisplayHeight(this.player, 64);
     this.playerBaseScale = this.player.scaleY;
     this.player.setCollideWorldBounds(true);
+    this.lastValidPlayerPosition.set(startX, startY);
     this.physics.add.collider(this.player, this.propBodies);
 
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
@@ -319,6 +321,7 @@ export default class Overworld extends Phaser.Scene {
     // Check if we came through a portal and need to set position
     if (gameState.portalTargetX !== undefined && gameState.portalTargetY !== undefined) {
       this.player.setPosition(gameState.portalTargetX * WORLD_SCALE, gameState.portalTargetY * WORLD_SCALE);
+      this.keepPlayerOnMap();
       gameState.portalTargetX = undefined;
       gameState.portalTargetY = undefined;
     }
@@ -394,6 +397,94 @@ export default class Overworld extends Phaser.Scene {
     }
   }
 
+  private keepPlayerOnMap(): void {
+    const region = getRegion(gameState);
+    if (this.isPointOnPlayableMap(this.player.x, this.player.y, region)) {
+      this.lastValidPlayerPosition.set(this.player.x, this.player.y);
+      return;
+    }
+
+    this.player.setPosition(this.lastValidPlayerPosition.x, this.lastValidPlayerPosition.y);
+    this.player.setVelocity(0, 0);
+  }
+
+  private keepWildPokemonInZone(wild: { x: number; y: number; vx: number; vy: number }, zone: { x: number; y: number; r: number }): void {
+    const centerX = zone.x * WORLD_SCALE;
+    const centerY = zone.y * WORLD_SCALE;
+    const maxRadius = zone.r * WORLD_SCALE * 0.92;
+    const dx = wild.x - centerX;
+    const dy = wild.y - centerY;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance <= maxRadius || distance === 0) return;
+
+    wild.x = centerX + (dx / distance) * maxRadius;
+    wild.y = centerY + (dy / distance) * maxRadius;
+    wild.vx *= -0.35;
+    wild.vy *= -0.35;
+  }
+
+  private isPointOnPlayableMap(x: number, y: number, region: RegionData): boolean {
+    if (region.zones.some((zone) => this.isPointInZoneShape(x, y, zone, 1.12))) {
+      return true;
+    }
+
+    if (region.routes.some((route) => this.isPointOnRoute(x, y, route, region))) {
+      return true;
+    }
+
+    return [
+      ...region.towns.map((point) => ({ x: point.x, y: point.y, radius: 34 })),
+      ...region.landmarks.map((point) => ({ x: point.x, y: point.y, radius: 34 })),
+      ...region.gyms.map((point) => ({ x: point.x, y: point.y, radius: 38 })),
+      ...region.powerSpots.map((point) => ({ x: point.x, y: point.y, radius: 30 })),
+      ...region.portals.map((point) => ({ x: point.x, y: point.y, radius: 34 }))
+    ].some((point) => Phaser.Math.Distance.Between(x, y, point.x * WORLD_SCALE, point.y * WORLD_SCALE) <= point.radius);
+  }
+
+  private isPointInZoneShape(x: number, y: number, zone: RegionData["zones"][number], scale = 1): boolean {
+    const centerX = zone.x * WORLD_SCALE;
+    const centerY = zone.y * WORLD_SCALE;
+    const r = zone.r * WORLD_SCALE * scale;
+    const rotation = -((zone.rotation || 0) * Math.PI / 180);
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const localX = dx * Math.cos(rotation) - dy * Math.sin(rotation);
+    const localY = dx * Math.sin(rotation) + dy * Math.cos(rotation);
+
+    if (zone.shape === "ellipse") {
+      const radiusX = r * 0.7;
+      const radiusY = r * 0.4;
+      return (localX * localX) / (radiusX * radiusX) + (localY * localY) / (radiusY * radiusY) <= 1;
+    }
+
+    if (zone.shape === "rounded") {
+      return Math.abs(localX) <= r * 1.6 && Math.abs(localY) <= r * 1.2;
+    }
+
+    return localX * localX + localY * localY <= r * r;
+  }
+
+  private isPointOnRoute(x: number, y: number, route: RegionData["routes"][number], region: RegionData): boolean {
+    const from = this.findTownOrLandmark(region, route.from);
+    const to = this.findTownOrLandmark(region, route.to);
+    if (!from || !to) return false;
+
+    const ax = from.x * WORLD_SCALE;
+    const ay = from.y * WORLD_SCALE;
+    const bx = to.x * WORLD_SCALE;
+    const by = to.y * WORLD_SCALE;
+    const abx = bx - ax;
+    const aby = by - ay;
+    const lengthSq = abx * abx + aby * aby;
+    if (lengthSq === 0) return false;
+
+    const t = Phaser.Math.Clamp(((x - ax) * abx + (y - ay) * aby) / lengthSq, 0, 1);
+    const closestX = ax + abx * t;
+    const closestY = ay + aby * t;
+    return Phaser.Math.Distance.Between(x, y, closestX, closestY) <= 18;
+  }
+
   private showNotification(message: string, duration = 2000): void {
     if (this.notificationText) {
       this.notificationText.setText(message).setVisible(true);
@@ -461,6 +552,8 @@ export default class Overworld extends Phaser.Scene {
       velocityY = (velocityY / length) * speed;
     }
 
+    this.keepPlayerOnMap();
+
     this.player.setVelocity(velocityX, velocityY);
 
     const moving = velocityX !== 0 || velocityY !== 0;
@@ -521,6 +614,7 @@ export default class Overworld extends Phaser.Scene {
 
       wild.x += wild.vx;
       wild.y += wild.vy;
+      this.keepWildPokemonInZone(wild, zone);
 
       const sprite = this.wildSprites.get(wild.id);
       if (sprite) {
@@ -3697,7 +3791,7 @@ export default class Overworld extends Phaser.Scene {
       maxY = Math.max(maxY, landmark.y * WORLD_SCALE);
     });
 
-    const padding = 150;
+    const padding = 48;
     return {
       x: minX - padding,
       y: minY - padding,
