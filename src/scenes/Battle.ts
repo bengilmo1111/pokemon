@@ -53,6 +53,15 @@ const STAT_LABELS: Record<StatStageKey, string> = {
   spDef: "Sp. Def"
 };
 
+// Per-type base hue for the battle backdrop (sky + ground are tinted from this).
+const BATTLE_BG_BY_TYPE: Record<string, number> = {
+  normal: 0x8a8a6e, fire: 0xb5532a, water: 0x2f5fa6, grass: 0x3f8a4a,
+  electric: 0xb89a22, ice: 0x4f93a8, fighting: 0x8a4030, poison: 0x6a3a78,
+  ground: 0x9a7a44, flying: 0x5a72a8, psychic: 0xa84a72, bug: 0x6a7a30,
+  rock: 0x7a6a44, ghost: 0x453a66, dragon: 0x4a3aa0, dark: 0x3a3344,
+  steel: 0x5a6a78, fairy: 0xa85f86
+};
+
 export default class Battle extends Phaser.Scene {
   private wildId!: string;
   private playerMon!: PokemonInstance;
@@ -65,6 +74,8 @@ export default class Battle extends Phaser.Scene {
   private trainerName = "";
   private playerSprite?: Phaser.GameObjects.Sprite;
   private enemySprite?: Phaser.GameObjects.Sprite;
+  private playerShadow?: Phaser.GameObjects.Ellipse;
+  private enemyShadow?: Phaser.GameObjects.Ellipse;
   private messageText!: Phaser.GameObjects.Text;
   private playerHpText!: Phaser.GameObjects.Text;
   private enemyHpText!: Phaser.GameObjects.Text;
@@ -209,13 +220,8 @@ export default class Battle extends Phaser.Scene {
     this.enemyIndex = 0;
     this.enemyMon = this.enemyTeam[this.enemyIndex];
 
-    // Create battle background (depth 0)
-    this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x1b2533).setOrigin(0).setDepth(0);
-    this.add.rectangle(0, this.scale.height * 0.55, this.scale.width, this.scale.height * 0.45, 0x101522).setOrigin(0).setDepth(0);
-
-    // Add battle platform graphics
-    this.add.ellipse(this.scale.width * 0.25, this.scale.height * 0.52, 120, 30, 0x2d3748);
-    this.add.ellipse(this.scale.width * 0.7, this.scale.height * 0.38, 100, 25, 0x2d3748);
+    // Atmospheric, type-themed battle background + layered platforms.
+    this.createBattleBackground();
 
     const playerTexture = this.textures.exists(`pokemon-${this.playerMon.speciesId}`)
       ? `pokemon-${this.playerMon.speciesId}`
@@ -223,6 +229,12 @@ export default class Battle extends Phaser.Scene {
     const enemyTexture = this.textures.exists(`pokemon-${this.enemyMon.speciesId}`)
       ? `pokemon-${this.enemyMon.speciesId}`
       : "wild-fallback";
+
+    // Soft contact shadows that ground each Pokémon on its platform.
+    this.playerShadow = this.add.ellipse(this.scale.width * 0.25, this.scale.height * 0.52, 116, 30, 0x000000, 0.32)
+      .setDepth(9);
+    this.enemyShadow = this.add.ellipse(this.scale.width * 0.7, this.scale.height * 0.38, 96, 26, 0x000000, 0.32)
+      .setDepth(9);
 
     // Create sprites off-screen for entrance animation
     this.playerSprite = this.add.sprite(-100, this.scale.height * 0.45, playerTexture);
@@ -1893,6 +1905,53 @@ export default class Battle extends Phaser.Scene {
   }
 
   /** Set the active weather, show a message, and tint the field. */
+  /** Scale an RGB colour by a factor (>1 brightens, <1 darkens). */
+  private adjustColor(int: number, factor: number): number {
+    const c = Phaser.Display.Color.IntegerToColor(int);
+    return Phaser.Display.Color.GetColor(
+      Phaser.Math.Clamp(Math.round(c.red * factor), 0, 255),
+      Phaser.Math.Clamp(Math.round(c.green * factor), 0, 255),
+      Phaser.Math.Clamp(Math.round(c.blue * factor), 0, 255)
+    );
+  }
+
+  /** Atmospheric, type-themed gradient backdrop with layered platforms. */
+  private createBattleBackground(): void {
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const horizon = h * 0.52;
+    const base = BATTLE_BG_BY_TYPE[this.enemyMon.types[0]] ?? 0x4a6fa5;
+
+    const g = this.add.graphics().setDepth(0);
+    // Sky: light tint at the top easing down to the horizon.
+    g.fillGradientStyle(this.adjustColor(base, 1.7), this.adjustColor(base, 1.7),
+      this.adjustColor(base, 1.15), this.adjustColor(base, 1.15), 1);
+    g.fillRect(0, 0, w, horizon + 2);
+    // Distant hills hugging the horizon.
+    g.fillStyle(this.adjustColor(base, 0.95), 0.5);
+    g.fillEllipse(w * 0.3, horizon, w * 0.95, h * 0.18);
+    g.fillStyle(this.adjustColor(base, 0.8), 0.5);
+    g.fillEllipse(w * 0.78, horizon, w * 0.85, h * 0.14);
+    // Ground: darker gradient from the horizon to the bottom.
+    g.fillGradientStyle(this.adjustColor(base, 0.7), this.adjustColor(base, 0.7),
+      this.adjustColor(base, 0.42), this.adjustColor(base, 0.42), 1);
+    g.fillRect(0, horizon, w, h - horizon);
+
+    this.drawPlatform(w * 0.25, h * 0.52, 132, 34, base);
+    this.drawPlatform(w * 0.7, h * 0.38, 108, 28, base);
+  }
+
+  /** Layered disc platform: contact shadow + base + lit top. */
+  private drawPlatform(cx: number, cy: number, rw: number, rh: number, base: number): void {
+    const g = this.add.graphics().setDepth(0);
+    g.fillStyle(0x000000, 0.22);
+    g.fillEllipse(cx, cy + 6, rw * 1.08, rh * 0.7);
+    g.fillStyle(this.adjustColor(base, 0.65), 1);
+    g.fillEllipse(cx, cy, rw, rh);
+    g.fillStyle(this.adjustColor(base, 1.35), 0.9);
+    g.fillEllipse(cx, cy - rh * 0.18, rw * 0.86, rh * 0.66);
+  }
+
   private setWeather(weather: Weather): void {
     this.weather = weather;
     this.weatherTurns = 5;
