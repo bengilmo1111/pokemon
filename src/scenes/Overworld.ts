@@ -37,7 +37,7 @@ import { getStatusColor, getStatusDisplayText } from "../game/battle";
 import * as Sound from "../game/sound";
 import { saveGame, loadGame } from "../game/persistence";
 import { TouchControls } from "../game/touch";
-import { fitMenu, safeAreaInset } from "../game/uiLayout";
+import { fitMenu } from "../game/uiLayout";
 
 type WildSprite = Phaser.Physics.Arcade.Sprite & { wildId: string };
 
@@ -120,6 +120,7 @@ export default class Overworld extends Phaser.Scene {
   // Responsive menu containers: each wraps a full-screen overlay so it can be
   // uniformly scaled to fit any viewport (see fitOpenMenus / uiLayout.fitMenu).
   private martContainer?: Phaser.GameObjects.Container;
+  private martPage = 0;
   private pokedexContainer?: Phaser.GameObjects.Container;
   private teamContainer?: Phaser.GameObjects.Container;
   private championContainer?: Phaser.GameObjects.Container;
@@ -2633,29 +2634,34 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private openVisualMap(): void {
+    this.mapOpen = true;
     this.touch?.setVisible(false);
     const region = getRegion(gameState);
     const bounds = this.getWorldBounds(region);
 
-    const mapWidth = 400;
-    const mapHeight = 300;
+    const margin = 14;
+    const mapWidth = Math.min(520, this.scale.width - margin * 2);
+    const mapHeight = Math.max(180, Math.min(360, this.scale.height - margin * 2 - 76));
     const mapX = this.scale.width / 2;
     const mapY = this.scale.height / 2;
+    const mapFont = Math.max(15, Math.min(19, Math.round(mapWidth / 26)));
+    const labelFont = Math.max(14, Math.min(16, Math.round(mapWidth / 34)));
 
-    // Create container for the map
+    // Create container for the map at natural scale. Text remains readable on
+    // mobile; the panel itself is sized to the viewport instead of scaled down.
     this.mapContainer = this.add.container(mapX - mapWidth / 2, mapY - mapHeight / 2);
     this.mapContainer.setScrollFactor(0);
     this.mapContainer.setDepth(500);
 
     // Background panel
-    const bg = this.add.rectangle(mapWidth / 2, mapHeight / 2, mapWidth + 20, mapHeight + 60, 0x0f172a, 0.95);
+    const bg = this.add.rectangle(mapWidth / 2, mapHeight / 2, mapWidth, mapHeight + 64, 0x0f172a, 0.95);
     bg.setStrokeStyle(3, 0xfbbf24);
     this.mapContainer.add(bg);
 
     // Title
     const title = this.add.text(mapWidth / 2, -15, region.name, {
       fontFamily: "monospace",
-      fontSize: "18px",
+      fontSize: `${mapFont}px`,
       color: "#fbbf24",
       fontStyle: "bold"
     }).setOrigin(0.5);
@@ -2694,10 +2700,10 @@ export default class Overworld extends Phaser.Scene {
       // Town name — pill background keeps it legible where labels overlap
       const label = this.add.text(x, y + 12, town.name, {
         fontFamily: "monospace",
-        fontSize: "9px",
+        fontSize: `${labelFont}px`,
         color: "#bfdbfe",
         backgroundColor: "#0b1220cc",
-        padding: { left: 3, right: 3, top: 1, bottom: 1 }
+        padding: { left: 5, right: 5, top: 2, bottom: 2 }
       }).setOrigin(0.5).setDepth(2);
       this.mapContainer!.add(label);
     });
@@ -2717,10 +2723,10 @@ export default class Overworld extends Phaser.Scene {
       // Gym label — pill background + higher depth so leader names stay readable
       const label = this.add.text(x, y - 16, isCleared ? "✓" : gym.leader, {
         fontFamily: "monospace",
-        fontSize: "9px",
+        fontSize: `${labelFont}px`,
         color: isCleared ? "#86efac" : "#fde68a",
         backgroundColor: "#0b1220dd",
-        padding: { left: 3, right: 3, top: 1, bottom: 1 }
+        padding: { left: 5, right: 5, top: 2, bottom: 2 }
       }).setOrigin(0.5).setDepth(3);
       this.mapContainer!.add(label);
     });
@@ -2741,10 +2747,10 @@ export default class Overworld extends Phaser.Scene {
         // Portal label
         const label = this.add.text(x, y + 16, "Portal", {
           fontFamily: "monospace",
-          fontSize: "9px",
+          fontSize: `${labelFont}px`,
           color: "#ddd6fe",
           backgroundColor: "#0b1220cc",
-          padding: { left: 3, right: 3, top: 1, bottom: 1 }
+          padding: { left: 5, right: 5, top: 2, bottom: 2 }
         }).setOrigin(0.5).setDepth(2);
         this.mapContainer!.add(label);
       });
@@ -2771,7 +2777,7 @@ export default class Overworld extends Phaser.Scene {
     const legend = this.add.text(mapWidth / 2, mapHeight + 15,
       `★${gameState.badges.length}/${region.gyms.length}`, {
       fontFamily: "monospace",
-      fontSize: "11px",
+      fontSize: `${Math.max(14, labelFont)}px`,
       color: "#94a3b8"
     }).setOrigin(0.5);
     this.mapContainer.add(legend);
@@ -2779,14 +2785,14 @@ export default class Overworld extends Phaser.Scene {
     // Tappable close button — top-right corner, works for both mouse and touch.
     const mapClose = this.add.text(mapWidth - 4, -22, "✕", {
       fontFamily: "monospace",
-      fontSize: "20px",
+      fontSize: `${mapFont + 4}px`,
       color: "#94a3b8",
       padding: { left: 8, right: 8, top: 4, bottom: 4 }
     }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
     mapClose.on("pointerdown", () => this.closeVisualMap());
     this.mapContainer.add(mapClose);
 
-    // Shrink to fit narrow viewports (re-applied on resize via fitOpenMenus).
+    // Re-centre in case safe-area/rotation changed before opening.
     this.fitMapContainer();
   }
 
@@ -2798,20 +2804,24 @@ export default class Overworld extends Phaser.Scene {
    */
   private fitMapContainer(): void {
     if (!this.mapContainer) return;
-    const mw = 400;
-    const mh = 300;
-    const availW = this.scale.width - 32 - safeAreaInset("left") - safeAreaInset("right");
-    const availH = this.scale.height - 32 - safeAreaInset("top") - safeAreaInset("bottom");
-    const s = Math.min(1, availW / (mw + 20), availH / (mh + 60));
-    this.mapContainer.setScale(s);
-    this.mapContainer.setPosition(this.scale.width / 2 - (mw / 2) * s, this.scale.height / 2 - (mh / 2) * s);
+    // The map is rebuilt on resize so text never has to be scaled below its
+    // readable mobile size. This helper only keeps the current container centred.
+    this.mapContainer.setScale(1);
+    const bounds = this.mapContainer.getBounds();
+    this.mapContainer.setPosition(
+      this.scale.width / 2 - bounds.width / 2,
+      this.scale.height / 2 - bounds.height / 2
+    );
   }
 
   /** Re-fit any open full-screen menu after a viewport resize/rotation. */
   private fitOpenMenus(): void {
     if (this.martContainer) fitMenu(this, this.martContainer, 440, 620);
     if (this.championContainer) fitMenu(this, this.championContainer, 560, 340);
-    if (this.mapOpen) this.fitMapContainer();
+    if (this.mapOpen) {
+      this.closeVisualMap();
+      this.openVisualMap();
+    }
     // Responsive dialogs re-render at the new viewport size instead of scaling.
     if (this.pokedexOpen) { this.closePokedex(); this.openPokedex(); }
     if (this.teamOpen) this.renderTeamScreen();
@@ -3253,7 +3263,7 @@ export default class Overworld extends Phaser.Scene {
     const titleText = this.add
       .text(x + w / 2, y + 20, title, {
         fontFamily: "monospace",
-        fontSize: "16px",
+        fontSize: `${Math.max(18, Math.min(22, Math.round(w / 25)))}px`,
         color: "#ffffff",
         fontStyle: "bold"
       })
@@ -3277,7 +3287,7 @@ export default class Overworld extends Phaser.Scene {
     const top = (H - h) / 2;
     const cx = W / 2;
     // Font size stays readable at natural scale — no external scaling applied.
-    const fs = Math.max(14, Math.min(18, Math.round(w / 30)));
+    const fs = Math.max(16, Math.min(20, Math.round(w / 28)));
 
     const panelG = this.add.graphics().setScrollFactor(0).setDepth(499);
     this.makePanel(panelG, left, top, w, h, "Pokédex", [], 500);
@@ -3291,9 +3301,9 @@ export default class Overworld extends Phaser.Scene {
     );
 
     const entries = Object.entries(gameState.pokedex).filter(([_, data]) => data.caught);
-    const cols = w >= 420 ? 3 : 2;
+    const cols = w >= 520 ? 3 : w >= 380 ? 2 : 1;
     const colW = Math.floor((w - 24) / cols);
-    const rowH = fs + 14;
+    const rowH = fs + 16;
     const listTop = top + 72;
     const maxRows = Math.floor((h - 112) / rowH);
 
@@ -3609,32 +3619,52 @@ export default class Overworld extends Phaser.Scene {
   private openMart(): void {
     if (this.martOpen || this.teamOpen || this.mapOpen || this.pokedexOpen || this.isPaused) return;
     this.martOpen = true;
+    this.renderMart();
+  }
+
+  private renderMart(): void {
     this.touch?.setVisible(false);
-    const centerX = this.scale.width / 2;
-    const centerY = this.scale.height / 2;
-    const cardW = 440;
-    const cardH = 620;
+    if (this.martContainer) {
+      this.martContainer.destroy(true);
+      this.martContainer = undefined;
+    }
+    this.martOverlay = undefined;
+    this.martElements = [];
+
+    const margin = 14;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const centerX = W / 2;
+    const centerY = H / 2;
+    const cardW = Math.min(560, W - margin * 2);
+    const cardH = Math.min(620, H - margin * 2);
+    const left = (W - cardW) / 2;
+    const top = (H - cardH) / 2;
+    const fs = Math.max(16, Math.min(20, Math.round(cardW / 28)));
+    const titleFs = Math.max(22, fs + 5);
 
     this.martOverlay = this.add.rectangle(centerX, centerY, cardW, cardH, 0x0f172a, 0.95);
     this.martOverlay.setScrollFactor(0).setDepth(950).setStrokeStyle(2, 0xfbbf24);
-    this.martElements = [];
 
-    // Title
-    const title = this.add.text(centerX, centerY - cardH / 2 + 24, "Poke Mart", {
+    const push = (go: Phaser.GameObjects.GameObject) => {
+      (go as Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.GameObject).setScrollFactor?.(0);
+      (go as Phaser.GameObjects.Components.Depth & Phaser.GameObjects.GameObject).setDepth?.(951);
+      this.martElements.push(go);
+    };
+
+    push(this.add.text(centerX, top + 28, "Poke Mart", {
       fontFamily: "monospace",
-      fontSize: "22px",
+      fontSize: `${titleFs}px`,
       color: "#fbbf24",
       fontStyle: "bold"
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(951);
-    this.martElements.push(title);
+    }).setOrigin(0.5));
 
-    // Money display
-    const moneyText = this.add.text(centerX, centerY - cardH / 2 + 52, `Your money: ₽${gameState.money ?? 0}`, {
+    const moneyText = this.add.text(centerX, top + 58, `Your money: ₽${gameState.money ?? 0}`, {
       fontFamily: "monospace",
-      fontSize: "14px",
+      fontSize: `${fs}px`,
       color: "#4ade80"
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(951);
-    this.martElements.push(moneyText);
+    }).setOrigin(0.5);
+    push(moneyText);
 
     const items: Array<{ name: string; key: keyof typeof gameState.inventory; price: number; desc?: string }> = [
       { name: "Poke Ball",    key: "pokeball",    price: 100 },
@@ -3653,31 +3683,46 @@ export default class Overworld extends Phaser.Scene {
       { name: "Leaf Stone",    key: "leafstone",    price: 2100, desc: "A leafy green stone" }
     ];
 
-    const startY = centerY - cardH / 2 + 90;
-    const rowH = 36;
+    const listTop = top + 88;
+    const footerTop = top + cardH - 58;
+    const rowH = Math.max(48, fs * 2 + 15);
+    const maxRows = Math.max(1, Math.floor((footerTop - listTop - 8) / rowH));
+    const pageCount = Math.max(1, Math.ceil(items.length / maxRows));
+    this.martPage = Phaser.Math.Clamp(this.martPage, 0, pageCount - 1);
+    const pageItems = items.slice(this.martPage * maxRows, (this.martPage + 1) * maxRows);
 
-    items.forEach((item, i) => {
-      const rowY = startY + i * rowH;
+    pageItems.forEach((item, i) => {
+      const rowY = listTop + i * rowH;
+      const rowBg = this.add.rectangle(centerX, rowY + rowH / 2 - 3, cardW - 24, rowH - 8, 0x1e293b, 0.82)
+        .setStrokeStyle(1, 0x334155);
+      push(rowBg);
 
-      // Item label
-      const labelStr = item.desc
-        ? `${item.name}  ₽${item.price}  (${item.desc})`
-        : `${item.name}  ₽${item.price}`;
-      const label = this.add.text(centerX - 195, rowY, labelStr, {
+      const labelWidth = Math.max(120, cardW - 150);
+      const primary = this.add.text(left + 18, rowY + 4, `${item.name}  ₽${item.price}`, {
         fontFamily: "monospace",
-        fontSize: "12px",
-        color: "#e2e8f0"
-      }).setScrollFactor(0).setDepth(951);
-      this.martElements.push(label);
+        fontSize: `${fs}px`,
+        color: "#e2e8f0",
+        fontStyle: "bold",
+        wordWrap: { width: labelWidth, useAdvancedWrap: true }
+      });
+      push(primary);
 
-      // Buy button
-      const buyBtn = this.add.text(centerX + 175, rowY, "[Buy]", {
+      if (item.desc) {
+        push(this.add.text(left + 18, rowY + fs + 10, item.desc, {
+          fontFamily: "monospace",
+          fontSize: `${Math.max(14, fs - 2)}px`,
+          color: "#94a3b8",
+          wordWrap: { width: labelWidth, useAdvancedWrap: true }
+        }));
+      }
+
+      const buyBtn = this.add.text(left + cardW - 18, rowY + rowH / 2 - 3, "Buy", {
         fontFamily: "monospace",
-        fontSize: "13px",
+        fontSize: `${fs}px`,
         color: "#0f172a",
         backgroundColor: "#fbbf24",
-        padding: { left: 7, right: 7, top: 2, bottom: 2 }
-      }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(951).setInteractive({ useHandCursor: true });
+        padding: { left: 12, right: 12, top: 7, bottom: 7 }
+      }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
 
       buyBtn.on("pointerover", () => buyBtn.setStyle({ backgroundColor: "#f59e0b" }));
       buyBtn.on("pointerout", () => buyBtn.setStyle({ backgroundColor: "#fbbf24" }));
@@ -3693,24 +3738,44 @@ export default class Overworld extends Phaser.Scene {
         moneyText.setText(`Your money: ₽${gameState.money}`);
         this.showNotification(`Bought ${item.name}!`, 1200);
       });
-      this.martElements.push(buyBtn);
+      push(buyBtn);
     });
 
-    // Close button
-    const closeBtn = this.add.text(centerX, centerY + cardH / 2 - 24, "[Close]", {
+    if (pageCount > 1) {
+      const pageText = this.add.text(centerX, footerTop - 18, `${this.martPage + 1} / ${pageCount}`, {
+        fontFamily: "monospace", fontSize: `${Math.max(14, fs - 2)}px`, color: "#94a3b8"
+      }).setOrigin(0.5);
+      push(pageText);
+
+      const prev = this.add.text(left + 18, footerTop - 24, "← Prev", {
+        fontFamily: "monospace", fontSize: `${fs}px`, color: this.martPage > 0 ? "#0f172a" : "#64748b",
+        backgroundColor: this.martPage > 0 ? "#94a3b8" : "#1e293b",
+        padding: { left: 10, right: 10, top: 6, bottom: 6 }
+      }).setInteractive({ useHandCursor: this.martPage > 0 });
+      prev.on("pointerdown", () => { if (this.martPage > 0) { this.martPage--; this.renderMart(); } });
+      push(prev);
+
+      const next = this.add.text(left + cardW - 18, footerTop - 24, "Next →", {
+        fontFamily: "monospace", fontSize: `${fs}px`, color: this.martPage < pageCount - 1 ? "#0f172a" : "#64748b",
+        backgroundColor: this.martPage < pageCount - 1 ? "#94a3b8" : "#1e293b",
+        padding: { left: 10, right: 10, top: 6, bottom: 6 }
+      }).setOrigin(1, 0).setInteractive({ useHandCursor: this.martPage < pageCount - 1 });
+      next.on("pointerdown", () => { if (this.martPage < pageCount - 1) { this.martPage++; this.renderMart(); } });
+      push(next);
+    }
+
+    const closeBtn = this.add.text(centerX, top + cardH - 24, "✕ Close", {
       fontFamily: "monospace",
-      fontSize: "16px",
+      fontSize: `${fs + 1}px`,
       color: "#f8fafc",
       backgroundColor: "#374151",
-      padding: { left: 16, right: 16, top: 8, bottom: 8 }
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(951).setInteractive({ useHandCursor: true });
+      padding: { left: 20, right: 20, top: 8, bottom: 8 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on("pointerdown", () => this.closeMart());
-    this.martElements.push(closeBtn);
+    push(closeBtn);
 
-    // Wrap everything in a container scaled to fit the viewport on any phone.
     this.martContainer = this.add.container(0, 0, [this.martOverlay!, ...this.martElements]);
     this.martContainer.setDepth(950);
-    fitMenu(this, this.martContainer, cardW, cardH);
   }
 
   private closeMart(): void {
@@ -3745,10 +3810,14 @@ export default class Overworld extends Phaser.Scene {
     ];
 
     let tipIndex = 0;
+    const margin = 14;
     const centerX = this.scale.width / 2;
     const centerY = this.scale.height / 2;
-    const cardW = 400;
-    const cardH = 280;
+    const cardW = Math.min(420, this.scale.width - margin * 2);
+    const cardH = Math.min(300, this.scale.height - margin * 2);
+    const top = centerY - cardH / 2;
+    const fs = Math.max(16, Math.min(20, Math.round(cardW / 24)));
+    const titleFs = Math.max(22, Math.min(28, fs + 8));
 
     // Dark overlay
     const overlay = this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x000000, 0.82)
@@ -3761,9 +3830,9 @@ export default class Overworld extends Phaser.Scene {
     this.tutorialElements.push(card);
 
     // Title text
-    const titleText = this.add.text(centerX, centerY - 90, tips[0].title, {
+    const titleText = this.add.text(centerX, top + 58, tips[0].title, {
       fontFamily: "monospace",
-      fontSize: "24px",
+      fontSize: `${titleFs}px`,
       color: "#fbbf24",
       fontStyle: "bold",
       align: "center"
@@ -3771,27 +3840,28 @@ export default class Overworld extends Phaser.Scene {
     this.tutorialElements.push(titleText);
 
     // Description text
-    const descText = this.add.text(centerX, centerY - 10, tips[0].desc, {
+    const descText = this.add.text(centerX, top + cardH / 2, tips[0].desc, {
       fontFamily: "monospace",
-      fontSize: "15px",
+      fontSize: `${fs}px`,
       color: "#e2e8f0",
       align: "center",
-      lineSpacing: 6
+      lineSpacing: 7,
+      wordWrap: { width: cardW - 34, useAdvancedWrap: true }
     }).setOrigin(0.5).setScrollFactor(0).setDepth(1002);
     this.tutorialElements.push(descText);
 
     // Progress indicator
-    const progressText = this.add.text(centerX, centerY + 70, "1 / 4", {
+    const progressText = this.add.text(centerX, top + cardH - 78, "1 / 4", {
       fontFamily: "monospace",
-      fontSize: "13px",
+      fontSize: `${Math.max(14, fs - 2)}px`,
       color: "#94a3b8"
     }).setOrigin(0.5).setScrollFactor(0).setDepth(1002);
     this.tutorialElements.push(progressText);
 
     // Next button
-    const nextBtn = this.add.text(centerX + 120, centerY + 100, "Next →", {
+    const nextBtn = this.add.text(centerX + cardW / 2 - 90, top + cardH - 38, "Next →", {
       fontFamily: "monospace",
-      fontSize: "18px",
+      fontSize: `${Math.max(18, fs + 1)}px`,
       color: "#0f172a",
       backgroundColor: "#fbbf24",
       fontStyle: "bold",
