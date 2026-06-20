@@ -2810,10 +2810,11 @@ export default class Overworld extends Phaser.Scene {
   /** Re-fit any open full-screen menu after a viewport resize/rotation. */
   private fitOpenMenus(): void {
     if (this.martContainer) fitMenu(this, this.martContainer, 440, 620);
-    if (this.pokedexContainer) fitMenu(this, this.pokedexContainer, 600, 400);
-    if (this.teamContainer) fitMenu(this, this.teamContainer, 620, 430);
     if (this.championContainer) fitMenu(this, this.championContainer, 560, 340);
     if (this.mapOpen) this.fitMapContainer();
+    // Responsive dialogs re-render at the new viewport size instead of scaling.
+    if (this.pokedexOpen) { this.closePokedex(); this.openPokedex(); }
+    if (this.teamOpen) this.renderTeamScreen();
   }
 
   private closeVisualMap(): void {
@@ -2940,12 +2941,18 @@ export default class Overworld extends Phaser.Scene {
     this.teamOverlay = undefined;
     this.teamText = [];
 
-    const width = 620;
-    const height = 430;
-    const centerX = this.scale.width / 2;
-    const centerY = this.scale.height / 2;
+    const margin = 14;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const w = Math.min(600, W - margin * 2);
+    const h = Math.min(520, H - margin * 2);
+    const left = (W - w) / 2;
+    const top = (H - h) / 2;
+    const cx = W / 2;
+    const cy = H / 2;
+    const fs = Math.max(14, Math.min(17, Math.round(w / 34)));
 
-    this.teamOverlay = this.add.rectangle(centerX, centerY, width, height, 0x0f172a, 0.97)
+    this.teamOverlay = this.add.rectangle(cx, cy, w, h, 0x0f172a, 0.97)
       .setScrollFactor(0).setDepth(500).setStrokeStyle(2, 0x334155);
 
     const push = (go: Phaser.GameObjects.GameObject) => {
@@ -2955,95 +2962,89 @@ export default class Overworld extends Phaser.Scene {
     };
 
     // ---- Tabs ----
-    const tabTeam = this.add.text(centerX - 200, centerY - 200, "[TEAM]", {
-      fontFamily: "monospace", fontSize: "18px",
+    const tabTeam = this.add.text(left + 16, top + 10, "TEAM", {
+      fontFamily: "monospace", fontSize: `${fs + 2}px`,
       color: this.teamTab === "team" ? "#fbbf24" : "#64748b",
       backgroundColor: this.teamTab === "team" ? "#1e293b" : "transparent",
-      padding: { left: 10, right: 10, top: 4, bottom: 4 }
+      padding: { left: 12, right: 12, top: 6, bottom: 6 }
     }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
     tabTeam.on("pointerdown", () => { this.teamTab = "team"; this.teamSelectedMon = null; this.renderTeamScreen(); });
     this.teamText.push(tabTeam);
 
-    const tabBox = this.add.text(centerX - 80, centerY - 200, "[BOX]", {
-      fontFamily: "monospace", fontSize: "18px",
+    const tabBox = this.add.text(left + 120, top + 10, "BOX", {
+      fontFamily: "monospace", fontSize: `${fs + 2}px`,
       color: this.teamTab === "box" ? "#fbbf24" : "#64748b",
       backgroundColor: this.teamTab === "box" ? "#1e293b" : "transparent",
-      padding: { left: 10, right: 10, top: 4, bottom: 4 }
+      padding: { left: 12, right: 12, top: 6, bottom: 6 }
     }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
     tabBox.on("pointerdown", () => { this.teamTab = "box"; this.teamSelectedMon = null; this.renderTeamScreen(); });
     this.teamText.push(tabBox);
 
     if (this.teamTab === "team") {
-      this.renderTeamTab(centerX, centerY, push);
+      this.renderTeamTab(left, top, w, h, fs, push);
     } else {
-      this.renderBoxTab(centerX, centerY, push);
+      this.renderBoxTab(left, top, w, h, fs, push);
     }
 
-    const close = this.add.text(centerX, centerY + 200, "✕ Close", {
-      fontFamily: "monospace", fontSize: "15px",
-      color: "#f8fafc",
-      backgroundColor: "#374151",
-      padding: { left: 20, right: 20, top: 8, bottom: 8 }
+    const close = this.add.text(cx, top + h - 26, "✕ Close", {
+      fontFamily: "monospace", fontSize: `${fs + 1}px`, color: "#f8fafc",
+      backgroundColor: "#374151", padding: { left: 20, right: 20, top: 8, bottom: 8 }
     }).setOrigin(0.5).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
     close.on("pointerdown", () => this.closeTeamScreen());
     this.teamText.push(close);
 
-    // Scale-to-fit container so the 620px-wide panel fits narrow phones.
+    // No external scaling — panel is already sized to the viewport.
     this.teamContainer = this.add.container(0, 0, [this.teamOverlay!, ...this.teamText]);
     this.teamContainer.setDepth(500);
-    fitMenu(this, this.teamContainer, width, height);
   }
 
   private renderTeamTab(
-    centerX: number, centerY: number,
+    left: number, top: number, w: number, h: number, fs: number,
     push: (go: Phaser.GameObjects.GameObject) => void
   ): void {
     const selected = this.teamSelectedMon;
+    const contentTop = top + 54;
+    const rowH = fs + 28;
+    const right = left + w;
 
     if (gameState.team.length === 0) {
-      push(this.add.text(centerX - 270, centerY - 140, "No Pokemon in team", {
-        fontFamily: "monospace", fontSize: "14px", color: "#6b7280"
+      push(this.add.text(left + 16, contentTop + 16, "No Pokemon in team", {
+        fontFamily: "monospace", fontSize: `${fs}px`, color: "#6b7280"
       }));
       return;
     }
 
     gameState.team.forEach((mon, index) => {
-      const y = centerY - 150 + index * 46;
+      const y = contentTop + index * rowH;
       const hpPercent = Math.floor((mon.hp / mon.maxHp) * 100);
       const hpColor = hpPercent > 50 ? "#22c55e" : hpPercent > 20 ? "#eab308" : "#ef4444";
-      const statusStr = "";
       const isSelected = selected?.source === "team" && selected.index === index;
       const heldStr = mon.heldItem ? ` [${HELD_ITEMS[mon.heldItem]?.name ?? mon.heldItem}]` : "";
 
-      const bg = this.add.rectangle(centerX - 5, y + 20, 570, 40,
+      const bg = this.add.rectangle(left + w / 2, y + rowH / 2, w - 28, rowH - 4,
         isSelected ? 0x334155 : 0x1e293b, 0.8)
         .setScrollFactor(0).setDepth(501).setStrokeStyle(1, isSelected ? 0xfbbf24 : 0x334155)
         .setInteractive({ useHandCursor: true });
       bg.on("pointerdown", () => {
-        if (isSelected) {
-          this.teamSelectedMon = null;
-        } else {
-          this.teamSelectedMon = { source: "team", index };
-        }
+        this.teamSelectedMon = isSelected ? null : { source: "team", index };
         this.renderTeamScreen();
       });
       this.teamText.push(bg);
 
-      push(this.add.text(centerX - 285, y + 6,
+      push(this.add.text(left + 14, y + 5,
         `${index + 1}. ${mon.nickname || mon.name} Lv${mon.level}${heldStr}`, {
-        fontFamily: "monospace", fontSize: "15px",
+        fontFamily: "monospace", fontSize: `${fs}px`,
         color: mon.hp > 0 ? "#f8fafc" : "#6b7280"
       }));
-      push(this.add.text(centerX - 285, y + 26,
-        `   HP: ${mon.hp}/${mon.maxHp} (${hpPercent}%)${statusStr}`, {
-        fontFamily: "monospace", fontSize: "11px", color: hpColor
+      push(this.add.text(left + 14, y + fs + 9,
+        `   HP: ${mon.hp}/${mon.maxHp} (${hpPercent}%)`, {
+        fontFamily: "monospace", fontSize: `${Math.max(11, fs - 3)}px`, color: hpColor
       }));
-      // Colour-coded status badge, matching the battle screen.
       if (mon.status !== "none") {
-        push(this.add.text(centerX + 230, y + 16, getStatusDisplayText(mon.status), {
-          fontFamily: "monospace", fontSize: "12px", fontStyle: "bold",
+        push(this.add.text(right - 14, y + rowH / 2, getStatusDisplayText(mon.status), {
+          fontFamily: "monospace", fontSize: `${Math.max(11, fs - 2)}px`, fontStyle: "bold",
           color: `#${getStatusColor(mon.status).toString(16).padStart(6, "0")}`
-        }).setOrigin(0.5));
+        }).setOrigin(1, 0.5));
       }
     });
 
@@ -3051,16 +3052,15 @@ export default class Overworld extends Phaser.Scene {
     if (selected?.source === "team") {
       const mon = gameState.team[selected.index];
       if (mon) {
-        const panelY = centerY + 100;
-        push(this.add.text(centerX - 290, panelY, `Selected: ${mon.name}`, {
-          fontFamily: "monospace", fontSize: "13px", color: "#fbbf24"
+        const panelY = top + h - 124;
+        push(this.add.text(left + 14, panelY, `Selected: ${mon.name}`, {
+          fontFamily: "monospace", fontSize: `${fs}px`, color: "#fbbf24"
         }));
 
-        // Send to Box button
-        const toBoxBtn = this.add.text(centerX - 290, panelY + 22, "[Send to Box]", {
-          fontFamily: "monospace", fontSize: "13px", color: "#0f172a",
-          backgroundColor: "#94a3b8",
-          padding: { left: 8, right: 8, top: 3, bottom: 3 }
+        const btnRow = panelY + fs + 10;
+        const toBoxBtn = this.add.text(left + 14, btnRow, "Send to Box", {
+          fontFamily: "monospace", fontSize: `${fs}px`, color: "#0f172a",
+          backgroundColor: "#94a3b8", padding: { left: 8, right: 8, top: 4, bottom: 4 }
         }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
         toBoxBtn.on("pointerdown", () => {
           if (gameState.team.length <= 1) {
@@ -3075,17 +3075,16 @@ export default class Overworld extends Phaser.Scene {
         });
         this.teamText.push(toBoxBtn);
 
-        // Held item equip/unequip
+        // Held item equip/unequip — flow horizontally after Send to Box
         const heldItems = (["oranberry", "luckyegg", "shellbell"] as const).filter(
           k => (gameState.inventory[k] ?? 0) > 0
         );
         if (heldItems.length > 0 || mon.heldItem) {
-          let itemBtnX = centerX - 40;
+          let itemBtnX = left + 14 + toBoxBtn.width + 12;
           if (mon.heldItem) {
-            const unequipBtn = this.add.text(itemBtnX, panelY + 22, "[Unequip]", {
-              fontFamily: "monospace", fontSize: "13px", color: "#0f172a",
-              backgroundColor: "#ef4444",
-              padding: { left: 8, right: 8, top: 3, bottom: 3 }
+            const unequipBtn = this.add.text(itemBtnX, btnRow, "Unequip", {
+              fontFamily: "monospace", fontSize: `${fs}px`, color: "#0f172a",
+              backgroundColor: "#ef4444", padding: { left: 8, right: 8, top: 4, bottom: 4 }
             }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
             unequipBtn.on("pointerdown", () => {
               const key = mon.heldItem! as keyof typeof gameState.inventory;
@@ -3095,18 +3094,16 @@ export default class Overworld extends Phaser.Scene {
               this.showNotification("Item unequipped!", 1200);
             });
             this.teamText.push(unequipBtn);
-            itemBtnX += 120;
+            itemBtnX += unequipBtn.width + 8;
           }
           heldItems.forEach(itemKey => {
             const info = HELD_ITEMS[itemKey];
-            const equipBtn = this.add.text(itemBtnX, panelY + 22, `[Equip ${info.name}]`, {
-              fontFamily: "monospace", fontSize: "12px", color: "#0f172a",
-              backgroundColor: "#fbbf24",
-              padding: { left: 6, right: 6, top: 3, bottom: 3 }
+            const equipBtn = this.add.text(itemBtnX, btnRow, `Equip ${info.name}`, {
+              fontFamily: "monospace", fontSize: `${Math.max(12, fs - 1)}px`, color: "#0f172a",
+              backgroundColor: "#fbbf24", padding: { left: 6, right: 6, top: 4, bottom: 4 }
             }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
             equipBtn.on("pointerdown", () => {
               if (mon.heldItem) {
-                // Return existing held item to inventory
                 const oldKey = mon.heldItem as keyof typeof gameState.inventory;
                 gameState.inventory[oldKey] = (gameState.inventory[oldKey] ?? 0) + 1;
               }
@@ -3120,14 +3117,12 @@ export default class Overworld extends Phaser.Scene {
           });
         }
 
-        // Evolution stone: if this species evolves via an item the player owns.
         const evo = SPECIES[mon.speciesId]?.evolution;
         if (evo?.item && (gameState.inventory[evo.item as keyof typeof gameState.inventory] ?? 0) > 0) {
           const stone = EVO_STONES[evo.item];
-          const useBtn = this.add.text(centerX - 40, panelY + 48, `[Use ${stone?.name ?? "Stone"}]`, {
-            fontFamily: "monospace", fontSize: "12px", color: "#0f172a",
-            backgroundColor: "#a855f7",
-            padding: { left: 6, right: 6, top: 3, bottom: 3 }
+          const useBtn = this.add.text(left + 14, btnRow + fs + 18, `Use ${stone?.name ?? "Stone"}`, {
+            fontFamily: "monospace", fontSize: `${Math.max(12, fs - 1)}px`, color: "#0f172a",
+            backgroundColor: "#a855f7", padding: { left: 6, right: 6, top: 4, bottom: 4 }
           }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
           useBtn.on("pointerdown", () => {
             const key = evo.item as keyof typeof gameState.inventory;
@@ -3148,77 +3143,71 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private renderBoxTab(
-    centerX: number, centerY: number,
+    left: number, top: number, w: number, h: number, fs: number,
     push: (go: Phaser.GameObjects.GameObject) => void
   ): void {
     const selected = this.teamSelectedMon;
+    const contentTop = top + 54;
+    const actionBottom = top + h - 90;
 
     if (gameState.box.length === 0) {
-      push(this.add.text(centerX - 270, centerY - 140,
+      push(this.add.text(left + 16, contentTop + 16,
         "Your PC Box is empty.\nSend Pokemon here from the TEAM tab.", {
-        fontFamily: "monospace", fontSize: "14px", color: "#6b7280", lineSpacing: 4
+        fontFamily: "monospace", fontSize: `${fs}px`, color: "#6b7280", lineSpacing: 4
       }));
       return;
     }
 
-    // Show up to 20 box Pokemon in a grid (4 columns × 5 rows)
-    const cols = 4;
-    const cellW = 140;
-    const cellH = 54;
-    const gridStartX = centerX - 280;
-    const gridStartY = centerY - 155;
+    const cols = w >= 440 ? 4 : 3;
+    const cellW = Math.floor((w - 24) / cols);
+    const cellH = Math.max(46, fs * 3 + 8);
+    const maxRows = Math.max(1, Math.floor((actionBottom - contentTop - 4) / cellH));
+    const maxEntries = cols * maxRows;
 
-    gameState.box.slice(0, 20).forEach((mon, index) => {
+    gameState.box.slice(0, maxEntries).forEach((mon, index) => {
       const col = index % cols;
       const row = Math.floor(index / cols);
-      const bx = gridStartX + col * cellW;
-      const by = gridStartY + row * cellH;
+      const bx = left + 12 + col * cellW;
+      const by = contentTop + row * cellH;
       const isSelected = selected?.source === "box" && selected.index === index;
 
-      const bg = this.add.rectangle(bx + cellW / 2 - 4, by + cellH / 2 - 4,
+      const bg = this.add.rectangle(bx + cellW / 2 - 2, by + cellH / 2 - 2,
         cellW - 6, cellH - 6, isSelected ? 0x334155 : 0x1e293b, 0.9)
         .setScrollFactor(0).setDepth(501).setStrokeStyle(1, isSelected ? 0xfbbf24 : 0x334155)
         .setInteractive({ useHandCursor: true });
       bg.on("pointerdown", () => {
-        if (isSelected) {
-          this.teamSelectedMon = null;
-        } else {
-          this.teamSelectedMon = { source: "box", index };
-        }
+        this.teamSelectedMon = isSelected ? null : { source: "box", index };
         this.renderTeamScreen();
       });
       this.teamText.push(bg);
 
-      push(this.add.text(bx, by + 4, `${mon.nickname || mon.name}`, {
-        fontFamily: "monospace", fontSize: "12px", color: "#f8fafc"
+      push(this.add.text(bx + 4, by + 4, `${mon.nickname || mon.name}`, {
+        fontFamily: "monospace", fontSize: `${Math.max(12, fs - 2)}px`, color: "#f8fafc"
       }));
-      push(this.add.text(bx, by + 20, `Lv${mon.level}  ${mon.types[0]}`, {
-        fontFamily: "monospace", fontSize: "10px", color: "#94a3b8"
+      push(this.add.text(bx + 4, by + fs + 6, `Lv${mon.level}  ${mon.types[0]}`, {
+        fontFamily: "monospace", fontSize: `${Math.max(10, fs - 4)}px`, color: "#94a3b8"
       }));
     });
 
-    if (gameState.box.length > 20) {
-      push(this.add.text(centerX - 270, centerY + 155,
-        `+${gameState.box.length - 20} more in Box (showing first 20)`, {
-        fontFamily: "monospace", fontSize: "11px", color: "#6b7280"
+    if (gameState.box.length > maxEntries) {
+      push(this.add.text(left + 12, actionBottom - 14,
+        `+${gameState.box.length - maxEntries} more in Box`, {
+        fontFamily: "monospace", fontSize: `${Math.max(11, fs - 3)}px`, color: "#6b7280"
       }));
     }
 
-    // Action panel when a box mon is selected
     if (selected?.source === "box") {
       const mon = gameState.box[selected.index];
       if (mon) {
-        const panelY = centerY + 165;
-        push(this.add.text(centerX - 290, panelY, `Selected: ${mon.name} Lv${mon.level}`, {
-          fontFamily: "monospace", fontSize: "12px", color: "#fbbf24"
+        const panelY = actionBottom + 4;
+        push(this.add.text(left + 14, panelY, `Selected: ${mon.name} Lv${mon.level}`, {
+          fontFamily: "monospace", fontSize: `${fs}px`, color: "#fbbf24"
         }));
 
-        // Add to Team button
-        const addBtn = this.add.text(centerX - 70, panelY, "[Add to Team]", {
-          fontFamily: "monospace", fontSize: "12px", color: "#0f172a",
-          backgroundColor: "#22c55e",
-          padding: { left: 8, right: 8, top: 3, bottom: 3 }
-        }).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
+        const addBtn = this.add.text(left + w - 14, panelY, "Add to Team", {
+          fontFamily: "monospace", fontSize: `${fs}px`, color: "#0f172a",
+          backgroundColor: "#22c55e", padding: { left: 8, right: 8, top: 4, bottom: 4 }
+        }).setScrollFactor(0).setDepth(502).setOrigin(1, 0).setInteractive({ useHandCursor: true });
         addBtn.on("pointerdown", () => {
           if (gameState.team.length >= 6) {
             this.showNotification("Team is full! Send someone to Box first.", 2000);
@@ -3278,73 +3267,68 @@ export default class Overworld extends Phaser.Scene {
     if (this.pokedexOpen) return;
     this.pokedexOpen = true;
     this.touch?.setVisible(false);
-    const width = 600;
-    const height = 400;
-    const centerX = this.scale.width / 2;
-    const centerY = this.scale.height / 2;
-    const panelX = centerX - width / 2;
-    const panelY = centerY - height / 2;
 
-    // Use makePanel helper for consistent UI
+    const margin = 14;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const w = Math.min(560, W - margin * 2);
+    const h = Math.min(490, H - margin * 2);
+    const left = (W - w) / 2;
+    const top = (H - h) / 2;
+    const cx = W / 2;
+    // Font size stays readable at natural scale — no external scaling applied.
+    const fs = Math.max(14, Math.min(18, Math.round(w / 30)));
+
     const panelG = this.add.graphics().setScrollFactor(0).setDepth(499);
-    this.makePanel(panelG, panelX, panelY, width, height, "Pokédex", this.pokedexText as unknown as Phaser.GameObjects.GameObject[], 500);
-    // Keep a reference for cleanup (store in pokedexOverlay slot via hack-free approach)
+    this.makePanel(panelG, left, top, w, h, "Pokédex", [], 500);
     this.pokedexOverlay = panelG as unknown as Phaser.GameObjects.Rectangle;
 
     const pokedexCount = getPokedexCount(gameState);
-    const statsStr = `Seen: ${pokedexCount.seen}  |  Caught: ${pokedexCount.caught}`;
-    const statsText = this.add.text(centerX, panelY + 58, statsStr, {
-      fontFamily: "monospace",
-      fontSize: "14px",
-      color: "#ef4444"
-    }).setScrollFactor(0).setOrigin(0.5);
-    this.pokedexText.push(statsText);
+    this.pokedexText.push(
+      this.add.text(cx, top + 50, `Seen: ${pokedexCount.seen}  |  Caught: ${pokedexCount.caught}`, {
+        fontFamily: "monospace", fontSize: `${fs - 2}px`, color: "#ef4444"
+      }).setScrollFactor(0).setOrigin(0.5)
+    );
 
-    // Show caught Pokemon
     const entries = Object.entries(gameState.pokedex).filter(([_, data]) => data.caught);
-    const columns = 3;
-    entries.slice(0, 18).forEach(([speciesId, data], index) => {
+    const cols = w >= 420 ? 3 : 2;
+    const colW = Math.floor((w - 24) / cols);
+    const rowH = fs + 14;
+    const listTop = top + 72;
+    const maxRows = Math.floor((h - 112) / rowH);
+
+    entries.slice(0, cols * maxRows).forEach(([speciesId, data], index) => {
       const species = SPECIES[speciesId];
       if (!species) return;
-      const col = index % columns;
-      const row = Math.floor(index / columns);
-      const x = centerX - 260 + col * 180;
-      const y = centerY - 130 + row * 45;
-
-      const text = this.add.text(x, y,
-        `#${(index + 1).toString().padStart(3, "0")} ${species.name}`, {
-        fontFamily: "monospace",
-        fontSize: "13px",
-        color: data.caught ? "#22c55e" : "#6b7280"
-      });
-      text.setScrollFactor(0);
-      this.pokedexText.push(text);
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      this.pokedexText.push(
+        this.add.text(left + 12 + col * colW, listTop + row * rowH,
+          `#${(index + 1).toString().padStart(3, "0")} ${species.name}`, {
+          fontFamily: "monospace", fontSize: `${fs - 1}px`,
+          color: data.caught ? "#22c55e" : "#6b7280"
+        }).setScrollFactor(0)
+      );
     });
 
     if (entries.length === 0) {
-      const empty = this.add.text(centerX - 280, centerY - 100, "No Pokemon caught yet!\nGo explore and catch some!", {
-        fontFamily: "monospace",
-        fontSize: "14px",
-        color: "#6b7280"
-      });
-      empty.setScrollFactor(0);
-      this.pokedexText.push(empty);
+      this.pokedexText.push(
+        this.add.text(cx, top + h * 0.4, "No Pokémon caught yet!\nGo explore and catch some!", {
+          fontFamily: "monospace", fontSize: `${fs}px`, color: "#6b7280", align: "center"
+        }).setScrollFactor(0).setOrigin(0.5)
+      );
     }
 
-    const close = this.add.text(centerX, centerY + 168, "✕ Close", {
-      fontFamily: "monospace",
-      fontSize: "15px",
-      color: "#f8fafc",
-      backgroundColor: "#374151",
-      padding: { left: 20, right: 20, top: 8, bottom: 8 }
+    const close = this.add.text(cx, top + h - 26, "✕ Close", {
+      fontFamily: "monospace", fontSize: `${fs + 1}px`, color: "#f8fafc",
+      backgroundColor: "#374151", padding: { left: 20, right: 20, top: 8, bottom: 8 }
     }).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true });
     close.on("pointerdown", () => this.closePokedex());
     this.pokedexText.push(close);
 
-    // Scale-to-fit container so the 600px-wide panel fits narrow phones.
+    // No external scaling — panel is already sized to the viewport.
     this.pokedexContainer = this.add.container(0, 0, [panelG, ...this.pokedexText]);
     this.pokedexContainer.setDepth(499);
-    fitMenu(this, this.pokedexContainer, width, height);
   }
 
   private closePokedex(): void {
