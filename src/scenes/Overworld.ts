@@ -120,6 +120,7 @@ export default class Overworld extends Phaser.Scene {
   // Responsive menu containers: each wraps a full-screen overlay so it can be
   // uniformly scaled to fit any viewport (see fitOpenMenus / uiLayout.fitMenu).
   private martContainer?: Phaser.GameObjects.Container;
+  private martPage = 0;
   private pokedexContainer?: Phaser.GameObjects.Container;
   private teamContainer?: Phaser.GameObjects.Container;
   private championContainer?: Phaser.GameObjects.Container;
@@ -3262,7 +3263,7 @@ export default class Overworld extends Phaser.Scene {
     const titleText = this.add
       .text(x + w / 2, y + 20, title, {
         fontFamily: "monospace",
-        fontSize: "16px",
+        fontSize: `${Math.max(18, Math.min(22, Math.round(w / 25)))}px`,
         color: "#ffffff",
         fontStyle: "bold"
       })
@@ -3618,32 +3619,52 @@ export default class Overworld extends Phaser.Scene {
   private openMart(): void {
     if (this.martOpen || this.teamOpen || this.mapOpen || this.pokedexOpen || this.isPaused) return;
     this.martOpen = true;
+    this.renderMart();
+  }
+
+  private renderMart(): void {
     this.touch?.setVisible(false);
-    const centerX = this.scale.width / 2;
-    const centerY = this.scale.height / 2;
-    const cardW = 440;
-    const cardH = 620;
+    if (this.martContainer) {
+      this.martContainer.destroy(true);
+      this.martContainer = undefined;
+    }
+    this.martOverlay = undefined;
+    this.martElements = [];
+
+    const margin = 14;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const centerX = W / 2;
+    const centerY = H / 2;
+    const cardW = Math.min(560, W - margin * 2);
+    const cardH = Math.min(620, H - margin * 2);
+    const left = (W - cardW) / 2;
+    const top = (H - cardH) / 2;
+    const fs = Math.max(16, Math.min(20, Math.round(cardW / 28)));
+    const titleFs = Math.max(22, fs + 5);
 
     this.martOverlay = this.add.rectangle(centerX, centerY, cardW, cardH, 0x0f172a, 0.95);
     this.martOverlay.setScrollFactor(0).setDepth(950).setStrokeStyle(2, 0xfbbf24);
-    this.martElements = [];
 
-    // Title
-    const title = this.add.text(centerX, centerY - cardH / 2 + 24, "Poke Mart", {
+    const push = (go: Phaser.GameObjects.GameObject) => {
+      (go as Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.GameObject).setScrollFactor?.(0);
+      (go as Phaser.GameObjects.Components.Depth & Phaser.GameObjects.GameObject).setDepth?.(951);
+      this.martElements.push(go);
+    };
+
+    push(this.add.text(centerX, top + 28, "Poke Mart", {
       fontFamily: "monospace",
-      fontSize: "22px",
+      fontSize: `${titleFs}px`,
       color: "#fbbf24",
       fontStyle: "bold"
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(951);
-    this.martElements.push(title);
+    }).setOrigin(0.5));
 
-    // Money display
-    const moneyText = this.add.text(centerX, centerY - cardH / 2 + 52, `Your money: ₽${gameState.money ?? 0}`, {
+    const moneyText = this.add.text(centerX, top + 58, `Your money: ₽${gameState.money ?? 0}`, {
       fontFamily: "monospace",
-      fontSize: "14px",
+      fontSize: `${fs}px`,
       color: "#4ade80"
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(951);
-    this.martElements.push(moneyText);
+    }).setOrigin(0.5);
+    push(moneyText);
 
     const items: Array<{ name: string; key: keyof typeof gameState.inventory; price: number; desc?: string }> = [
       { name: "Poke Ball",    key: "pokeball",    price: 100 },
@@ -3662,31 +3683,46 @@ export default class Overworld extends Phaser.Scene {
       { name: "Leaf Stone",    key: "leafstone",    price: 2100, desc: "A leafy green stone" }
     ];
 
-    const startY = centerY - cardH / 2 + 90;
-    const rowH = 36;
+    const listTop = top + 88;
+    const footerTop = top + cardH - 58;
+    const rowH = Math.max(48, fs * 2 + 15);
+    const maxRows = Math.max(1, Math.floor((footerTop - listTop - 8) / rowH));
+    const pageCount = Math.max(1, Math.ceil(items.length / maxRows));
+    this.martPage = Phaser.Math.Clamp(this.martPage, 0, pageCount - 1);
+    const pageItems = items.slice(this.martPage * maxRows, (this.martPage + 1) * maxRows);
 
-    items.forEach((item, i) => {
-      const rowY = startY + i * rowH;
+    pageItems.forEach((item, i) => {
+      const rowY = listTop + i * rowH;
+      const rowBg = this.add.rectangle(centerX, rowY + rowH / 2 - 3, cardW - 24, rowH - 8, 0x1e293b, 0.82)
+        .setStrokeStyle(1, 0x334155);
+      push(rowBg);
 
-      // Item label
-      const labelStr = item.desc
-        ? `${item.name}  ₽${item.price}  (${item.desc})`
-        : `${item.name}  ₽${item.price}`;
-      const label = this.add.text(centerX - 195, rowY, labelStr, {
+      const labelWidth = Math.max(120, cardW - 150);
+      const primary = this.add.text(left + 18, rowY + 4, `${item.name}  ₽${item.price}`, {
         fontFamily: "monospace",
-        fontSize: "12px",
-        color: "#e2e8f0"
-      }).setScrollFactor(0).setDepth(951);
-      this.martElements.push(label);
+        fontSize: `${fs}px`,
+        color: "#e2e8f0",
+        fontStyle: "bold",
+        wordWrap: { width: labelWidth, useAdvancedWrap: true }
+      });
+      push(primary);
 
-      // Buy button
-      const buyBtn = this.add.text(centerX + 175, rowY, "[Buy]", {
+      if (item.desc) {
+        push(this.add.text(left + 18, rowY + fs + 10, item.desc, {
+          fontFamily: "monospace",
+          fontSize: `${Math.max(14, fs - 2)}px`,
+          color: "#94a3b8",
+          wordWrap: { width: labelWidth, useAdvancedWrap: true }
+        }));
+      }
+
+      const buyBtn = this.add.text(left + cardW - 18, rowY + rowH / 2 - 3, "Buy", {
         fontFamily: "monospace",
-        fontSize: "13px",
+        fontSize: `${fs}px`,
         color: "#0f172a",
         backgroundColor: "#fbbf24",
-        padding: { left: 7, right: 7, top: 2, bottom: 2 }
-      }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(951).setInteractive({ useHandCursor: true });
+        padding: { left: 12, right: 12, top: 7, bottom: 7 }
+      }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
 
       buyBtn.on("pointerover", () => buyBtn.setStyle({ backgroundColor: "#f59e0b" }));
       buyBtn.on("pointerout", () => buyBtn.setStyle({ backgroundColor: "#fbbf24" }));
@@ -3702,24 +3738,44 @@ export default class Overworld extends Phaser.Scene {
         moneyText.setText(`Your money: ₽${gameState.money}`);
         this.showNotification(`Bought ${item.name}!`, 1200);
       });
-      this.martElements.push(buyBtn);
+      push(buyBtn);
     });
 
-    // Close button
-    const closeBtn = this.add.text(centerX, centerY + cardH / 2 - 24, "[Close]", {
+    if (pageCount > 1) {
+      const pageText = this.add.text(centerX, footerTop - 18, `${this.martPage + 1} / ${pageCount}`, {
+        fontFamily: "monospace", fontSize: `${Math.max(14, fs - 2)}px`, color: "#94a3b8"
+      }).setOrigin(0.5);
+      push(pageText);
+
+      const prev = this.add.text(left + 18, footerTop - 24, "← Prev", {
+        fontFamily: "monospace", fontSize: `${fs}px`, color: this.martPage > 0 ? "#0f172a" : "#64748b",
+        backgroundColor: this.martPage > 0 ? "#94a3b8" : "#1e293b",
+        padding: { left: 10, right: 10, top: 6, bottom: 6 }
+      }).setInteractive({ useHandCursor: this.martPage > 0 });
+      prev.on("pointerdown", () => { if (this.martPage > 0) { this.martPage--; this.renderMart(); } });
+      push(prev);
+
+      const next = this.add.text(left + cardW - 18, footerTop - 24, "Next →", {
+        fontFamily: "monospace", fontSize: `${fs}px`, color: this.martPage < pageCount - 1 ? "#0f172a" : "#64748b",
+        backgroundColor: this.martPage < pageCount - 1 ? "#94a3b8" : "#1e293b",
+        padding: { left: 10, right: 10, top: 6, bottom: 6 }
+      }).setOrigin(1, 0).setInteractive({ useHandCursor: this.martPage < pageCount - 1 });
+      next.on("pointerdown", () => { if (this.martPage < pageCount - 1) { this.martPage++; this.renderMart(); } });
+      push(next);
+    }
+
+    const closeBtn = this.add.text(centerX, top + cardH - 24, "✕ Close", {
       fontFamily: "monospace",
-      fontSize: "16px",
+      fontSize: `${fs + 1}px`,
       color: "#f8fafc",
       backgroundColor: "#374151",
-      padding: { left: 16, right: 16, top: 8, bottom: 8 }
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(951).setInteractive({ useHandCursor: true });
+      padding: { left: 20, right: 20, top: 8, bottom: 8 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on("pointerdown", () => this.closeMart());
-    this.martElements.push(closeBtn);
+    push(closeBtn);
 
-    // Wrap everything in a container scaled to fit the viewport on any phone.
     this.martContainer = this.add.container(0, 0, [this.martOverlay!, ...this.martElements]);
     this.martContainer.setDepth(950);
-    fitMenu(this, this.martContainer, cardW, cardH);
   }
 
   private closeMart(): void {
