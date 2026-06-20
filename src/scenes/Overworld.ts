@@ -2386,8 +2386,8 @@ export default class Overworld extends Phaser.Scene {
 
     for (const gym of region.gyms) {
       if (distSq(gym.x, gym.y) < 90 * 90 && !gameState.defeatedGyms[gym.id]) {
-        gymLabel = `Gym: ${gym.name} (${gym.leader})`;
-        gymHint = "[E/A] Challenge Gym";
+        gymLabel = `${gym.name} · ${gym.leader}`;
+        gymHint = "[E] Battle";
         if ((this.keyE && this.input.keyboard?.checkDown(this.keyE, 250)) || this.interactPressed) {
           this.interactPressed = false;
           this.startGymBattle(gym.id);
@@ -2403,10 +2403,10 @@ export default class Overworld extends Phaser.Scene {
       if (distanceSq < 70 * 70) {
         locationLabel = town.name;
         if (town.services.includes("center")) {
-          healHint = "[H] Pokemon Center";
+          healHint = "[H] Heal";
         }
         if (town.services.includes("mart") && distanceSq < 50 * 50) {
-          martHint = "[E/A] Poke Mart";
+          martHint = "[E] Mart";
           if ((this.keyE && this.input.keyboard?.checkDown(this.keyE, 250)) || this.interactPressed) {
             // Don't consume interact if gym is also nearby (gym takes priority)
             if (!gymHint) {
@@ -2484,21 +2484,17 @@ export default class Overworld extends Phaser.Scene {
       allGymsDefeated ? "Challenge the Pokemon League!" :
       nextGym ? `Defeat ${nextGym.name}` : "Explore!";
 
-    // On touch devices the player uses the on-screen buttons, so keyboard-key
-    // hints (P/R/M/T/D) are noise — show plain inventory counts instead.
     const isTouch = !!this.touch?.active;
-    const footerLines = isTouch
-      ? [`Potions: ${gameState.inventory.potion}  |  Revives: ${gameState.inventory.revive}`]
-      : [
-          `[P] Potion (${gameState.inventory.potion}) | [R] Revive (${gameState.inventory.revive})`,
-          "[M] Map | [T] Team | [D] Pokedex"
-        ];
+    const inv = gameState.inventory;
+    const footerLine = isTouch
+      ? `Pot:${inv.potion}  Rev:${inv.revive}`
+      : `[P]Pot:${inv.potion}  [R]Rev:${inv.revive}`;
 
     const hudLines = [
-      `Location: ${locationLabel}`,
+      locationLabel,
       gymLabel,
-      `Badges: ${gameState.badges.length}/${region.gyms.length}  |  Pokedex: ${pokedexCount.caught}  |  ₽${gameState.money ?? 500}`,
-      `Goal: ${objective}`,
+      `★${gameState.badges.length}/${region.gyms.length}  #${pokedexCount.caught}  ₽${gameState.money ?? 500}`,
+      `→ ${objective}`,
       xpBoostLabel,
       "",
       powerSpotHint,
@@ -2506,7 +2502,7 @@ export default class Overworld extends Phaser.Scene {
       martHint,
       gymHint,
       leagueHint,
-      ...footerLines
+      footerLine,
     ].filter(line => line !== "");
 
     // Only re-layout the HUD text when its content actually changes.
@@ -2771,14 +2767,24 @@ export default class Overworld extends Phaser.Scene {
       repeat: -1
     });
 
-    // Legend at bottom
+    // Badge count legend
     const legend = this.add.text(mapWidth / 2, mapHeight + 15,
-      `Badges: ${gameState.badges.length}/${region.gyms.length}  |  [M] Close`, {
+      `★${gameState.badges.length}/${region.gyms.length}`, {
       fontFamily: "monospace",
       fontSize: "11px",
       color: "#94a3b8"
     }).setOrigin(0.5);
     this.mapContainer.add(legend);
+
+    // Tappable close button — top-right corner, works for both mouse and touch.
+    const mapClose = this.add.text(mapWidth - 4, -22, "✕", {
+      fontFamily: "monospace",
+      fontSize: "20px",
+      color: "#94a3b8",
+      padding: { left: 8, right: 8, top: 4, bottom: 4 }
+    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+    mapClose.on("pointerdown", () => this.closeVisualMap());
+    this.mapContainer.add(mapClose);
 
     // Shrink to fit narrow viewports (re-applied on resize via fitOpenMenus).
     this.fitMapContainer();
@@ -2973,9 +2979,13 @@ export default class Overworld extends Phaser.Scene {
       this.renderBoxTab(centerX, centerY, push);
     }
 
-    const close = this.add.text(centerX - 290, centerY + 195, "[T] Close", {
-      fontFamily: "monospace", fontSize: "13px", color: "#6b7280"
-    }).setScrollFactor(0).setDepth(502);
+    const close = this.add.text(centerX, centerY + 200, "✕ Close", {
+      fontFamily: "monospace", fontSize: "15px",
+      color: "#f8fafc",
+      backgroundColor: "#374151",
+      padding: { left: 20, right: 20, top: 8, bottom: 8 }
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
+    close.on("pointerdown", () => this.closeTeamScreen());
     this.teamText.push(close);
 
     // Scale-to-fit container so the 620px-wide panel fits narrow phones.
@@ -3321,12 +3331,14 @@ export default class Overworld extends Phaser.Scene {
       this.pokedexText.push(empty);
     }
 
-    const close = this.add.text(centerX - 280, centerY + 160, "[D] Close Pokedex", {
+    const close = this.add.text(centerX, centerY + 168, "✕ Close", {
       fontFamily: "monospace",
-      fontSize: "14px",
-      color: "#6b7280"
-    });
-    close.setScrollFactor(0);
+      fontSize: "15px",
+      color: "#f8fafc",
+      backgroundColor: "#374151",
+      padding: { left: 20, right: 20, top: 8, bottom: 8 }
+    }).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    close.on("pointerdown", () => this.closePokedex());
     this.pokedexText.push(close);
 
     // Scale-to-fit container so the 600px-wide panel fits narrow phones.
