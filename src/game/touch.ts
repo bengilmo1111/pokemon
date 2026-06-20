@@ -126,9 +126,7 @@ export class TouchControls {
   private bindPointers(): void {
     this.scene.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (this.joyPointerId !== -1) return;
-      // Only the left ~55% of the screen drives the joystick.
-      if (pointer.x > this.scene.scale.width * 0.55) return;
-      // Ignore taps landing on a button.
+      // Ignore taps landing on a button — anything else drives the joystick.
       if (this.buttons.some((b) => b.bg.getBounds().contains(pointer.x, pointer.y))) return;
       this.joyPointerId = pointer.id;
       this.joyOriginX = pointer.x;
