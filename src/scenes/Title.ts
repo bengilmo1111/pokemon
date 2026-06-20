@@ -1,5 +1,7 @@
 import Phaser from "phaser";
-import { hasSaveData, loadGame, deleteSave } from "../game/persistence";
+import { deleteSave, getSaveSlots, hasSaveData, loadGame, renameSaveSlot, saveGame, setActiveSaveSlot } from "../game/persistence";
+import { gameState } from "../game/store";
+import { createInitialState } from "../game/state";
 
 const TYPE_COLOURS = [
   0xf97316, // fire
@@ -53,7 +55,7 @@ export default class Title extends Phaser.Scene {
 
     // Title text — animated bob, font size capped so it fits any viewport width
     const titleFontSize = Math.min(48, Math.floor(W / 10));
-    const titleY = H / 2 - 80;
+    const titleY = H / 2 - 150;
     const titleText = this.add.text(W / 2, titleY, "Pokémon Adventure", {
       fontFamily: "monospace",
       fontSize: `${titleFontSize}px`,
@@ -75,39 +77,95 @@ export default class Title extends Phaser.Scene {
     });
 
     // Subtitle
-    this.add.text(W / 2, H / 2 - 22, "A fan-made RPG", {
+    this.add.text(W / 2, H / 2 - 92, "Choose a save slot", {
       fontFamily: "monospace",
       fontSize: "16px",
       color: "#94a3b8"
     }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
 
-    // Button layout
-    const btnW = 200;
-    const btnH = 52;
-    const btnY = H / 2 + 40;
+    this.drawSaveSlots();
+  }
 
-    this.makeButton(W / 2, btnY, btnW, btnH, 0xfbbf24, "▶  New Game", "#0f172a", () => {
-      // Guard against wiping an existing save by accident.
-      if (hasSaveData()) {
-        this.confirmNewGame();
-      } else {
-        deleteSave();
-        this.scene.start("Boot");
+  private drawSaveSlots(): void {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const slots = getSaveSlots();
+    const slotW = Math.min(440, W * 0.88);
+    const slotH = 96;
+    const startY = H / 2 - 58;
+
+    slots.forEach((slotInfo, index) => {
+      const y = startY + index * (slotH + 14);
+      const hasData = hasSaveData(slotInfo.slot);
+      const title = `${slotInfo.slot}. ${slotInfo.name}`;
+      const detail = hasData
+        ? `${slotInfo.teamSize} Pokémon  •  ${slotInfo.badges} badges  •  ${new Date(slotInfo.timestamp).toLocaleDateString()}`
+        : "Empty slot";
+
+      const bg = this.add.graphics().setScrollFactor(0).setDepth(10);
+      bg.fillStyle(hasData ? 0x1e293b : 0x172033, 0.96);
+      bg.fillRoundedRect(W / 2 - slotW / 2, y, slotW, slotH, 12);
+      bg.lineStyle(2, hasData ? 0x22d3ee : 0x64748b, 1);
+      bg.strokeRoundedRect(W / 2 - slotW / 2, y, slotW, slotH, 12);
+
+      this.add.text(W / 2 - slotW / 2 + 18, y + 16, title, {
+        fontFamily: "monospace",
+        fontSize: "20px",
+        color: "#f8fafc",
+        fontStyle: "bold"
+      }).setScrollFactor(0).setDepth(11);
+
+      this.add.text(W / 2 - slotW / 2 + 18, y + 48, detail, {
+        fontFamily: "monospace",
+        fontSize: "14px",
+        color: "#cbd5e1"
+      }).setScrollFactor(0).setDepth(11);
+
+      const primaryLabel = hasData ? "Continue" : "New Game";
+      this.makeButton(W / 2 + slotW / 2 - 72, y + 9, 126, 26, hasData ? 0x22d3ee : 0xfbbf24, primaryLabel, "#0f172a", () => {
+        if (hasData) {
+          setActiveSaveSlot(slotInfo.slot);
+          loadGame(slotInfo.slot);
+          this.scene.start("Boot");
+        } else {
+          this.startNewGame(slotInfo.slot);
+        }
+      });
+
+      this.makeButton(W / 2 + slotW / 2 - 72, y + 39, 126, 24, 0x334155, hasData ? "Rename" : "Name Slot", "#e5e7eb", () => {
+        if (hasData) {
+          const name = this.promptSlotName(slotInfo.slot, slotInfo.name);
+          if (name && renameSaveSlot(slotInfo.slot, name)) this.scene.restart();
+        } else {
+          this.startNewGame(slotInfo.slot);
+        }
+      });
+
+      if (hasData) {
+        this.makeButton(W / 2 + slotW / 2 - 72, y + 67, 126, 22, 0xef4444, "New Game", "#ffffff", () => {
+          this.confirmNewGame(slotInfo.slot);
+        });
       }
     });
+  }
 
-    // "Continue" button — only if save data exists
-    if (hasSaveData()) {
-      const contY = btnY + btnH + 16;
-      this.makeButton(W / 2, contY, btnW, btnH, 0x22d3ee, "📂  Continue", "#0f172a", () => {
-        loadGame();
-        this.scene.start("Boot");
-      });
-    }
+  private promptSlotName(slot: number, currentName?: string): string | null {
+    const name = window.prompt("Name this save slot:", currentName || `Save Slot ${slot}`);
+    if (name === null) return null;
+    return name.trim().replace(/\s+/g, " ").slice(0, 24) || `Save Slot ${slot}`;
+  }
+
+  private startNewGame(slot: number): void {
+    const name = this.promptSlotName(slot);
+    if (!name) return;
+    deleteSave(slot);
+    Object.assign(gameState, createInitialState());
+    saveGame(slot, name);
+    this.scene.start("Boot");
   }
 
   /** Modal asking the player to confirm overwriting an existing save. */
-  private confirmNewGame(): void {
+  private confirmNewGame(slot: number): void {
     const W = this.scale.width;
     const H = this.scale.height;
     const depth = 50;
@@ -124,7 +182,7 @@ export default class Title extends Phaser.Scene {
     panel.strokeRoundedRect(W / 2 - panelW / 2, H / 2 - panelH / 2, panelW, panelH, 14);
 
     const text = this.add.text(W / 2, H / 2 - 60,
-      "Start a New Game?\n\nThis will erase your\nexisting saved game.", {
+      "Start a New Game?\n\nThis will erase only\nthis save slot.", {
         fontFamily: "monospace", fontSize: "18px", color: "#e5e7eb",
         align: "center", lineSpacing: 4
       }).setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2);
@@ -133,8 +191,8 @@ export default class Title extends Phaser.Scene {
     const dismiss = () => els.forEach((e) => e.destroy());
 
     this.makeButton(W / 2 - 95, H / 2 + 40, 170, 48, 0xef4444, "Erase & Start", "#ffffff", () => {
-      deleteSave();
-      this.scene.start("Boot");
+      dismiss();
+      this.startNewGame(slot);
     }, depth + 2, els);
     this.makeButton(W / 2 + 95, H / 2 + 40, 170, 48, 0x334155, "Cancel", "#e5e7eb", dismiss, depth + 2, els);
   }
@@ -148,7 +206,7 @@ export default class Title extends Phaser.Scene {
     label: string,
     textColor: string,
     onDown: () => void,
-    depthBase = 10,
+    depthBase = 12,
     collect?: Phaser.GameObjects.GameObject[]
   ): void {
     const x = cx - w / 2;
@@ -156,11 +214,11 @@ export default class Title extends Phaser.Scene {
 
     const bg = this.add.graphics().setScrollFactor(0).setDepth(depthBase);
     bg.fillStyle(fillColor, 1);
-    bg.fillRoundedRect(x, y, w, h, 10);
+    bg.fillRoundedRect(x, y, w, h, 8);
 
     const txt = this.add.text(cx, cy + h / 2, label, {
       fontFamily: "monospace",
-      fontSize: "20px",
+      fontSize: h < 36 ? "13px" : "20px",
       color: textColor,
       fontStyle: "bold"
     }).setOrigin(0.5).setScrollFactor(0).setDepth(depthBase + 1);
@@ -177,12 +235,12 @@ export default class Title extends Phaser.Scene {
     hit.on("pointerover", () => {
       bg.clear();
       bg.fillStyle(hoverFill, 1);
-      bg.fillRoundedRect(x, y, w, h, 10);
+      bg.fillRoundedRect(x, y, w, h, 8);
     });
     hit.on("pointerout", () => {
       bg.clear();
       bg.fillStyle(fillColor, 1);
-      bg.fillRoundedRect(x, y, w, h, 10);
+      bg.fillRoundedRect(x, y, w, h, 8);
     });
     hit.on("pointerdown", onDown);
   }

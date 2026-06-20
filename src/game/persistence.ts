@@ -3,23 +3,101 @@ import { SPECIES } from "../data/species";
 import { randomNature } from "../data/natures";
 import { gameState } from "./store";
 
-const SAVE_KEY = "pokemon_game_save";
+const LEGACY_SAVE_KEY = "pokemon_game_save";
+const SAVE_KEY_PREFIX = "pokemon_game_save_slot_";
+const ACTIVE_SLOT_KEY = "pokemon_game_active_slot";
 const SAVE_VERSION = 3;
+export const SAVE_SLOT_COUNT = 3;
 
 interface SaveData {
   version: number;
   timestamp: number;
+  slotName?: string;
   state: GameState;
 }
 
-export function saveGame(): boolean {
+export interface SaveSlotInfo {
+  slot: number;
+  name: string;
+  timestamp: number;
+  teamSize: number;
+  badges: number;
+}
+
+function slotKey(slot: number): string {
+  return `${SAVE_KEY_PREFIX}${slot}`;
+}
+
+function normalizeSlot(slot: number): number {
+  return Math.min(SAVE_SLOT_COUNT, Math.max(1, Math.floor(slot) || 1));
+}
+
+function defaultSlotName(slot: number): string {
+  return `Save Slot ${slot}`;
+}
+
+function readSave(slot = getActiveSaveSlot()): SaveData | null {
   try {
+    migrateLegacySaveIfNeeded();
+    const saved = localStorage.getItem(slotKey(normalizeSlot(slot)));
+    return saved ? JSON.parse(saved) as SaveData : null;
+  } catch {
+    return null;
+  }
+}
+
+function cleanSlotName(name: string, slot: number): string {
+  const trimmed = name.trim().replace(/\s+/g, " ");
+  return trimmed.slice(0, 24) || defaultSlotName(slot);
+}
+
+function migrateLegacySaveIfNeeded(): void {
+  const legacy = localStorage.getItem(LEGACY_SAVE_KEY);
+  if (!legacy || localStorage.getItem(slotKey(1))) return;
+  try {
+    const parsed = JSON.parse(legacy) as SaveData;
+    parsed.slotName = parsed.slotName || defaultSlotName(1);
+    localStorage.setItem(slotKey(1), JSON.stringify(parsed));
+    localStorage.setItem(ACTIVE_SLOT_KEY, "1");
+  } catch {
+    // Leave malformed legacy data untouched; normal load paths will report no save.
+  }
+}
+
+export function getActiveSaveSlot(): number {
+  return normalizeSlot(Number(localStorage.getItem(ACTIVE_SLOT_KEY) || "1"));
+}
+
+export function setActiveSaveSlot(slot: number): void {
+  localStorage.setItem(ACTIVE_SLOT_KEY, String(normalizeSlot(slot)));
+}
+
+export function renameSaveSlot(slot: number, name: string): boolean {
+  try {
+    const normalized = normalizeSlot(slot);
+    const saveData = readSave(normalized);
+    if (!saveData) return false;
+    saveData.slotName = cleanSlotName(name, normalized);
+    localStorage.setItem(slotKey(normalized), JSON.stringify(saveData));
+    return true;
+  } catch (e) {
+    console.error("Failed to rename save slot:", e);
+    return false;
+  }
+}
+
+export function saveGame(slot = getActiveSaveSlot(), slotName?: string): boolean {
+  try {
+    const normalized = normalizeSlot(slot);
+    const existing = readSave(normalized);
     const saveData: SaveData = {
       version: SAVE_VERSION,
       timestamp: Date.now(),
+      slotName: cleanSlotName(slotName || existing?.slotName || defaultSlotName(normalized), normalized),
       state: JSON.parse(JSON.stringify(gameState)) // Deep clone
     };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+    localStorage.setItem(slotKey(normalized), JSON.stringify(saveData));
+    setActiveSaveSlot(normalized);
     return true;
   } catch (e) {
     console.error("Failed to save game:", e);
@@ -27,12 +105,11 @@ export function saveGame(): boolean {
   }
 }
 
-export function loadGame(): boolean {
+export function loadGame(slot = getActiveSaveSlot()): boolean {
   try {
-    const saved = localStorage.getItem(SAVE_KEY);
-    if (!saved) return false;
-
-    const saveData: SaveData = JSON.parse(saved);
+    const normalized = normalizeSlot(slot);
+    const saveData = readSave(normalized);
+    if (!saveData) return false;
 
     // Copy all properties from saved state to current gameState
     Object.assign(gameState, saveData.state);
@@ -47,6 +124,7 @@ export function loadGame(): boolean {
     if (saveData.version < 3) {
       migrateToV3(gameState);
     }
+    setActiveSaveSlot(normalized);
     return true;
   } catch (e) {
     console.error("Failed to load game:", e);
@@ -84,25 +162,37 @@ function migrateToV2(state: GameState): void {
   state.box?.forEach(upgrade);
 }
 
-export function hasSaveData(): boolean {
-  return localStorage.getItem(SAVE_KEY) !== null;
+export function hasSaveData(slot = getActiveSaveSlot()): boolean {
+  migrateLegacySaveIfNeeded();
+  return localStorage.getItem(slotKey(normalizeSlot(slot))) !== null;
 }
 
-export function deleteSave(): void {
-  localStorage.removeItem(SAVE_KEY);
+export function deleteSave(slot = getActiveSaveSlot()): void {
+  localStorage.removeItem(slotKey(normalizeSlot(slot)));
 }
 
-export function getSaveInfo(): { timestamp: number; teamSize: number; badges: number } | null {
-  try {
-    const saved = localStorage.getItem(SAVE_KEY);
-    if (!saved) return null;
-    const saveData: SaveData = JSON.parse(saved);
+export function getSaveSlots(): SaveSlotInfo[] {
+  return Array.from({ length: SAVE_SLOT_COUNT }, (_, i) => i + 1).map((slot) => {
+    const saveData = readSave(slot);
     return {
-      timestamp: saveData.timestamp,
-      teamSize: saveData.state.team.length,
-      badges: saveData.state.badges.length
+      slot,
+      name: saveData?.slotName || defaultSlotName(slot),
+      timestamp: saveData?.timestamp || 0,
+      teamSize: saveData?.state.team.length || 0,
+      badges: saveData?.state.badges.length || 0
     };
-  } catch {
-    return null;
-  }
+  });
+}
+
+export function getSaveInfo(slot = getActiveSaveSlot()): SaveSlotInfo | null {
+  const saveData = readSave(slot);
+  if (!saveData) return null;
+  const normalized = normalizeSlot(slot);
+  return {
+    slot: normalized,
+    name: saveData.slotName || defaultSlotName(normalized),
+    timestamp: saveData.timestamp,
+    teamSize: saveData.state.team.length,
+    badges: saveData.state.badges.length
+  };
 }
