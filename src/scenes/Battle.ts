@@ -422,17 +422,19 @@ export default class Battle extends Phaser.Scene {
     this.rootMenuItems.forEach((item) => item.setVisible(false));
 
     const moveIds = this.playerMon.moves;
-    const colX = [this.scale.width * 0.28, this.scale.width * 0.72];
-    const rowY = [this.scale.height - 210, this.scale.height - 130];
-    const btnWidth = this.scale.width * 0.46;
+    // Slightly narrower buttons so two columns never overlap at 375 px
+    const btnWidth = Math.floor(this.scale.width * 0.44);
+    const gap = (this.scale.width - btnWidth * 2) / 3;
+    const colX = [gap + btnWidth / 2, gap * 2 + btnWidth * 1.5];
+    const rowY = [this.scale.height - 220, this.scale.height - 140];
 
-    // Type colors for tooltip badge
-    const TYPE_COLORS: Record<string, number> = {
-      fire: 0xff6030, water: 0x6890f0, grass: 0x78c850, electric: 0xf8d030,
-      psychic: 0xf85888, ice: 0x98d8d8, dragon: 0x7038f8, dark: 0x705848,
-      normal: 0xa8a878, fighting: 0xc03028, poison: 0xa040a0, ground: 0xe0c068,
-      flying: 0xa890f0, bug: 0xa8b820, rock: 0xb8a038, ghost: 0x705898,
-      steel: 0xb8b8d0, fairy: 0xee99ac
+    // Type-colour map — used as button background to communicate move type at a glance
+    const TYPE_COLORS: Record<string, string> = {
+      fire: "#b91c1c", water: "#1d4ed8", grass: "#15803d", electric: "#a16207",
+      psychic: "#be185d", ice: "#0e7490", dragon: "#4338ca", dark: "#374151",
+      normal: "#4b5563", fighting: "#92400e", poison: "#6d28d9", ground: "#854d0e",
+      flying: "#0369a1", bug: "#3f6212", rock: "#57534e", ghost: "#4c1d95",
+      steel: "#374151", fairy: "#9d174d"
     };
 
     // Create shared tooltip objects (hidden initially)
@@ -461,27 +463,30 @@ export default class Battle extends Phaser.Scene {
       const pp = getMovePp(this.playerMon, moveId);
       const maxPp = getMaxPp(moveId);
       const disabled = pp <= 0;
-      const label = move ? `${move.name}\n${move.type.toUpperCase()}  PP ${pp}/${maxPp}` : moveId;
+      const typeBg = move ? (TYPE_COLORS[move.type] ?? "#374151") : "#374151";
+      const label = move
+        ? `${move.name}\n${move.type.toUpperCase()} PP ${pp}/${maxPp}`
+        : moveId;
       const x = colX[index % 2];
       const y = rowY[Math.floor(index / 2)];
       const text = this.add.text(x, y, label, {
         fontFamily: "monospace",
-        fontSize: "20px",
-        color: disabled ? "#6b7280" : "#f9fafb",
-        backgroundColor: disabled ? "#1f2937" : "#374151",
+        fontSize: "18px",
+        fontStyle: "bold",
+        color: disabled ? "#9ca3af" : "#f9fafb",
+        backgroundColor: disabled ? "#1f2937" : typeBg,
         align: "center",
         fixedWidth: btnWidth,
-        padding: { top: 10, bottom: 10 }
+        padding: { top: 14, bottom: 14 }
       });
-      text.setOrigin(0.5).setDepth(100).setAlpha(disabled ? 0.6 : 1);
+      text.setOrigin(0.5).setDepth(100).setAlpha(disabled ? 0.55 : 1);
       text.setInteractive({ useHandCursor: !disabled });
       if (!disabled) text.on("pointerdown", () => this.handleFight(moveId));
 
       // Tooltip on hover
       text.on("pointerover", () => {
         if (!move || !this.tooltipBg || !this.tooltipText) return;
-        const typeColor = TYPE_COLORS[move.type] || 0xa8a878;
-        const typeHex = `#${typeColor.toString(16).padStart(6, "0")}`;
+        const typeHex = TYPE_COLORS[move.type] ?? "#a8a878";
         const catIcon = move.category === "physical" ? "⚔️ Physical" :
                         move.category === "special" ? "✨ Special" : "💤 Status";
         const pwrStr = move.power > 0 ? `Power: ${move.power}` : "Power: —";
@@ -647,39 +652,59 @@ export default class Battle extends Phaser.Scene {
     this.switchMenuOpen = true;
     this.rootMenuItems.forEach((item) => item.setVisible(false));
 
-    const startY = this.scale.height * 0.72;
-    const spacing = 24;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const cardW = W * 0.88;
+    const cardH = 56;
+    const cardX = W / 2;
+    const totalCards = gameState.team.length + 1; // +1 for Back
+    const totalH = totalCards * (cardH + 8);
+    let cardY = H / 2 - totalH / 2 + cardH / 2;
+
     gameState.team.forEach((mon, index) => {
-      const statusText = mon.status !== "none" ? ` [${getStatusDisplayText(mon.status)}]` : "";
-      const label = `${mon.nickname || mon.name} Lv${mon.level} (${mon.hp}/${mon.maxHp})${statusText}`;
       const isDisabled = index === this.playerIndex || mon.hp <= 0;
-      const text = this.add.text(32, startY + index * spacing, label, {
+      const hpPct = mon.maxHp > 0 ? mon.hp / mon.maxHp : 0;
+      const hpColor = hpPct > 0.5 ? "#22c55e" : hpPct > 0.2 ? "#eab308" : "#ef4444";
+      const statusSuffix = mon.status !== "none" ? `  [${getStatusDisplayText(mon.status)}]` : "";
+      const label = `${mon.nickname || mon.name}  Lv${mon.level}\nHP: ${mon.hp}/${mon.maxHp}${statusSuffix}`;
+      const bgColor = isDisabled ? "#1f2937" : (index === this.playerIndex ? "#064e3b" : "#1e3a5f");
+
+      const text = this.add.text(cardX, cardY, label, {
         fontFamily: "monospace",
-        fontSize: "13px",
-        color: isDisabled ? "#6b7280" : "#f9fafb",
-        backgroundColor: isDisabled ? "#1f2937" : "#374151",
-        padding: { left: 6, right: 6, top: 2, bottom: 2 }
+        fontSize: "20px",
+        fontStyle: "bold",
+        color: isDisabled ? "#6b7280" : hpColor,
+        backgroundColor: bgColor,
+        align: "center",
+        fixedWidth: cardW,
+        padding: { top: 10, bottom: 10 }
       });
-      text.setDepth(100).setAlpha(isDisabled ? 0.6 : 1);
+      text.setOrigin(0.5).setDepth(100).setScrollFactor(0).setAlpha(isDisabled ? 0.55 : 1);
       text.setInteractive({ useHandCursor: !isDisabled });
       if (!isDisabled) {
         text.on("pointerdown", () => this.handleSwitch(index));
-        text.on("pointerover", () => text.setStyle({ backgroundColor: "#4b5563" }));
-        text.on("pointerout", () => text.setStyle({ backgroundColor: "#374151" }));
+        text.on("pointerover", () => text.setStyle({ backgroundColor: "#2563eb" }));
+        text.on("pointerout", () => text.setStyle({ backgroundColor: bgColor }));
       }
       this.switchMenuItems.push(text);
+      cardY += cardH + 8;
     });
 
-    const backText = this.add.text(32, startY + gameState.team.length * spacing + 6, "Back", {
+    const backText = this.add.text(cardX, cardY, "◀ Back", {
       fontFamily: "monospace",
-      fontSize: "13px",
+      fontSize: "22px",
+      fontStyle: "bold",
       color: "#f9fafb",
       backgroundColor: "#374151",
-      padding: { left: 6, right: 6, top: 2, bottom: 2 }
+      align: "center",
+      fixedWidth: cardW,
+      padding: { top: 12, bottom: 12 }
     });
-    backText.setDepth(100);
+    backText.setOrigin(0.5).setDepth(100).setScrollFactor(0);
     backText.setInteractive({ useHandCursor: true });
     backText.on("pointerdown", () => this.closeSwitchMenu());
+    backText.on("pointerover", () => backText.setStyle({ backgroundColor: "#4b5563" }));
+    backText.on("pointerout",  () => backText.setStyle({ backgroundColor: "#374151" }));
     this.switchMenuItems.push(backText);
   }
 

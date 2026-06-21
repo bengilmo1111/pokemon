@@ -245,11 +245,11 @@ export default class Overworld extends Phaser.Scene {
 
     // On-screen touch controls (only created on touch / coarse-pointer devices)
     this.touch = new TouchControls(this, [
-      { id: "interact", label: "A", primary: true, color: 0x16a34a },
-      { id: "item", label: "+", color: 0x0ea5e9 },
-      { id: "team", label: "T", color: 0x7c3aed },
-      { id: "map", label: "M", color: 0xb45309 },
-      { id: "menu", label: "☰", color: 0x334155 }
+      { id: "interact", label: "Talk", primary: true, color: 0x16a34a },
+      { id: "item",     label: "Items", color: 0x0ea5e9 },
+      { id: "team",     label: "Team",  color: 0x7c3aed },
+      { id: "map",      label: "Map",   color: 0xb45309 },
+      { id: "menu",     label: "Menu",  color: 0x334155 }
     ]);
 
     // Hide controls whenever the scene is paused (e.g. a battle launches) and
@@ -1811,17 +1811,26 @@ export default class Overworld extends Phaser.Scene {
 
   private drawPointsOfInterest(region: RegionData): void {
     this.poiGraphics.clear();
+
+    // Towns: house silhouette (triangle roof + rect body + door)
     region.towns.forEach((town) => {
       const x = town.x * WORLD_SCALE;
       const y = town.y * WORLD_SCALE;
-      this.poiGraphics.fillStyle(0x1f2937, 0.9);
-      this.poiGraphics.fillRect(x - 18, y - 16, 36, 32);
-      this.poiGraphics.fillStyle(0xfbbf24, 0.9);
-      this.poiGraphics.fillRect(x - 18, y - 22, 36, 6);
-      // Add building details
-      this.poiGraphics.fillStyle(0x3b82f6, 0.9);
-      this.poiGraphics.fillRect(x - 4, y - 8, 8, 12);
+      // Body
+      this.poiGraphics.fillStyle(0xfef3c7, 0.95);
+      this.poiGraphics.fillRect(x - 14, y - 8, 28, 22);
+      // Roof
+      this.poiGraphics.fillStyle(0xdc2626, 0.95);
+      this.poiGraphics.fillTriangle(x, y - 26, x - 18, y - 8, x + 18, y - 8);
+      // Door
+      this.poiGraphics.fillStyle(0x92400e, 0.9);
+      this.poiGraphics.fillRect(x - 5, y + 2, 10, 12);
+      // Outline
+      this.poiGraphics.lineStyle(2, 0x1f2937, 0.8);
+      this.poiGraphics.strokeRect(x - 14, y - 8, 28, 22);
     });
+
+    // Landmarks: triangle marker
     region.landmarks.forEach((landmark) => {
       const x = landmark.x * WORLD_SCALE;
       const y = landmark.y * WORLD_SCALE;
@@ -1830,18 +1839,29 @@ export default class Overworld extends Phaser.Scene {
       this.poiGraphics.lineStyle(2, 0xffffff, 0.6);
       this.poiGraphics.strokeTriangle(x, y - 20, x - 14, y + 10, x + 14, y + 10);
     });
+
+    // Gyms: bold pentagon badge in type colour — clearly different from towns
     region.gyms.forEach((gym) => {
       const x = gym.x * WORLD_SCALE;
       const y = gym.y * WORLD_SCALE;
       const isDefeated = gameState.defeatedGyms[gym.id];
-      this.poiGraphics.fillStyle(isDefeated ? 0x6b7280 : gym.color, 0.9);
-      this.poiGraphics.fillRect(x - 16, y - 16, 32, 32);
-      this.poiGraphics.lineStyle(2, 0xffffff, 0.7);
-      this.poiGraphics.strokeRect(x - 16, y - 16, 32, 32);
-      // Add gym symbol
-      if (!isDefeated) {
-        this.poiGraphics.fillStyle(0xffffff, 0.8);
-        this.poiGraphics.fillCircle(x, y, 6);
+      const col = isDefeated ? 0x6b7280 : gym.color;
+      const pts: Phaser.Types.Math.Vector2Like[] = [];
+      for (let i = 0; i < 5; i++) {
+        const angle = (Math.PI * 2 * i / 5) - Math.PI / 2;
+        pts.push({ x: x + Math.cos(angle) * 18, y: y + Math.sin(angle) * 18 });
+      }
+      this.poiGraphics.fillStyle(col, 0.95);
+      this.poiGraphics.fillPoints(pts, true);
+      this.poiGraphics.lineStyle(3, 0xffffff, isDefeated ? 0.4 : 0.9);
+      this.poiGraphics.strokePoints(pts, true);
+      if (isDefeated) {
+        // Checkmark: badge earned
+        this.poiGraphics.lineStyle(3, 0xffffff, 0.8);
+        this.poiGraphics.strokeTriangle(x - 6, y + 1, x - 1, y + 6, x + 7, y - 5);
+      } else {
+        this.poiGraphics.fillStyle(0xffffff, 0.95);
+        this.poiGraphics.fillCircle(x, y, 5);
       }
     });
     region.powerSpots.forEach((spot) => {
@@ -2485,11 +2505,8 @@ export default class Overworld extends Phaser.Scene {
       allGymsDefeated ? "Challenge the Pokemon League!" :
       nextGym ? `Defeat ${nextGym.name}` : "Explore!";
 
-    const isTouch = !!this.touch?.active;
     const inv = gameState.inventory;
-    const footerLine = isTouch
-      ? `Pot:${inv.potion}  Rev:${inv.revive}`
-      : `[P]Pot:${inv.potion}  [R]Rev:${inv.revive}`;
+    const footerLine = `💊×${inv.potion}  ✚×${inv.revive}`;
 
     const hudLines = [
       locationLabel,

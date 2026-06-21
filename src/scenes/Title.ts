@@ -83,6 +83,10 @@ export default class Title extends Phaser.Scene {
       color: "#94a3b8"
     }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
 
+    // Wait one resize tick so RESIZE mode has settled to the true viewport size
+    // before placing interactive buttons (first paint can be off by a frame).
+    this.scale.once("resize", () => this.drawSaveSlots());
+    // Also draw immediately in case no resize fires (canvas already correct size).
     this.drawSaveSlots();
   }
 

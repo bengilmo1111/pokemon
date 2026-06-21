@@ -38,8 +38,12 @@ export class TouchControls {
     cfg: TouchButtonConfig;
     bg: Phaser.GameObjects.Arc;
     text: Phaser.GameObjects.Text;
+    label: Phaser.GameObjects.Text;
     pressed: boolean;
   }> = [];
+
+  // Ghost joystick hint — a faint ring in the drag zone so players know where to swipe
+  private joyGhost!: Phaser.GameObjects.Arc;
 
   private container!: Phaser.GameObjects.Container;
   private depth = 5000;
@@ -51,6 +55,7 @@ export class TouchControls {
 
     this.scene.input.addPointer(3);
     this.createJoystick();
+    this.createGhost();
     this.createButtons(buttons);
     this.bindPointers();
 
@@ -83,39 +88,62 @@ export class TouchControls {
       .setVisible(false);
   }
 
+  private createGhost(): void {
+    // Faint ring at rest position so players know where to drag
+    this.joyGhost = this.scene.add
+      .circle(0, 0, this.joyRadius, 0x38bdf8, 0.06)
+      .setStrokeStyle(2, 0x38bdf8, 0.2)
+      .setScrollFactor(0)
+      .setDepth(this.depth - 1);
+  }
+
   private createButtons(configs: TouchButtonConfig[]): void {
     configs.forEach((cfg) => {
-      const r = cfg.primary ? 42 : 32;
+      const r = cfg.primary ? 44 : 34;
       const color = cfg.color ?? 0x1e293b;
       const bg = this.scene.add
-        .circle(0, 0, r, color, 0.55)
-        .setStrokeStyle(2, 0xffffff, 0.4)
+        .circle(0, 0, r, color, 0.72)
+        .setStrokeStyle(2, 0xffffff, 0.55)
         .setScrollFactor(0)
         .setDepth(this.depth)
         .setInteractive({ useHandCursor: true });
+
+      // Button icon / short name centred in circle
       const text = this.scene.add
-        .text(0, 0, cfg.label, {
+        .text(0, cfg.primary ? -4 : -3, cfg.label, {
           fontFamily: "monospace",
-          fontSize: cfg.primary ? "22px" : "16px",
+          fontSize: cfg.primary ? "16px" : "13px",
           color: "#f8fafc",
-          fontStyle: "bold"
+          fontStyle: "bold",
+          align: "center"
         })
         .setOrigin(0.5)
         .setScrollFactor(0)
         .setDepth(this.depth + 1);
 
-      const entry = { cfg, bg, text, pressed: false };
-      bg.on("pointerdown", (p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => {
+      // Word label rendered below the circle
+      const label = this.scene.add
+        .text(0, r + 10, cfg.label, {
+          fontFamily: "monospace",
+          fontSize: "11px",
+          color: "#cbd5e1",
+          align: "center"
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(this.depth + 1);
+
+      const entry = { cfg, bg, text, label, pressed: false };
+      bg.on("pointerdown", (_p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => {
         entry.pressed = true;
         bg.setScale(0.88);
-        bg.setFillStyle(color, 0.85);
-        // Light haptic pulse on supported devices.
+        bg.setFillStyle(color, 0.92);
         if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(10);
         ev?.stopPropagation();
       });
       const release = () => {
         bg.setScale(1);
-        bg.setFillStyle(color, 0.55);
+        bg.setFillStyle(color, 0.72);
       };
       bg.on("pointerup", release);
       bg.on("pointerout", release);
@@ -168,34 +196,40 @@ export class TouchControls {
     if (!this.active) return;
     const w = this.scene.scale.width;
     const h = this.scene.scale.height;
-    // Hug the screen edge on every device: a small fixed gap plus the device's
-    // safe-area insets (notch / rounded corners / gesture bar) read from CSS.
     const gap = 12;
     const insetR = gap + safeAreaInset("right");
     const insetB = gap + safeAreaInset("bottom");
 
     const primaries = this.buttons.filter((b) => b.cfg.primary);
     const secondaries = this.buttons.filter((b) => !b.cfg.primary);
-    const rOf = (b: { cfg: TouchButtonConfig }) => (b.cfg.primary ? 42 : 32);
+    const rOf = (b: { cfg: TouchButtonConfig }) => (b.cfg.primary ? 44 : 34);
 
-    // Primary action button: bottom-right corner, rim flush to the safe edge.
-    let primaryY = h - insetB - 42;
+    // Primary action button: bottom-right corner
+    let primaryY = h - insetB - 44;
     primaries.forEach((b) => {
-      const x = w - insetR - rOf(b);
-      primaryY = h - insetB - rOf(b);
+      const r = rOf(b);
+      const x = w - insetR - r;
+      primaryY = h - insetB - r;
       b.bg.setPosition(x, primaryY);
       b.text.setPosition(x, primaryY);
+      b.label.setPosition(x, primaryY + r + 10);
     });
 
-    // Utility buttons stack upward along the right edge, each rim flush too.
-    let y = primaryY - 42 - 32 - 16;
+    // Utility buttons stack upward along the right edge
+    let y = primaryY - 44 - 34 - 18;
     secondaries.forEach((b) => {
       const r = rOf(b);
       const x = w - insetR - r;
       b.bg.setPosition(x, y);
       b.text.setPosition(x, y);
-      y -= r * 2 + 14;
+      b.label.setPosition(x, y + r + 10);
+      y -= r * 2 + 18;
     });
+
+    // Ghost joystick rests at bottom-left of the play area
+    const ghostX = safeAreaInset("left") + gap + this.joyRadius;
+    const ghostY = h - safeAreaInset("bottom") - gap - this.joyRadius;
+    this.joyGhost.setPosition(ghostX, ghostY);
   }
 
   /** Normalised movement vector, components in [-1, 1]. */
@@ -218,11 +252,13 @@ export class TouchControls {
     this.buttons.forEach((b) => {
       b.bg.setVisible(visible);
       b.text.setVisible(visible);
+      b.label.setVisible(visible);
       if (!visible) {
         b.pressed = false;
         b.bg.setScale(1);
       }
     });
+    this.joyGhost.setVisible(visible);
     if (!visible) {
       this.joyBase.setVisible(false);
       this.joyThumb.setVisible(false);
