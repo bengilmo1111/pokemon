@@ -243,7 +243,9 @@ export default class Overworld extends Phaser.Scene {
     });
     this.notificationText.setScrollFactor(0).setOrigin(0.5).setVisible(false);
 
-    // On-screen touch controls (only created on touch / coarse-pointer devices)
+    // On-screen touch controls (only created on touch / coarse-pointer devices).
+    // Hidden immediately if a modal (starter select / tutorial) is about to show —
+    // they'll be restored when that modal closes.
     this.touch = new TouchControls(this, [
       { id: "interact", label: "Talk", primary: true, color: 0x16a34a },
       { id: "item",     label: "Items", color: 0x0ea5e9 },
@@ -251,6 +253,9 @@ export default class Overworld extends Phaser.Scene {
       { id: "map",      label: "Map",   color: 0xb45309 },
       { id: "menu",     label: "Menu",  color: 0x334155 }
     ]);
+    if (gameState.team.length === 0 || !gameState.tutorialSeen) {
+      this.touch?.setVisible(false);
+    }
 
     // Hide controls whenever the scene is paused (e.g. a battle launches) and
     // restore them when it resumes.
@@ -1840,28 +1845,44 @@ export default class Overworld extends Phaser.Scene {
       this.poiGraphics.strokeTriangle(x, y - 20, x - 14, y + 10, x + 14, y + 10);
     });
 
-    // Gyms: bold pentagon badge in type colour — clearly different from towns
+    // Gyms: bold coloured building — taller than house, with pillars, banner stripe
+    // and a type-coloured flag on top so it's unmistakably a gym.
     region.gyms.forEach((gym) => {
       const x = gym.x * WORLD_SCALE;
       const y = gym.y * WORLD_SCALE;
       const isDefeated = gameState.defeatedGyms[gym.id];
       const col = isDefeated ? 0x6b7280 : gym.color;
-      const pts: Phaser.Types.Math.Vector2Like[] = [];
-      for (let i = 0; i < 5; i++) {
-        const angle = (Math.PI * 2 * i / 5) - Math.PI / 2;
-        pts.push({ x: x + Math.cos(angle) * 18, y: y + Math.sin(angle) * 18 });
-      }
-      this.poiGraphics.fillStyle(col, 0.95);
-      this.poiGraphics.fillPoints(pts, true);
-      this.poiGraphics.lineStyle(3, 0xffffff, isDefeated ? 0.4 : 0.9);
-      this.poiGraphics.strokePoints(pts, true);
+      const alpha = isDefeated ? 0.55 : 0.95;
+
+      // Main building body — wider & taller than town house
+      this.poiGraphics.fillStyle(0xdbeafe, alpha);
+      this.poiGraphics.fillRect(x - 18, y - 14, 36, 28);
+      this.poiGraphics.lineStyle(2, 0x1e40af, alpha);
+      this.poiGraphics.strokeRect(x - 18, y - 14, 36, 28);
+
+      // Flat roof / pediment (dark stripe across top)
+      this.poiGraphics.fillStyle(0x1e40af, alpha);
+      this.poiGraphics.fillRect(x - 20, y - 18, 40, 6);
+
+      // Two pillars
+      this.poiGraphics.fillStyle(0xffffff, alpha);
+      this.poiGraphics.fillRect(x - 14, y - 14, 5, 22);
+      this.poiGraphics.fillRect(x + 9,  y - 14, 5, 22);
+
+      // Entrance door
+      this.poiGraphics.fillStyle(col, alpha);
+      this.poiGraphics.fillRect(x - 6, y + 2, 12, 12);
+
+      // Type-coloured flag on a pole above the roof
+      this.poiGraphics.lineStyle(2, 0x374151, 0.9);
+      this.poiGraphics.strokeLineShape(new Phaser.Geom.Line(x, y - 18, x, y - 34));
+      this.poiGraphics.fillStyle(col, isDefeated ? 0.5 : 1);
+      this.poiGraphics.fillTriangle(x, y - 34, x + 12, y - 30, x, y - 26);
+
+      // Checkmark overlay if defeated
       if (isDefeated) {
-        // Checkmark: badge earned
-        this.poiGraphics.lineStyle(3, 0xffffff, 0.8);
-        this.poiGraphics.strokeTriangle(x - 6, y + 1, x - 1, y + 6, x + 7, y - 5);
-      } else {
-        this.poiGraphics.fillStyle(0xffffff, 0.95);
-        this.poiGraphics.fillCircle(x, y, 5);
+        this.poiGraphics.lineStyle(3, 0x22c55e, 0.9);
+        this.poiGraphics.strokeTriangle(x - 7, y + 3, x - 1, y + 9, x + 8, y - 2);
       }
     });
     region.powerSpots.forEach((spot) => {
@@ -2405,10 +2426,12 @@ export default class Overworld extends Phaser.Scene {
       return dx * dx + dy * dy;
     };
 
+    const isTouch = this.touch?.active ?? false;
+
     for (const gym of region.gyms) {
       if (distSq(gym.x, gym.y) < 90 * 90 && !gameState.defeatedGyms[gym.id]) {
         gymLabel = `${gym.name} · ${gym.leader}`;
-        gymHint = "[E] Battle";
+        gymHint = isTouch ? "Tap Talk to battle!" : "[E] Battle";
         if ((this.keyE && this.input.keyboard?.checkDown(this.keyE, 250)) || this.interactPressed) {
           this.interactPressed = false;
           this.startGymBattle(gym.id);
@@ -2424,10 +2447,10 @@ export default class Overworld extends Phaser.Scene {
       if (distanceSq < 70 * 70) {
         locationLabel = town.name;
         if (town.services.includes("center")) {
-          healHint = "[H] Heal";
+          healHint = isTouch ? "Tap Talk to heal!" : "[H] Heal";
         }
         if (town.services.includes("mart") && distanceSq < 50 * 50) {
-          martHint = "[E] Mart";
+          martHint = isTouch ? "Tap Talk for shop!" : "[E] Mart";
           if ((this.keyE && this.input.keyboard?.checkDown(this.keyE, 250)) || this.interactPressed) {
             // Don't consume interact if gym is also nearby (gym takes priority)
             if (!gymHint) {
@@ -2466,13 +2489,15 @@ export default class Overworld extends Phaser.Scene {
       if (dx * dx + dy * dy < 80 * 80) {
         const gymCount = region.gyms.length;
         if (gameState.badges.length < gymCount) {
-          leagueHint = `Need ${gymCount} badges for the Elite Four`;
+          leagueHint = `Need ${gymCount} badges for Elite Four`;
         } else if (gameState.e4Progress > 0 && gameState.e4Progress < 4) {
-          leagueHint = `[L] Elite Four - Battle ${gameState.e4Progress + 1} of 4`;
+          leagueHint = isTouch
+            ? `Elite Four - Battle ${gameState.e4Progress + 1} of 4`
+            : `[L] Elite Four - Battle ${gameState.e4Progress + 1} of 4`;
         } else if (gameState.e4Progress >= 4) {
-          leagueHint = "[L] Claim your Champion title!";
+          leagueHint = isTouch ? "Claim your Champion title!" : "[L] Claim Champion title!";
         } else {
-          leagueHint = "[L] Enter the Elite Four!";
+          leagueHint = isTouch ? "Tap Talk: Enter Elite Four!" : "[L] Enter the Elite Four!";
         }
       }
     }
@@ -3295,67 +3320,89 @@ export default class Overworld extends Phaser.Scene {
     this.pokedexOpen = true;
     this.touch?.setVisible(false);
 
-    const margin = 14;
     const W = this.scale.width;
     const H = this.scale.height;
-    const w = Math.min(560, W - margin * 2);
-    const h = Math.min(490, H - margin * 2);
-    const left = (W - w) / 2;
-    const top = (H - h) / 2;
     const cx = W / 2;
-    // Font size stays readable at natural scale — no external scaling applied.
-    const fs = Math.max(16, Math.min(20, Math.round(w / 28)));
+    const DEPTH = 500;
+    const push = (go: Phaser.GameObjects.GameObject) => {
+      (go as Phaser.GameObjects.Components.ScrollFactor & typeof go).setScrollFactor?.(0);
+      (go as Phaser.GameObjects.Components.Depth & typeof go).setDepth?.(DEPTH + 1);
+      this.pokedexText.push(go as Phaser.GameObjects.Text);
+    };
 
-    const panelG = this.add.graphics().setScrollFactor(0).setDepth(499);
-    this.makePanel(panelG, left, top, w, h, "Pokédex", [], 500);
+    // Full-screen dark panel
+    const panelG = this.add.graphics().setScrollFactor(0).setDepth(DEPTH);
+    panelG.fillStyle(0x0f172a, 0.97);
+    panelG.fillRect(0, 0, W, H);
+    panelG.fillStyle(0x1e3a8a, 1);
+    panelG.fillRect(0, 0, W, 56);
     this.pokedexOverlay = panelG as unknown as Phaser.GameObjects.Rectangle;
 
+    // Title bar
+    push(this.add.text(cx, 28, "📖  Pokédex", {
+      fontFamily: "monospace", fontSize: "24px", fontStyle: "bold", color: "#fde68a"
+    }).setOrigin(0.5));
+
     const pokedexCount = getPokedexCount(gameState);
-    this.pokedexText.push(
-      this.add.text(cx, top + 50, `Seen: ${pokedexCount.seen}  |  Caught: ${pokedexCount.caught}`, {
-        fontFamily: "monospace", fontSize: `${fs - 2}px`, color: "#ef4444"
-      }).setScrollFactor(0).setOrigin(0.5)
-    );
+    push(this.add.text(cx, 70, `Seen: ${pokedexCount.seen}    Caught: ${pokedexCount.caught}`, {
+      fontFamily: "monospace", fontSize: "18px", color: "#94a3b8"
+    }).setOrigin(0.5));
 
-    const entries = Object.entries(gameState.pokedex).filter(([_, data]) => data.caught);
-    const cols = w >= 520 ? 3 : w >= 380 ? 2 : 1;
-    const colW = Math.floor((w - 24) / cols);
-    const rowH = fs + 16;
-    const listTop = top + 72;
-    const maxRows = Math.floor((h - 112) / rowH);
-
-    entries.slice(0, cols * maxRows).forEach(([speciesId, data], index) => {
-      const species = SPECIES[speciesId];
-      if (!species) return;
-      const col = index % cols;
-      const row = Math.floor(index / cols);
-      this.pokedexText.push(
-        this.add.text(left + 12 + col * colW, listTop + row * rowH,
-          `#${(index + 1).toString().padStart(3, "0")} ${species.name}`, {
-          fontFamily: "monospace", fontSize: `${fs - 1}px`,
-          color: data.caught ? "#22c55e" : "#6b7280"
-        }).setScrollFactor(0)
-      );
-    });
+    const entries = Object.entries(gameState.pokedex).filter(([_, data]) => data.caught || data.seen);
+    const ROW_H = 60;
+    const listTop = 104;
+    const closeBarH = 72;
+    const maxVisible = Math.floor((H - listTop - closeBarH) / ROW_H);
 
     if (entries.length === 0) {
-      this.pokedexText.push(
-        this.add.text(cx, top + h * 0.4, "No Pokémon caught yet!\nGo explore and catch some!", {
-          fontFamily: "monospace", fontSize: `${fs}px`, color: "#6b7280", align: "center"
-        }).setScrollFactor(0).setOrigin(0.5)
-      );
+      push(this.add.text(cx, H / 2, "No Pokémon seen yet!\nGo explore!", {
+        fontFamily: "monospace", fontSize: "22px", color: "#6b7280", align: "center"
+      }).setOrigin(0.5));
     }
 
-    const close = this.add.text(cx, top + h - 26, "✕ Close", {
-      fontFamily: "monospace", fontSize: `${fs + 1}px`, color: "#f8fafc",
-      backgroundColor: "#374151", padding: { left: 20, right: 20, top: 8, bottom: 8 }
-    }).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    close.on("pointerdown", () => this.closePokedex());
-    this.pokedexText.push(close);
+    entries.slice(0, maxVisible).forEach(([speciesId, data], index) => {
+      const species = SPECIES[speciesId];
+      if (!species) return;
+      const rowY = listTop + index * ROW_H;
+      const isCaught = data.caught;
 
-    // No external scaling — panel is already sized to the viewport.
+      // Row background
+      const rowBg = this.add.rectangle(cx, rowY + ROW_H / 2, W - 24, ROW_H - 6, isCaught ? 0x14532d : 0x1e293b, 0.9)
+        .setStrokeStyle(1, isCaught ? 0x22c55e : 0x334155).setScrollFactor(0).setDepth(DEPTH + 1);
+      this.pokedexText.push(rowBg as unknown as Phaser.GameObjects.Text);
+
+      // Number badge
+      push(this.add.text(20, rowY + 12, `#${(index + 1).toString().padStart(3, "0")}`, {
+        fontFamily: "monospace", fontSize: "16px", color: "#64748b"
+      }));
+
+      // Name — large and clear
+      push(this.add.text(72, rowY + 10, species.name, {
+        fontFamily: "monospace", fontSize: "22px", fontStyle: "bold",
+        color: isCaught ? "#4ade80" : "#94a3b8"
+      }));
+
+      // Status tag
+      const tag = isCaught ? "✓ Caught" : "Seen";
+      push(this.add.text(W - 20, rowY + 12, tag, {
+        fontFamily: "monospace", fontSize: "16px",
+        color: isCaught ? "#4ade80" : "#64748b"
+      }).setOrigin(1, 0));
+    });
+
+    // Close button — full-width, large tap target
+    const closeBtn = this.add.text(cx, H - 36, "✕  Close Pokédex", {
+      fontFamily: "monospace", fontSize: "22px", fontStyle: "bold",
+      color: "#f8fafc", backgroundColor: "#374151",
+      padding: { left: 32, right: 32, top: 14, bottom: 14 }
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH + 1).setInteractive({ useHandCursor: true });
+    closeBtn.on("pointerover", () => closeBtn.setStyle({ backgroundColor: "#4b5563" }));
+    closeBtn.on("pointerout",  () => closeBtn.setStyle({ backgroundColor: "#374151" }));
+    closeBtn.on("pointerdown", () => this.closePokedex());
+    this.pokedexText.push(closeBtn);
+
     this.pokedexContainer = this.add.container(0, 0, [panelG, ...this.pokedexText]);
-    this.pokedexContainer.setDepth(499);
+    this.pokedexContainer.setDepth(DEPTH);
   }
 
   private closePokedex(): void {
@@ -3648,151 +3695,144 @@ export default class Overworld extends Phaser.Scene {
     this.martOverlay = undefined;
     this.martElements = [];
 
-    const margin = 14;
     const W = this.scale.width;
     const H = this.scale.height;
-    const centerX = W / 2;
-    const centerY = H / 2;
-    const cardW = Math.min(560, W - margin * 2);
-    const cardH = Math.min(620, H - margin * 2);
-    const left = (W - cardW) / 2;
-    const top = (H - cardH) / 2;
-    const fs = Math.max(16, Math.min(20, Math.round(cardW / 28)));
-    const titleFs = Math.max(22, fs + 5);
-
-    this.martOverlay = this.add.rectangle(centerX, centerY, cardW, cardH, 0x0f172a, 0.95);
-    this.martOverlay.setScrollFactor(0).setDepth(950).setStrokeStyle(2, 0xfbbf24);
+    const cx = W / 2;
+    const DEPTH = 950;
 
     const push = (go: Phaser.GameObjects.GameObject) => {
-      (go as Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.GameObject).setScrollFactor?.(0);
-      (go as Phaser.GameObjects.Components.Depth & Phaser.GameObjects.GameObject).setDepth?.(951);
+      (go as Phaser.GameObjects.Components.ScrollFactor & typeof go).setScrollFactor?.(0);
+      (go as Phaser.GameObjects.Components.Depth & typeof go).setDepth?.(DEPTH + 1);
       this.martElements.push(go);
     };
 
-    push(this.add.text(centerX, top + 28, "Poke Mart", {
-      fontFamily: "monospace",
-      fontSize: `${titleFs}px`,
-      color: "#fbbf24",
-      fontStyle: "bold"
+    // Full-screen dark panel
+    const bg = this.add.rectangle(cx, H / 2, W, H, 0x0f172a, 0.97)
+      .setScrollFactor(0).setDepth(DEPTH);
+    this.martOverlay = bg;
+
+    // Header bar
+    const headerBg = this.add.rectangle(cx, 28, W, 56, 0xb45309, 1)
+      .setScrollFactor(0).setDepth(DEPTH + 1);
+    this.martElements.push(headerBg);
+    push(this.add.text(cx, 28, "🛒  Poké Mart", {
+      fontFamily: "monospace", fontSize: "26px", fontStyle: "bold", color: "#fff7ed"
     }).setOrigin(0.5));
 
-    const moneyText = this.add.text(centerX, top + 58, `Your money: ₽${gameState.money ?? 0}`, {
-      fontFamily: "monospace",
-      fontSize: `${fs}px`,
-      color: "#4ade80"
+    const moneyText = this.add.text(cx, 66, `₽ ${gameState.money ?? 0}`, {
+      fontFamily: "monospace", fontSize: "22px", fontStyle: "bold", color: "#fde68a"
     }).setOrigin(0.5);
     push(moneyText);
 
-    const items: Array<{ name: string; key: keyof typeof gameState.inventory; price: number; desc?: string }> = [
-      { name: "Poke Ball",    key: "pokeball",    price: 100 },
-      { name: "Great Ball",   key: "greatball",   price: 300 },
-      { name: "Ultra Ball",   key: "ultraball",   price: 600 },
-      { name: "Potion",       key: "potion",      price: 80  },
-      { name: "Super Potion", key: "superpotion", price: 200 },
-      { name: "Revive",       key: "revive",      price: 500 },
+    const items: Array<{ name: string; key: keyof typeof gameState.inventory; price: number; desc: string }> = [
+      { name: "Poké Ball",    key: "pokeball",    price: 100,  desc: "Catch wild Pokémon" },
+      { name: "Great Ball",   key: "greatball",   price: 300,  desc: "Better catch chance" },
+      { name: "Ultra Ball",   key: "ultraball",   price: 600,  desc: "Best catch chance" },
+      { name: "Potion",       key: "potion",      price: 80,   desc: "Heal 20 HP" },
+      { name: "Super Potion", key: "superpotion", price: 200,  desc: "Heal 50 HP" },
+      { name: "Revive",       key: "revive",      price: 500,  desc: "Revive fainted Pokémon" },
       { name: "Oran Berry",   key: "oranberry",   price: 150,  desc: "Held: restore 10 HP <50%" },
-      { name: "Lucky Egg",    key: "luckyegg",    price: 2000, desc: "Held: 1.5x EXP" },
-      { name: "Shell Bell",   key: "shellbell",   price: 1000, desc: "Held: restore 1/8 dmg dealt" },
-      { name: "Fire Stone",    key: "firestone",    price: 2100, desc: "Evolves Eevee → Flareon" },
-      { name: "Thunder Stone", key: "thunderstone", price: 2100, desc: "Evolves Pikachu → Raichu" },
-      { name: "Moon Stone",    key: "moonstone",    price: 2100, desc: "Evolves Clefairy/Jigglypuff" },
-      { name: "Water Stone",   key: "waterstone",   price: 2100, desc: "A cool, watery stone" },
-      { name: "Leaf Stone",    key: "leafstone",    price: 2100, desc: "A leafy green stone" }
+      { name: "Lucky Egg",    key: "luckyegg",    price: 2000, desc: "Held: 1.5× EXP gain" },
+      { name: "Shell Bell",   key: "shellbell",   price: 1000, desc: "Held: heal on attack" },
+      { name: "Fire Stone",   key: "firestone",   price: 2100, desc: "Evolves fire-type Pokémon" },
+      { name: "Thunder Stone",key: "thunderstone",price: 2100, desc: "Evolves electric Pokémon" },
+      { name: "Moon Stone",   key: "moonstone",   price: 2100, desc: "Evolves Clefairy & others" },
+      { name: "Water Stone",  key: "waterstone",  price: 2100, desc: "Evolves water Pokémon" },
+      { name: "Leaf Stone",   key: "leafstone",   price: 2100, desc: "Evolves grass Pokémon" },
     ];
 
-    const listTop = top + 88;
-    const footerTop = top + cardH - 58;
-    const rowH = Math.max(48, fs * 2 + 15);
-    const maxRows = Math.max(1, Math.floor((footerTop - listTop - 8) / rowH));
+    const listTop = 92;
+    const ROW_H = 72;
+    const closeBarH = 80;
+    const maxRows = Math.max(1, Math.floor((H - listTop - closeBarH) / ROW_H));
     const pageCount = Math.max(1, Math.ceil(items.length / maxRows));
     this.martPage = Phaser.Math.Clamp(this.martPage, 0, pageCount - 1);
     const pageItems = items.slice(this.martPage * maxRows, (this.martPage + 1) * maxRows);
 
     pageItems.forEach((item, i) => {
-      const rowY = listTop + i * rowH;
-      const rowBg = this.add.rectangle(centerX, rowY + rowH / 2 - 3, cardW - 24, rowH - 8, 0x1e293b, 0.82)
-        .setStrokeStyle(1, 0x334155);
-      push(rowBg);
+      const rowY = listTop + i * ROW_H;
 
-      const labelWidth = Math.max(120, cardW - 150);
-      const primary = this.add.text(left + 18, rowY + 4, `${item.name}  ₽${item.price}`, {
-        fontFamily: "monospace",
-        fontSize: `${fs}px`,
-        color: "#e2e8f0",
-        fontStyle: "bold",
-        wordWrap: { width: labelWidth, useAdvancedWrap: true }
-      });
-      push(primary);
+      // Row background — alternating shade
+      const rowBg = this.add.rectangle(cx, rowY + ROW_H / 2, W - 16, ROW_H - 4, i % 2 === 0 ? 0x1e293b : 0x0f172a, 1)
+        .setStrokeStyle(1, 0x334155).setScrollFactor(0).setDepth(DEPTH + 1);
+      this.martElements.push(rowBg);
 
-      if (item.desc) {
-        push(this.add.text(left + 18, rowY + fs + 10, item.desc, {
-          fontFamily: "monospace",
-          fontSize: `${Math.max(14, fs - 2)}px`,
-          color: "#94a3b8",
-          wordWrap: { width: labelWidth, useAdvancedWrap: true }
-        }));
-      }
+      // Item name — large
+      push(this.add.text(16, rowY + 10, item.name, {
+        fontFamily: "monospace", fontSize: "22px", fontStyle: "bold", color: "#f1f5f9"
+      }));
+      // Description — smaller below
+      push(this.add.text(16, rowY + 38, item.desc, {
+        fontFamily: "monospace", fontSize: "15px", color: "#64748b"
+      }));
+      // Price — right-aligned
+      push(this.add.text(W - 100, rowY + 10, `₽${item.price}`, {
+        fontFamily: "monospace", fontSize: "20px", fontStyle: "bold", color: "#fde68a"
+      }));
 
-      const buyBtn = this.add.text(left + cardW - 18, rowY + rowH / 2 - 3, "Buy", {
-        fontFamily: "monospace",
-        fontSize: `${fs}px`,
-        color: "#0f172a",
-        backgroundColor: "#fbbf24",
-        padding: { left: 12, right: 12, top: 7, bottom: 7 }
+      // Buy button — big, right edge, full row height
+      const buyBtn = this.add.text(W - 8, rowY + ROW_H / 2, "BUY", {
+        fontFamily: "monospace", fontSize: "20px", fontStyle: "bold",
+        color: "#0f172a", backgroundColor: "#fbbf24",
+        padding: { left: 14, right: 14, top: 10, bottom: 10 }
       }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
-
       buyBtn.on("pointerover", () => buyBtn.setStyle({ backgroundColor: "#f59e0b" }));
-      buyBtn.on("pointerout", () => buyBtn.setStyle({ backgroundColor: "#fbbf24" }));
+      buyBtn.on("pointerout",  () => buyBtn.setStyle({ backgroundColor: "#fbbf24" }));
       buyBtn.on("pointerdown", () => {
-        const currentMoney = gameState.money ?? 0;
-        if (currentMoney < item.price) {
-          this.showNotification("Not enough money!", 1500);
+        const money = gameState.money ?? 0;
+        if (money < item.price) {
+          this.showNotification("Not enough money! 💸", 1500);
           return;
         }
-        gameState.money = currentMoney - item.price;
+        gameState.money = money - item.price;
         gameState.inventory[item.key] = (gameState.inventory[item.key] ?? 0) + 1;
         Sound.playMenuSelect();
-        moneyText.setText(`Your money: ₽${gameState.money}`);
-        this.showNotification(`Bought ${item.name}!`, 1200);
+        moneyText.setText(`₽ ${gameState.money}`);
+        this.showNotification(`Got ${item.name}! 🎉`, 1200);
       });
       push(buyBtn);
     });
 
+    // Pagination
     if (pageCount > 1) {
-      const pageText = this.add.text(centerX, footerTop - 18, `${this.martPage + 1} / ${pageCount}`, {
-        fontFamily: "monospace", fontSize: `${Math.max(14, fs - 2)}px`, color: "#94a3b8"
-      }).setOrigin(0.5);
-      push(pageText);
+      const pageY = H - closeBarH + 4;
+      push(this.add.text(cx, pageY, `Page ${this.martPage + 1} of ${pageCount}`, {
+        fontFamily: "monospace", fontSize: "16px", color: "#64748b"
+      }).setOrigin(0.5));
 
-      const prev = this.add.text(left + 18, footerTop - 24, "← Prev", {
-        fontFamily: "monospace", fontSize: `${fs}px`, color: this.martPage > 0 ? "#0f172a" : "#64748b",
-        backgroundColor: this.martPage > 0 ? "#94a3b8" : "#1e293b",
-        padding: { left: 10, right: 10, top: 6, bottom: 6 }
-      }).setInteractive({ useHandCursor: this.martPage > 0 });
-      prev.on("pointerdown", () => { if (this.martPage > 0) { this.martPage--; this.renderMart(); } });
-      push(prev);
-
-      const next = this.add.text(left + cardW - 18, footerTop - 24, "Next →", {
-        fontFamily: "monospace", fontSize: `${fs}px`, color: this.martPage < pageCount - 1 ? "#0f172a" : "#64748b",
-        backgroundColor: this.martPage < pageCount - 1 ? "#94a3b8" : "#1e293b",
-        padding: { left: 10, right: 10, top: 6, bottom: 6 }
-      }).setOrigin(1, 0).setInteractive({ useHandCursor: this.martPage < pageCount - 1 });
-      next.on("pointerdown", () => { if (this.martPage < pageCount - 1) { this.martPage++; this.renderMart(); } });
-      push(next);
+      if (this.martPage > 0) {
+        const prev = this.add.text(20, pageY, "◀ Prev", {
+          fontFamily: "monospace", fontSize: "20px", fontStyle: "bold",
+          color: "#0f172a", backgroundColor: "#94a3b8",
+          padding: { left: 14, right: 14, top: 8, bottom: 8 }
+        }).setInteractive({ useHandCursor: true });
+        prev.on("pointerdown", () => { this.martPage--; this.renderMart(); });
+        push(prev);
+      }
+      if (this.martPage < pageCount - 1) {
+        const next = this.add.text(W - 20, pageY, "Next ▶", {
+          fontFamily: "monospace", fontSize: "20px", fontStyle: "bold",
+          color: "#0f172a", backgroundColor: "#94a3b8",
+          padding: { left: 14, right: 14, top: 8, bottom: 8 }
+        }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+        next.on("pointerdown", () => { this.martPage++; this.renderMart(); });
+        push(next);
+      }
     }
 
-    const closeBtn = this.add.text(centerX, top + cardH - 24, "✕ Close", {
-      fontFamily: "monospace",
-      fontSize: `${fs + 1}px`,
-      color: "#f8fafc",
-      backgroundColor: "#374151",
-      padding: { left: 20, right: 20, top: 8, bottom: 8 }
+    // Close — full-width footer
+    const closeBtn = this.add.text(cx, H - 36, "✕  Leave Shop", {
+      fontFamily: "monospace", fontSize: "22px", fontStyle: "bold",
+      color: "#f8fafc", backgroundColor: "#374151",
+      padding: { left: 40, right: 40, top: 14, bottom: 14 }
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on("pointerover", () => closeBtn.setStyle({ backgroundColor: "#4b5563" }));
+    closeBtn.on("pointerout",  () => closeBtn.setStyle({ backgroundColor: "#374151" }));
     closeBtn.on("pointerdown", () => this.closeMart());
     push(closeBtn);
 
-    this.martContainer = this.add.container(0, 0, [this.martOverlay!, ...this.martElements]);
-    this.martContainer.setDepth(950);
+    this.martContainer = this.add.container(0, 0, [bg, ...this.martElements]);
+    this.martContainer.setDepth(DEPTH);
   }
 
   private closeMart(): void {
@@ -3807,6 +3847,7 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private showTutorial(): void {
+    this.touch?.setVisible(false);
     const tips = [
       {
         title: "🕹️ Move around",
@@ -3895,6 +3936,7 @@ export default class Overworld extends Phaser.Scene {
         gameState.tutorialSeen = true;
         this.tutorialElements.forEach(el => (el as Phaser.GameObjects.GameObject).destroy());
         this.tutorialElements = [];
+        if (!this.starterOpen) this.touch?.setVisible(true);
         return;
       }
       const tip = tips[tipIndex];

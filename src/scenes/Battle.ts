@@ -280,12 +280,19 @@ export default class Battle extends Phaser.Scene {
     const introText = data.type === "wild"
       ? `A wild ${this.enemyMon.name} appeared!`
       : `${this.trainerName} wants to battle!`;
-    this.messageText = this.add.text(24, 24, introText, {
+    // Message bar — full-width, anchored just above the battle buttons, high depth
+    // so it always renders over enemy stats (which sit at depth 0).
+    const msgY = this.scale.height - 195;
+    this.add.rectangle(this.scale.width / 2, msgY, this.scale.width, 56, 0x0f172a, 0.92)
+      .setDepth(149).setScrollFactor(0);
+    this.messageText = this.add.text(this.scale.width / 2, msgY, introText, {
       fontFamily: "monospace",
-      fontSize: "18px",
-      color: "#e5e7eb",
-      wordWrap: { width: this.scale.width - 48 }
-    });
+      fontSize: "20px",
+      fontStyle: "bold",
+      color: "#fde68a",
+      wordWrap: { width: this.scale.width - 32 },
+      align: "center"
+    }).setOrigin(0.5).setDepth(150).setScrollFactor(0);
 
     // Play encounter sound and start battle music
     Sound.playEncounter();
