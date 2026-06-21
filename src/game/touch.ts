@@ -10,6 +10,8 @@ export interface TouchButtonConfig {
   color?: number;
   /** larger primary action button */
   primary?: boolean;
+  /** place in top-right corner instead of the right-side stack */
+  corner?: boolean;
 }
 
 /**
@@ -99,7 +101,7 @@ export class TouchControls {
 
   private createButtons(configs: TouchButtonConfig[]): void {
     configs.forEach((cfg) => {
-      const r = cfg.primary ? 44 : 34;
+      const r = cfg.primary ? 44 : cfg.corner ? 28 : 34;
       const color = cfg.color ?? 0x1e293b;
       const bg = this.scene.add
         .circle(0, 0, r, color, 0.72)
@@ -199,10 +201,12 @@ export class TouchControls {
     const gap = 12;
     const insetR = gap + safeAreaInset("right");
     const insetB = gap + safeAreaInset("bottom");
+    const insetT = safeAreaInset("top") + gap;
 
-    const primaries = this.buttons.filter((b) => b.cfg.primary);
-    const secondaries = this.buttons.filter((b) => !b.cfg.primary);
-    const rOf = (b: { cfg: TouchButtonConfig }) => (b.cfg.primary ? 44 : 34);
+    const primaries = this.buttons.filter((b) => b.cfg.primary && !b.cfg.corner);
+    const secondaries = this.buttons.filter((b) => !b.cfg.primary && !b.cfg.corner);
+    const corners = this.buttons.filter((b) => b.cfg.corner);
+    const rOf = (b: { cfg: TouchButtonConfig }) => (b.cfg.primary ? 44 : b.cfg.corner ? 28 : 34);
 
     // Primary action button: bottom-right corner
     let primaryY = h - insetB - 44;
@@ -224,6 +228,17 @@ export class TouchControls {
       b.text.setPosition(x, y);
       b.label.setPosition(x, y + r + 10);
       y -= r * 2 + 18;
+    });
+
+    // Corner buttons: fixed top-right area (pause/menu type controls)
+    let cornerY = insetT + 28;
+    corners.forEach((b) => {
+      const r = 28;
+      const x = w - insetR - r;
+      b.bg.setPosition(x, cornerY);
+      b.text.setPosition(x, cornerY);
+      b.label.setPosition(x, cornerY + r + 8);
+      cornerY += r * 2 + 14;
     });
 
     // Ghost joystick rests at bottom-left of the play area
