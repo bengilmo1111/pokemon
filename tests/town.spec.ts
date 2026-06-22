@@ -31,4 +31,11 @@ test("the Visit Mart service opens the shop", async ({ probe, touch }) => {
   const mart = await probe.uiTarget("service-visit-mart");
   await touch.tap(mart.x, mart.y);
   await expect.poll(async () => (await probe.snapshot()).overworld!.menus.martOpen).toBe(true);
+
+  // The shop has 2 pages, so a "Next" pagination button exists. It must sit
+  // clearly above the "Leave Shop" close button (they used to overlap).
+  const next = await probe.uiTarget("mart-next");
+  const close = await probe.uiTarget("close-mart");
+  expect(next.y + next.h / 2, "Next button must be above the Leave Shop button")
+    .toBeLessThan(close.y - close.h / 2);
 });
