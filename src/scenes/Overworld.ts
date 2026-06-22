@@ -4060,7 +4060,9 @@ export default class Overworld extends Phaser.Scene {
 
     const listTop = 92;
     const ROW_H = 72;
-    const closeBarH = 80;
+    // Reserve room for the pagination row AND the close button stacked above
+    // each other (they used to overlap on multi-page shops).
+    const closeBarH = 132;
     const maxRows = Math.max(1, Math.floor((H - listTop - closeBarH) / ROW_H));
     const pageCount = Math.max(1, Math.ceil(items.length / maxRows));
     this.martPage = Phaser.Math.Clamp(this.martPage, 0, pageCount - 1);
@@ -4114,9 +4116,9 @@ export default class Overworld extends Phaser.Scene {
       push(buyBtn);
     });
 
-    // Pagination
+    // Pagination — its own row above the close button (vertically centred items).
     if (pageCount > 1) {
-      const pageY = H - closeBarH + 4;
+      const pageY = H - 104;
       push(this.add.text(cx, pageY, `Page ${this.martPage + 1} of ${pageCount}`, {
         fontFamily: "monospace", fontSize: "16px", color: "#64748b"
       }).setOrigin(0.5));
@@ -4126,7 +4128,7 @@ export default class Overworld extends Phaser.Scene {
           fontFamily: "monospace", fontSize: "20px", fontStyle: "bold",
           color: "#0f172a", backgroundColor: "#94a3b8",
           padding: { left: 14, right: 14, top: 8, bottom: 8 }
-        }).setInteractive({ useHandCursor: true });
+        }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
         prev.on("pointerdown", () => { this.martPage--; this.renderMart(); });
         push(prev);
       }
@@ -4135,14 +4137,15 @@ export default class Overworld extends Phaser.Scene {
           fontFamily: "monospace", fontSize: "20px", fontStyle: "bold",
           color: "#0f172a", backgroundColor: "#94a3b8",
           padding: { left: 14, right: 14, top: 8, bottom: 8 }
-        }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+        }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+        next.setData("testid", "mart-next");
         next.on("pointerdown", () => { this.martPage++; this.renderMart(); });
         push(next);
       }
     }
 
     // Close — full-width footer
-    const closeBtn = this.add.text(cx, H - 36, "✕  Leave Shop", {
+    const closeBtn = this.add.text(cx, H - 40, "✕  Leave Shop", {
       fontFamily: "monospace", fontSize: "22px", fontStyle: "bold",
       color: "#f8fafc", backgroundColor: "#374151",
       padding: { left: 40, right: 40, top: 14, bottom: 14 }
