@@ -1,5 +1,5 @@
 import { test, expect } from "./harness/fixtures";
-import { battleMessageVisible, battleSnapshot, fightUntilOver, tapBattleLabel } from "./harness/battle";
+import { battleHasBackdrop, battleMessageVisible, battleSnapshot, fightUntilOver, tapBattleLabel } from "./harness/battle";
 
 /**
  * Full wild-battle playthrough driven via touch: trigger an encounter, fight to
@@ -51,15 +51,19 @@ test("battle submenus hide the message bar (no overlap), restored on Back", asyn
 
   expect(await battleMessageVisible(page), "bar visible at battle start").toBe(true);
 
-  // Open Bag → message bar hidden so it can't overlap the item rows.
+  // Open Bag → message bar hidden so it can't overlap the item rows, and a
+  // modal backdrop appears so rows don't float over the sprites.
   expect(await tapBattleLabel(page, "bag")).toBe(true);
   await expect.poll(() => battleMessageVisible(page)).toBe(false);
+  expect(await battleHasBackdrop(page), "submenu should dim the battle behind it").toBe(true);
 
-  // Back → bar restored.
+  // Back → bar restored, backdrop gone.
   expect(await tapBattleLabel(page, "back")).toBe(true);
   await expect.poll(() => battleMessageVisible(page)).toBe(true);
+  expect(await battleHasBackdrop(page), "backdrop removed on Back").toBe(false);
 
   // Same contract for the Fight (move) submenu.
   expect(await tapBattleLabel(page, "fight")).toBe(true);
   await expect.poll(() => battleMessageVisible(page)).toBe(false);
+  expect(await battleHasBackdrop(page)).toBe(true);
 });

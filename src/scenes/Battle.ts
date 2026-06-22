@@ -448,10 +448,26 @@ export default class Battle extends Phaser.Scene {
     this.messageText?.setVisible(visible);
   }
 
+  /**
+   * Full-screen dim behind a submenu so its rows read as a modal instead of
+   * floating text over the sprites. Sits below the menu items (depth 100) but
+   * above the battle scene. Pushed into the menu's item pool so it's destroyed
+   * with the rest of the submenu.
+   */
+  private addSubmenuBackdrop(pool: Phaser.GameObjects.GameObject[]): void {
+    const backdrop = this.add
+      .rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x0b1220, 0.72)
+      .setDepth(95)
+      .setScrollFactor(0)
+      .setInteractive(); // swallow taps that miss a row (no accidental world hits)
+    pool.push(backdrop);
+  }
+
   private openMoveMenu(): void {
     if (this.busy || this.moveMenuOpen || this.switchMenuOpen || this.ballMenuOpen) return;
     this.moveMenuOpen = true;
     this.setBattleMessageVisible(false);
+    this.addSubmenuBackdrop(this.moveMenuItems);
     this.rootMenuItems.forEach((item) => item.setVisible(false));
 
     const moveIds = this.playerMon.moves;
@@ -591,6 +607,7 @@ export default class Battle extends Phaser.Scene {
     }
     this.ballMenuOpen = true;
     this.setBattleMessageVisible(false);
+    this.addSubmenuBackdrop(this.ballMenuItems);
     this.rootMenuItems.forEach((item) => item.setVisible(false));
 
     const btnWidth = this.scale.width * 0.6;
@@ -687,6 +704,7 @@ export default class Battle extends Phaser.Scene {
     if (this.busy || this.switchMenuOpen || this.moveMenuOpen || this.ballMenuOpen) return;
     this.switchMenuOpen = true;
     this.setBattleMessageVisible(false);
+    this.addSubmenuBackdrop(this.switchMenuItems);
     this.rootMenuItems.forEach((item) => item.setVisible(false));
 
     const W = this.scale.width;
@@ -716,7 +734,9 @@ export default class Battle extends Phaser.Scene {
         fixedWidth: cardW,
         padding: { top: 10, bottom: 10 }
       });
-      text.setOrigin(0.5).setDepth(100).setScrollFactor(0).setAlpha(isDisabled ? 0.55 : 1);
+      // Keep cards fully opaque (the grey colour already signals "disabled");
+      // a translucent card let the battle sprites bleed through and read as a mess.
+      text.setOrigin(0.5).setDepth(100).setScrollFactor(0);
       text.setInteractive({ useHandCursor: !isDisabled });
       if (!isDisabled) {
         text.on("pointerdown", () => this.handleSwitch(index));
