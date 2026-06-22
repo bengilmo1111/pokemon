@@ -98,6 +98,17 @@ test("Team row: HP bar sits below the Lv/HP text (no overlap)", async ({ probe, 
   expect(bar.y, "HP bar should be below the Lv/HP text").toBeGreaterThan(stat.y + 12);
 });
 
+test("Team close button is labelled for the active tab", async ({ probe, touch }) => {
+  await probe.bootIntoOverworld({ team: [{ speciesId: "charmander", level: 18 }] });
+  await openMenu(probe, touch, "team", "teamOpen");
+  expect(await probe.uiTargetText("close-team")).toContain("Close Team");
+
+  // Switch to the BOX tab (right half of the tab row at y≈72).
+  const { width } = await probe.gameSize();
+  await touch.tap(width * 0.75, 72);
+  await expect.poll(async () => probe.uiTargetText("close-team")).toContain("Close Box");
+});
+
 test("HUD is hidden while the pause menu is open", async ({ probe, touch }) => {
   await probe.bootIntoOverworld();
   await expect
