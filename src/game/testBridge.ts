@@ -20,7 +20,7 @@
 import type Phaser from "phaser";
 import { gameState } from "./store";
 import { getSeed, setSeed } from "./rng";
-import { createInitialState, makePokemon } from "./state";
+import { createInitialState, getRegion, makePokemon, WORLD_SCALE } from "./state";
 
 /** A starter spec for {@link TestBridgeApi.bootIntoOverworld}. */
 export interface TeamSpec {
@@ -110,6 +110,13 @@ export interface TestBridgeApi {
    * wild Pokémon / player is available.
    */
   forceEncounter(): string | null;
+  /** Move the player to world coordinates (pixels). */
+  teleport(x: number, y: number): void;
+  /**
+   * Move the player onto a town in the current region (by index) so its
+   * services are in range. Returns the town name, or null if unavailable.
+   */
+  teleportToTown(index?: number): string | null;
   /**
    * Screen-space positions of the on-screen touch buttons, so the harness can
    * tap them where a real thumb would. Empty when touch controls are inactive.
@@ -270,6 +277,22 @@ export function installTestBridge(game: Phaser.Game): void {
       scene.encounterCooldown = 0;
       emitTestEvent("scenario:force-encounter", { wildId: wild.id });
       return wild.id;
+    },
+    teleport: (x, y) => {
+      const scene = game.scene.getScene("Overworld") as unknown as {
+        player?: { setPosition: (x: number, y: number) => void };
+      } | null;
+      scene?.player?.setPosition(x, y);
+    },
+    teleportToTown: (index = 0) => {
+      const scene = game.scene.getScene("Overworld") as unknown as {
+        player?: { setPosition: (x: number, y: number) => void };
+      } | null;
+      const town = getRegion(gameState).towns[index];
+      if (!scene?.player || !town) return null;
+      scene.player.setPosition(town.x * WORLD_SCALE, town.y * WORLD_SCALE);
+      emitTestEvent("scenario:teleport-town", { town: town.name });
+      return town.name;
     },
     touchButtons: () => {
       const scene = game.scene.getScene("Overworld") as unknown as {
