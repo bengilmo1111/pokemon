@@ -54,6 +54,7 @@ export interface GameSnapshot {
     menus: Record<string, boolean>;
     anyMenuOpen: boolean;
     player: { x: number; y: number };
+    notification: { text: string; visible: boolean };
   };
   /** True when the Battle scene is instantiated and running. */
   battleActive: boolean;
@@ -174,7 +175,11 @@ function readOverworld(game: Phaser.Game): GameSnapshot["overworld"] {
     hudVisible: Boolean(scene["hudVisible"]),
     menus,
     anyMenuOpen: Object.values(menus).some(Boolean),
-    player: { x: Math.round(player?.x ?? 0), y: Math.round(player?.y ?? 0) }
+    player: { x: Math.round(player?.x ?? 0), y: Math.round(player?.y ?? 0) },
+    notification: (() => {
+      const n = scene["notificationText"] as { text?: string; visible?: boolean } | undefined;
+      return { text: n?.text ?? "", visible: Boolean(n?.visible) };
+    })()
   };
 }
 

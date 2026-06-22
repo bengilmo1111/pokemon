@@ -87,6 +87,17 @@ for (const menu of MENUS) {
   });
 }
 
+test("Team row: HP bar sits below the Lv/HP text (no overlap)", async ({ probe, touch }) => {
+  await probe.bootIntoOverworld({ team: [{ speciesId: "charmander", level: 18 }] });
+  await openMenu(probe, touch, "team", "teamOpen");
+
+  const stat = await probe.uiTarget("team-stat-0");
+  const bar = await probe.uiTarget("team-hpbar-0");
+  // The bar's centre must be clearly below the stat text's centre, otherwise the
+  // bar slices through "Lv.X HP y/y" (the bug this guards).
+  expect(bar.y, "HP bar should be below the Lv/HP text").toBeGreaterThan(stat.y + 12);
+});
+
 test("HUD is hidden while the pause menu is open", async ({ probe, touch }) => {
   await probe.bootIntoOverworld();
   await expect

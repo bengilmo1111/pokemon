@@ -296,7 +296,7 @@ export default class Battle extends Phaser.Scene {
       : `${this.trainerName} wants to battle!`;
     // Message bar — full-width, anchored just above the battle buttons, high depth
     // so it always renders over enemy stats (which sit at depth 0).
-    const msgY = this.scale.height - 195;
+    const msgY = this.scale.height - 205;
     this.add.rectangle(this.scale.width / 2, msgY, this.scale.width, 56, 0x0f172a, 0.92)
       .setDepth(149).setScrollFactor(0);
     this.messageText = this.add.text(this.scale.width / 2, msgY, introText, {
@@ -332,7 +332,7 @@ export default class Battle extends Phaser.Scene {
 
     // XP bar (below player info)
     this.xpBarX = this.scale.width - 210;
-    this.xpBarY = this.scale.height * 0.74;
+    this.xpBarY = this.scale.height * 0.70;
     this.xpBarW = 180;
     this.xpBarBg = this.add.rectangle(this.xpBarX, this.xpBarY, this.xpBarW, 6, 0x1e293b).setOrigin(0);
     this.xpBarFill = this.add.rectangle(this.xpBarX, this.xpBarY, 0, 6, 0x8b5cf6).setOrigin(0);
@@ -411,7 +411,7 @@ export default class Battle extends Phaser.Scene {
     ];
 
     const colX = [this.scale.width * 0.28, this.scale.width * 0.72];
-    const rowY = [this.scale.height - 168, this.scale.height - 80];
+    const rowY = [this.scale.height - 132, this.scale.height - 48];
     const btnWidth = this.scale.width * 0.42;
 
     items.forEach((item, index) => {
