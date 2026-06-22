@@ -3108,11 +3108,13 @@ export default class Overworld extends Phaser.Scene {
     title.setScrollFactor(0).setOrigin(0.5).setDepth(1001);
     this.pauseText.push(title);
 
-    // Menu options
+    // Menu options. Keyboard shortcut hints ([S]/[F1]) only make sense with a
+    // physical keyboard, so they're dropped on touch devices.
+    const isTouch = Boolean(this.touch?.active);
     const menuItems = [
-      { label: "Resume Game", y: centerY - 20 },
-      { label: "Save Game [S]", y: centerY + 30 },
-      { label: "Load Game [F1]", y: centerY + 80 }
+      { id: "resume", label: "Resume Game", y: centerY - 20 },
+      { id: "save", label: isTouch ? "Save Game" : "Save Game [S]", y: centerY + 30 },
+      { id: "load", label: isTouch ? "Load Game" : "Load Game [F1]", y: centerY + 80 }
     ];
 
     menuItems.forEach((item) => {
@@ -3124,19 +3126,20 @@ export default class Overworld extends Phaser.Scene {
         padding: { left: 20, right: 20, top: 10, bottom: 10 }
       });
       text.setScrollFactor(0).setOrigin(0.5).setDepth(1001);
+      text.setData("testid", `pause-${item.id}`);
       text.setInteractive({ useHandCursor: true });
       text.on("pointerover", () => text.setStyle({ backgroundColor: "#334155" }));
       text.on("pointerout", () => text.setStyle({ backgroundColor: "#1e293b" }));
-      if (item.label === "Resume Game") {
+      if (item.id === "resume") {
         text.on("pointerdown", () => this.resumeGame());
-      } else if (item.label === "Save Game [S]") {
+      } else if (item.id === "save") {
         text.on("pointerdown", () => {
           if (saveGame()) {
             Sound.playMenuSelect();
             this.showNotification("Game Saved!", 1500);
           }
         });
-      } else if (item.label === "Load Game [F1]") {
+      } else if (item.id === "load") {
         text.on("pointerdown", () => {
           if (loadGame()) {
             Sound.playMenuSelect();
@@ -3152,8 +3155,9 @@ export default class Overworld extends Phaser.Scene {
       this.pauseText.push(text);
     });
 
-    // Controls hint
-    const hint = this.add.text(centerX, centerY + 150, "Press ESC to resume", {
+    // Controls hint — keyboard wording on desktop, tap wording on touch.
+    const hint = this.add.text(centerX, centerY + 150,
+      isTouch ? "Tap Resume to continue" : "Press ESC to resume", {
       fontFamily: "monospace",
       fontSize: "14px",
       color: "#6b7280"
