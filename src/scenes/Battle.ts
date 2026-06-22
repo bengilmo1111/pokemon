@@ -102,6 +102,8 @@ export default class Battle extends Phaser.Scene {
   private pendingLevelUps: { mon: PokemonInstance; result: LevelUpResult }[] = [];
   private namingOverlay?: Phaser.GameObjects.Rectangle;
   private namingElements: Phaser.GameObjects.GameObject[] = [];
+  /** HTML input overlay for nicknaming — needed so the soft keyboard opens on touch. */
+  private nameInput?: HTMLInputElement;
   private pendingCatchMon?: PokemonInstance;
 
   // Targeting mini-game state
@@ -178,6 +180,8 @@ export default class Battle extends Phaser.Scene {
   create(data: BattleData): void {
     // Ensure input is enabled for this scene
     this.input.enabled = true;
+    // Never leak the nickname input overlay if the scene stops mid-naming.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.removeNameInput());
 
     this.canCatch = data.type === "wild";
     this.isTrainerBattle = data.type !== "wild";
@@ -2168,47 +2172,44 @@ export default class Battle extends Phaser.Scene {
     }).setOrigin(0.5);
     this.namingElements.push(pokemonName);
 
-    // Input display (shows typed nickname)
-    let currentName = "";
-    const inputDisplay = this.add.text(centerX, centerY - 20, "_", {
-      fontFamily: "monospace",
-      fontSize: "24px",
-      color: "#f8fafc",
-      backgroundColor: "#374151",
-      padding: { left: 16, right: 16, top: 8, bottom: 8 }
-    }).setOrigin(0.5);
-    this.namingElements.push(inputDisplay);
+    // Nickname entry via a real HTML <input> overlaid on the canvas. A Phaser
+    // text object can't open the device soft keyboard, so on touch the old
+    // keydown-only field was impossible to type into; this input does (the user
+    // taps it to bring up the keyboard, or it autofocuses on desktop).
+    const submit = () => this.finishCatch(this.nameInput?.value.trim() || undefined);
+
+    const dom = document.createElement("input");
+    dom.type = "text";
+    dom.maxLength = 12;
+    dom.placeholder = "nickname (optional)";
+    dom.setAttribute("autocomplete", "off");
+    dom.setAttribute("autocapitalize", "off");
+    Object.assign(dom.style, {
+      position: "fixed", left: `${centerX}px`, top: `${centerY - 20}px`,
+      transform: "translate(-50%, -50%)", width: "240px", height: "42px",
+      fontFamily: "monospace", fontSize: "20px", textAlign: "center",
+      background: "#374151", color: "#f8fafc", border: "2px solid #fbbf24",
+      borderRadius: "6px", outline: "none", zIndex: "1000"
+    } as Partial<CSSStyleDeclaration>);
+    dom.addEventListener("input", () => {
+      const cleaned = dom.value.replace(/[^a-zA-Z0-9 \-'!?.]/g, "").slice(0, 12);
+      if (cleaned !== dom.value) dom.value = cleaned;
+    });
+    dom.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); submit(); }
+      else if (e.key === "Escape") { e.preventDefault(); this.finishCatch(undefined); }
+    });
+    document.body.appendChild(dom);
+    this.nameInput = dom;
+    this.time.delayedCall(60, () => this.nameInput?.focus());
 
     // Instructions
-    const instructions = this.add.text(centerX, centerY + 30, "Type a nickname (1-12 characters)", {
+    const instructions = this.add.text(centerX, centerY + 30, "Tap the field to type a nickname", {
       fontFamily: "monospace",
       fontSize: "13px",
       color: "#94a3b8"
     }).setOrigin(0.5);
     this.namingElements.push(instructions);
-
-    // Keyboard input handler
-    const keyHandler = (event: KeyboardEvent) => {
-      if (event.key === "Enter") {
-        // Confirm name
-        this.input.keyboard?.off("keydown", keyHandler);
-        this.finishCatch(currentName || undefined);
-      } else if (event.key === "Escape") {
-        // Keep default name
-        this.input.keyboard?.off("keydown", keyHandler);
-        this.finishCatch(undefined);
-      } else if (event.key === "Backspace") {
-        currentName = currentName.slice(0, -1);
-        inputDisplay.setText(currentName || "_");
-      } else if (event.key.length === 1 && currentName.length < 12) {
-        // Only allow alphanumeric characters and some basic punctuation
-        if (/^[a-zA-Z0-9 \-'!?.]$/.test(event.key)) {
-          currentName += event.key;
-          inputDisplay.setText(currentName);
-        }
-      }
-    };
-    this.input.keyboard?.on("keydown", keyHandler);
 
     // Confirm button
     const confirmBtn = this.add.text(centerX - 70, centerY + 80, "Confirm", {
@@ -2221,10 +2222,7 @@ export default class Battle extends Phaser.Scene {
     confirmBtn.setInteractive({ useHandCursor: true });
     confirmBtn.on("pointerover", () => confirmBtn.setScale(1.05));
     confirmBtn.on("pointerout", () => confirmBtn.setScale(1));
-    confirmBtn.on("pointerdown", () => {
-      this.input.keyboard?.off("keydown", keyHandler);
-      this.finishCatch(currentName || undefined);
-    });
+    confirmBtn.on("pointerdown", () => submit());
     this.namingElements.push(confirmBtn);
 
     // Skip button (keep default name)
@@ -2238,14 +2236,11 @@ export default class Battle extends Phaser.Scene {
     skipBtn.setInteractive({ useHandCursor: true });
     skipBtn.on("pointerover", () => skipBtn.setScale(1.05));
     skipBtn.on("pointerout", () => skipBtn.setScale(1));
-    skipBtn.on("pointerdown", () => {
-      this.input.keyboard?.off("keydown", keyHandler);
-      this.finishCatch(undefined);
-    });
+    skipBtn.on("pointerdown", () => this.finishCatch(undefined));
     this.namingElements.push(skipBtn);
 
     // Hint text
-    const hint = this.add.text(centerX, centerY + 120, "[Enter] Confirm  |  [Esc] Skip", {
+    const hint = this.add.text(centerX, centerY + 120, "Confirm to keep the name  ·  Skip for default", {
       fontFamily: "monospace",
       fontSize: "12px",
       color: "#6b7280"
@@ -2253,8 +2248,15 @@ export default class Battle extends Phaser.Scene {
     this.namingElements.push(hint);
   }
 
+  /** Remove the HTML nickname input overlay if present. */
+  private removeNameInput(): void {
+    this.nameInput?.remove();
+    this.nameInput = undefined;
+  }
+
   private async finishCatch(nickname?: string): Promise<void> {
     // Clean up naming screen
+    this.removeNameInput();
     this.namingOverlay?.destroy();
     this.namingElements.forEach(el => el.destroy());
     this.namingElements = [];

@@ -83,3 +83,35 @@ test("ball targeting instructions use touch wording (no keyboard hint)", async (
   expect(instr).not.toContain("arrow keys");
   expect(instr).not.toContain("SPACE");
 });
+
+test("a caught Pokémon can be nicknamed via a real input (works on touch)", async ({ probe, page }) => {
+  await probe.bootIntoOverworld({ team: [{ speciesId: "charizard", level: 40 }] });
+  await probe.forceEncounter();
+  await probe.waitForEvent("battle:active");
+  await expect.poll(async () => (await battleSnapshot(page)).busy === false).toBe(true);
+
+  // Open the naming screen for the wild Pokémon (skips the catch RNG).
+  await page.evaluate(() => {
+    const bs: any = (window as any).__GAME__.game.scene.getScene("Battle");
+    bs.pendingCatchMon = bs.enemyMon;
+    bs.showNamingScreen();
+  });
+
+  // A real HTML <input> is present — this is what lets the soft keyboard open
+  // on touch (the old canvas-only field couldn't be typed into on mobile).
+  const input = page.locator("input");
+  await expect(input).toBeVisible({ timeout: 5_000 });
+  await input.fill("Sparky");
+  await input.press("Enter");
+
+  // The nickname is applied and the overlay is cleaned up.
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const gs: any = (window as any).__GAME__.gameState;
+        return [...gs.team, ...gs.box].some((m: any) => m.nickname === "Sparky");
+      })
+    )
+    .toBe(true);
+  expect(await page.locator("input").count(), "input overlay removed after submit").toBe(0);
+});
