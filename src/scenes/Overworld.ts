@@ -3742,7 +3742,7 @@ export default class Overworld extends Phaser.Scene {
     this.starterText.push(title);
 
     // Subtitle
-    const subtitle = this.add.text(centerX, centerY - Math.round(145 * s), "Your first Pokemon awaits...", {
+    const subtitle = this.add.text(centerX, centerY - Math.round(145 * s), "Your first Pokémon awaits...", {
       fontFamily: "monospace",
       fontSize: `${Math.max(10, Math.round(14 * s))}px`,
       color: "#94a3b8"
@@ -3858,13 +3858,18 @@ export default class Overworld extends Phaser.Scene {
       });
     });
 
-    // Bottom hint
-    const hint = this.add.text(centerX, centerY + Math.round(175 * s), "Click a Pokemon to begin your adventure!", {
+    // Bottom hint — touch-appropriate verb, and spell Pokémon consistently.
+    const isTouch = Boolean(this.touch?.active);
+    const hintText = isTouch
+      ? "Tap a Pokémon to begin your adventure!"
+      : "Click a Pokémon to begin your adventure!";
+    const hint = this.add.text(centerX, centerY + Math.round(175 * s), hintText, {
       fontFamily: "monospace",
       fontSize: `${Math.max(10, Math.round(13 * s))}px`,
       color: "#64748b"
     });
     hint.setScrollFactor(0).setOrigin(0.5);
+    hint.setData("testid", "starter-hint");
     this.starterText.push(hint);
   }
 
