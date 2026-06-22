@@ -106,6 +106,7 @@ export default class Overworld extends Phaser.Scene {
   private interactPressed = false;
   private playerShadow!: Phaser.GameObjects.Ellipse;
   private battleStarting = false;
+  private inBattle = false;
   private walkTime = 0;
   private playerBaseScale = 1;
   private lastValidPlayerPosition = new Phaser.Math.Vector2();
@@ -267,11 +268,14 @@ export default class Overworld extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.RESUME, () => {
       if (!this.starterOpen && !this.isPaused) {
         this.touch?.setVisible(true);
-        // Auto-save after battle ends (report honestly if storage is full)
-        if (saveGame()) {
-          this.showNotification("💾 Auto-saved", 1200);
-        } else {
-          this.showNotification("⚠ Auto-save failed (storage full?)", 2500);
+        this.setHudVisible(true);
+        if (this.inBattle) {
+          this.inBattle = false;
+          if (saveGame()) {
+            this.showNotification("💾 Auto-saved", 1200);
+          } else {
+            this.showNotification("⚠ Auto-save failed (storage full?)", 2500);
+          }
         }
       }
     });
@@ -361,8 +365,10 @@ export default class Overworld extends Phaser.Scene {
     }
 
     if (this.starterOpen || this.isPaused || this.teamOpen || this.martOpen || this.pokedexOpen || this.mapOpen || this.serviceMenuOpen) {
+      if (this.hudText?.visible) this.hudText.setVisible(false);
       return;
     }
+    if (this.hudText && !this.hudText.visible) this.hudText.setVisible(true);
 
     if (this.battleStarting) return;
 
@@ -872,6 +878,7 @@ export default class Overworld extends Phaser.Scene {
 
     this.e4CooldownActive = true;
     this.encounterCooldown = 1500;
+    this.inBattle = true;
     this.scene.pause();
     this.scene.launch("Battle", {
       type: "elite",
@@ -978,6 +985,7 @@ export default class Overworld extends Phaser.Scene {
 
   private startTrainerBattle(trainer: NpcTrainer): void {
     this.encounterCooldown = 1500;
+    this.inBattle = true;
     this.scene.pause();
     this.scene.launch("Battle", {
       type: "trainer",
@@ -1007,6 +1015,7 @@ export default class Overworld extends Phaser.Scene {
     // Rematch team is 5 levels higher than original
     const rematchTeam = trainer.team.map(m => ({ speciesId: m.speciesId, level: m.level + 5 }));
     this.encounterCooldown = 1500;
+    this.inBattle = true;
     this.scene.pause();
     this.scene.launch("Battle", {
       type: "trainer",
@@ -1038,6 +1047,7 @@ export default class Overworld extends Phaser.Scene {
 
   private doStartBattle(wildId: string): void {
     this.battleStarting = false;
+    this.inBattle = true;
     this.scene.pause();
     this.scene.launch("Battle", { wildId, type: "wild" });
     const battleScene = this.scene.get("Battle");
@@ -1057,6 +1067,7 @@ export default class Overworld extends Phaser.Scene {
 
   private startGymBattle(gymId: string): void {
     this.encounterCooldown = 1500;
+    this.inBattle = true;
     this.scene.pause();
     this.scene.launch("Battle", { type: "gym", gymId });
     const battleScene = this.scene.get("Battle");
@@ -1427,6 +1438,7 @@ export default class Overworld extends Phaser.Scene {
 
   private startRivalBattle(encounter: RivalEncounter): void {
     this.encounterCooldown = 2000;
+    this.inBattle = true;
     this.scene.pause();
 
     const rivalTeam = getRivalTeam(gameState, encounter.battleNumber);
@@ -2798,7 +2810,7 @@ export default class Overworld extends Phaser.Scene {
 
     const margin = 14;
     const mapWidth = Math.min(520, this.scale.width - margin * 2);
-    const mapHeight = Math.max(180, Math.min(360, this.scale.height - margin * 2 - 76));
+    const mapHeight = Math.max(180, Math.min(360, this.scale.height - margin * 2 - 100));
     const mapX = this.scale.width / 2;
     const mapY = this.scale.height / 2;
     const mapFont = Math.max(15, Math.min(19, Math.round(mapWidth / 26)));
@@ -2811,7 +2823,7 @@ export default class Overworld extends Phaser.Scene {
     this.mapContainer.setDepth(500);
 
     // Background panel
-    const bg = this.add.rectangle(mapWidth / 2, mapHeight / 2, mapWidth, mapHeight + 64, 0x0f172a, 0.95);
+    const bg = this.add.rectangle(mapWidth / 2, mapHeight / 2, mapWidth, mapHeight + 92, 0x0f172a, 0.95);
     bg.setStrokeStyle(3, 0xfbbf24);
     this.mapContainer.add(bg);
 
@@ -2931,7 +2943,7 @@ export default class Overworld extends Phaser.Scene {
     });
 
     // Badge count legend
-    const legend = this.add.text(mapWidth / 2, mapHeight + 15,
+    const legend = this.add.text(mapWidth / 2, mapHeight + 8,
       `★${gameState.badges.length}/${region.gyms.length}`, {
       fontFamily: "monospace",
       fontSize: `${Math.max(14, labelFont)}px`,
@@ -2939,13 +2951,17 @@ export default class Overworld extends Phaser.Scene {
     }).setOrigin(0.5);
     this.mapContainer.add(legend);
 
-    // Tappable close button — top-right corner, works for both mouse and touch.
-    const mapClose = this.add.text(mapWidth - 4, -22, "✕", {
+    // Close button — bottom-centre, matches mart/team/pokédex style.
+    const mapClose = this.add.text(mapWidth / 2, mapHeight + 36, "✕  Close Map", {
       fontFamily: "monospace",
-      fontSize: `${mapFont + 4}px`,
-      color: "#94a3b8",
-      padding: { left: 8, right: 8, top: 4, bottom: 4 }
-    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+      fontSize: "18px",
+      fontStyle: "bold",
+      color: "#f8fafc",
+      backgroundColor: "#374151",
+      padding: { left: 28, right: 28, top: 9, bottom: 9 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    mapClose.on("pointerover", () => mapClose.setStyle({ backgroundColor: "#4b5563" }));
+    mapClose.on("pointerout",  () => mapClose.setStyle({ backgroundColor: "#374151" }));
     mapClose.on("pointerdown", () => this.closeVisualMap());
     this.mapContainer.add(mapClose);
 
