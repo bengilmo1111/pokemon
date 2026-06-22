@@ -3111,11 +3111,17 @@ export default class Overworld extends Phaser.Scene {
     // Menu options. Keyboard shortcut hints ([S]/[F1]) only make sense with a
     // physical keyboard, so they're dropped on touch devices.
     const isTouch = Boolean(this.touch?.active);
-    const menuItems = [
-      { id: "resume", label: "Resume Game", y: centerY - 20 },
-      { id: "save", label: isTouch ? "Save Game" : "Save Game [S]", y: centerY + 30 },
-      { id: "load", label: isTouch ? "Load Game" : "Load Game [F1]", y: centerY + 80 }
+    // The Pokédex is otherwise keyboard-only ([D]); surface it here so it's
+    // reachable on touch. Items are laid out evenly from a top offset.
+    const labels = [
+      { id: "resume", label: "Resume Game" },
+      { id: "pokedex", label: "📖  Pokédex" },
+      { id: "save", label: isTouch ? "Save Game" : "Save Game [S]" },
+      { id: "load", label: isTouch ? "Load Game" : "Load Game [F1]" }
     ];
+    const rowGap = 50;
+    const firstY = centerY - 45;
+    const menuItems = labels.map((item, i) => ({ ...item, y: firstY + i * rowGap }));
 
     menuItems.forEach((item) => {
       const text = this.add.text(centerX, item.y, item.label, {
@@ -3132,6 +3138,12 @@ export default class Overworld extends Phaser.Scene {
       text.on("pointerout", () => text.setStyle({ backgroundColor: "#1e293b" }));
       if (item.id === "resume") {
         text.on("pointerdown", () => this.resumeGame());
+      } else if (item.id === "pokedex") {
+        text.on("pointerdown", () => {
+          Sound.playMenuSelect();
+          this.resumeGame();
+          this.openPokedex();
+        });
       } else if (item.id === "save") {
         text.on("pointerdown", () => {
           if (saveGame()) {
