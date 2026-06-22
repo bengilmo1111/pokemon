@@ -36,8 +36,16 @@ export function battleSnapshot(page: Page): Promise<BattleSnapshot> {
   });
 }
 
+/** Whether the battle message bar (rectangle + text) is currently visible. */
+export function battleMessageVisible(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const bs: any = (window as any).__GAME__.game.scene.getScene("Battle");
+    return Boolean(bs?.messageText?.visible) && Boolean(bs?.messageBg?.visible);
+  });
+}
+
 /** Tap a Battle-scene menu item whose visible text contains `label`. */
-async function tapBattleLabel(page: Page, label: string): Promise<boolean> {
+export async function tapBattleLabel(page: Page, label: string): Promise<boolean> {
   const coord = await page.evaluate((lbl) => {
     const bs: any = (window as any).__GAME__.game.scene.getScene("Battle");
     if (!bs) return null;

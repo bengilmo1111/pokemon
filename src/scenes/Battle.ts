@@ -79,6 +79,7 @@ export default class Battle extends Phaser.Scene {
   private playerShadow?: Phaser.GameObjects.Ellipse;
   private enemyShadow?: Phaser.GameObjects.Ellipse;
   private messageText!: Phaser.GameObjects.Text;
+  private messageBg?: Phaser.GameObjects.Rectangle;
   private playerHpText!: Phaser.GameObjects.Text;
   private enemyHpText!: Phaser.GameObjects.Text;
   private playerHpBar?: Phaser.GameObjects.Graphics;
@@ -297,7 +298,7 @@ export default class Battle extends Phaser.Scene {
     // Message bar — full-width, anchored just above the battle buttons, high depth
     // so it always renders over enemy stats (which sit at depth 0).
     const msgY = this.scale.height - 205;
-    this.add.rectangle(this.scale.width / 2, msgY, this.scale.width, 56, 0x0f172a, 0.92)
+    this.messageBg = this.add.rectangle(this.scale.width / 2, msgY, this.scale.width, 56, 0x0f172a, 0.92)
       .setDepth(149).setScrollFactor(0);
     this.messageText = this.add.text(this.scale.width / 2, msgY, introText, {
       fontFamily: "monospace",
@@ -437,9 +438,20 @@ export default class Battle extends Phaser.Scene {
     });
   }
 
+  /**
+   * The message bar sits just above the action buttons; the move/bag/switch
+   * submenus extend up into that band, so the bar is hidden while a submenu is
+   * open (no message is relevant during selection) and restored on Back.
+   */
+  private setBattleMessageVisible(visible: boolean): void {
+    this.messageBg?.setVisible(visible);
+    this.messageText?.setVisible(visible);
+  }
+
   private openMoveMenu(): void {
     if (this.busy || this.moveMenuOpen || this.switchMenuOpen || this.ballMenuOpen) return;
     this.moveMenuOpen = true;
+    this.setBattleMessageVisible(false);
     this.rootMenuItems.forEach((item) => item.setVisible(false));
 
     const moveIds = this.playerMon.moves;
@@ -567,6 +579,7 @@ export default class Battle extends Phaser.Scene {
     this.moveMenuItems = [];
     this.tooltipBg?.setVisible(false);
     this.tooltipText?.setVisible(false);
+    this.setBattleMessageVisible(true);
     this.rootMenuItems.forEach((item) => item.setVisible(true));
   }
 
@@ -577,6 +590,7 @@ export default class Battle extends Phaser.Scene {
       return;
     }
     this.ballMenuOpen = true;
+    this.setBattleMessageVisible(false);
     this.rootMenuItems.forEach((item) => item.setVisible(false));
 
     const btnWidth = this.scale.width * 0.6;
@@ -634,6 +648,7 @@ export default class Battle extends Phaser.Scene {
     this.ballMenuOpen = false;
     this.ballMenuItems.forEach((item) => item.destroy());
     this.ballMenuItems = [];
+    this.setBattleMessageVisible(true);
     this.rootMenuItems.forEach((item) => item.setVisible(true));
   }
 
@@ -671,6 +686,7 @@ export default class Battle extends Phaser.Scene {
   private openSwitchMenu(): void {
     if (this.busy || this.switchMenuOpen || this.moveMenuOpen || this.ballMenuOpen) return;
     this.switchMenuOpen = true;
+    this.setBattleMessageVisible(false);
     this.rootMenuItems.forEach((item) => item.setVisible(false));
 
     const W = this.scale.width;
@@ -733,6 +749,7 @@ export default class Battle extends Phaser.Scene {
     this.switchMenuOpen = false;
     this.switchMenuItems.forEach((item) => item.destroy());
     this.switchMenuItems = [];
+    this.setBattleMessageVisible(true);
     this.rootMenuItems.forEach((item) => item.setVisible(true));
   }
 
@@ -2074,6 +2091,9 @@ export default class Battle extends Phaser.Scene {
   }
 
   private setMessage(message: string): void {
+    // A message is always meant to be seen — make sure the bar wasn't left
+    // hidden by an open submenu.
+    this.setBattleMessageVisible(true);
     this.messageText.setText(message);
   }
 

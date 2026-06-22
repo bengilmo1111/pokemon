@@ -1,5 +1,5 @@
 import { test, expect } from "./harness/fixtures";
-import { battleSnapshot, fightUntilOver } from "./harness/battle";
+import { battleMessageVisible, battleSnapshot, fightUntilOver, tapBattleLabel } from "./harness/battle";
 
 /**
  * Full wild-battle playthrough driven via touch: trigger an encounter, fight to
@@ -36,4 +36,30 @@ test("winning a wild battle resolves cleanly back to the overworld", async ({ pr
   expect(snap.game.wildMonCount, "the defeated wild Pokémon is removed").toBeLessThan(wildBefore);
   expect(snap.overworld!.hudVisible, "HUD restored after battle").toBe(true);
   expect(snap.overworld!.anyMenuOpen, "no menu left open").toBe(false);
+});
+
+/**
+ * The Bag/Move/Switch submenus extend up into the message-bar band, so the bar
+ * must be hidden while a submenu is open (it used to overlap the items) and
+ * restored when the player backs out.
+ */
+test("battle submenus hide the message bar (no overlap), restored on Back", async ({ probe, page }) => {
+  await probe.bootIntoOverworld({ team: [{ speciesId: "charizard", level: 40 }] });
+  await probe.forceEncounter();
+  await probe.waitForEvent("battle:active");
+  await expect.poll(async () => (await battleSnapshot(page)).busy === false).toBe(true);
+
+  expect(await battleMessageVisible(page), "bar visible at battle start").toBe(true);
+
+  // Open Bag → message bar hidden so it can't overlap the item rows.
+  expect(await tapBattleLabel(page, "bag")).toBe(true);
+  await expect.poll(() => battleMessageVisible(page)).toBe(false);
+
+  // Back → bar restored.
+  expect(await tapBattleLabel(page, "back")).toBe(true);
+  await expect.poll(() => battleMessageVisible(page)).toBe(true);
+
+  // Same contract for the Fight (move) submenu.
+  expect(await tapBattleLabel(page, "fight")).toBe(true);
+  await expect.poll(() => battleMessageVisible(page)).toBe(false);
 });
