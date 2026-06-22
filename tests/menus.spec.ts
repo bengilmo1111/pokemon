@@ -121,4 +121,12 @@ test("HUD is hidden while the pause menu is open", async ({ probe, touch }) => {
     })
     .toBe(true);
   expect((await probe.snapshot()).overworld!.hudVisible, "HUD must hide while paused").toBe(false);
+
+  // On a touch device the menu must not show keyboard shortcuts.
+  const save = await probe.uiTargetText("pause-save");
+  const load = await probe.uiTargetText("pause-load");
+  expect(save).toBe("Save Game");
+  expect(load).toBe("Load Game");
+  expect(save).not.toContain("[");
+  expect(load).not.toContain("[");
 });
