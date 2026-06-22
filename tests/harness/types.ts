@@ -49,3 +49,13 @@ export interface TouchButton {
   y: number;
   r: number;
 }
+
+export interface UiTarget {
+  testid: string;
+  /** screen-space centre */
+  x: number;
+  y: number;
+  /** rendered size */
+  w: number;
+  h: number;
+}
