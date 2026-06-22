@@ -7,3 +7,9 @@ dist/
 .env.local
 tmpclaude-*
 .claude/
+
+# Playwright test harness artifacts
+test-results/
+tests/.report/
+playwright-report/
+.last-run.json

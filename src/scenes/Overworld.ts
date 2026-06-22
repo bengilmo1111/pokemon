@@ -1,3 +1,5 @@
+import { rng } from "../game/rng";
+import { emitTestEvent } from "../game/testBridge";
 import Phaser from "phaser";
 import { BIOMES } from "../data/biomes";
 import { SPECIES } from "../data/species";
@@ -271,7 +273,9 @@ export default class Overworld extends Phaser.Scene {
         this.setHudVisible(true);
         if (this.inBattle) {
           this.inBattle = false;
-          if (saveGame()) {
+          const ok = saveGame();
+          emitTestEvent("save:fired", { reason: "post-battle", ok });
+          if (ok) {
             this.showNotification("💾 Auto-saved", 1200);
           } else {
             this.showNotification("⚠ Auto-save failed (storage full?)", 2500);
@@ -638,8 +642,8 @@ export default class Overworld extends Phaser.Scene {
       const zone = this.zoneMap.get(wild.zoneId);
       if (!zone) continue;
       const jitter = 0.3;
-      wild.vx += (Math.random() - 0.5) * jitter;
-      wild.vy += (Math.random() - 0.5) * jitter;
+      wild.vx += (rng() - 0.5) * jitter;
+      wild.vy += (rng() - 0.5) * jitter;
       const speed = Math.hypot(wild.vx, wild.vy) || 0.0001;
       const maxSpeed = 1.2;
       if (speed > maxSpeed) {
@@ -676,6 +680,18 @@ export default class Overworld extends Phaser.Scene {
         const dxPlayer = this.player.x - wild.x;
         const dyPlayer = this.player.y - wild.y;
         if (dxPlayer * dxPlayer + dyPlayer * dyPlayer < 32 * 32) {
+          // Never start a wild battle with a fully fainted team — there is
+          // nobody to send out, so it would instant-escape and trigger the
+          // auto-save loop. Heal/relocate instead (mirrors a battle defeat).
+          if (!gameState.team.some((m) => m.hp > 0)) {
+            emitTestEvent("encounter:blocked", { wildId: wild.id, reason: "no-alive-team" });
+            this.handleBattleDefeat();
+            break;
+          }
+          emitTestEvent("encounter:trigger", {
+            wildId: wild.id,
+            speciesId: wild.speciesId
+          });
           this.startBattle(wild.id);
           break;
         }
@@ -802,12 +818,12 @@ export default class Overworld extends Phaser.Scene {
 
   private spawnRarePokemon(spotX: number, spotY: number): void {
     const rarePool = ["eevee", "dratini", "lapras", "pikachu", "abra"];
-    const speciesId = rarePool[Math.floor(Math.random() * rarePool.length)];
-    const level = 10 + Math.floor(Math.random() * 10);
+    const speciesId = rarePool[Math.floor(rng() * rarePool.length)];
+    const level = 10 + Math.floor(rng() * 10);
 
     const mon = makeWildPokemon(speciesId, level, "sanctuary");
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 40 + Math.random() * 30;
+    const angle = rng() * Math.PI * 2;
+    const dist = 40 + rng() * 30;
     mon.x = spotX * WORLD_SCALE + Math.cos(angle) * dist;
     mon.y = spotY * WORLD_SCALE + Math.sin(angle) * dist;
     gameState.wildMons.push(mon);
@@ -959,8 +975,8 @@ export default class Overworld extends Phaser.Scene {
     // Sparkle animation
     for (let i = 0; i < 20; i++) {
       this.time.delayedCall(i * 150, () => {
-        const sx = centerX + (Math.random() - 0.5) * 480;
-        const sy = centerY + (Math.random() - 0.5) * 260;
+        const sx = centerX + (rng() - 0.5) * 480;
+        const sy = centerY + (rng() - 0.5) * 260;
         const star = this.add.circle(sx, sy, 4, 0xffd700)
           .setScrollFactor(0).setDepth(1203);
         this.tweens.add({
@@ -1051,7 +1067,7 @@ export default class Overworld extends Phaser.Scene {
     this.scene.pause();
     this.scene.launch("Battle", { wildId, type: "wild" });
     const battleScene = this.scene.get("Battle");
-    battleScene.events.once("battle-complete", (payload: { wildId: string }) => {
+    battleScene.events.once("battle-complete", (payload: { wildId: string; result?: string }) => {
       if (!gameState.wildMons.find((m) => m.id === payload.wildId)) {
         const sprite = this.wildSprites.get(payload.wildId);
         if (sprite) {
@@ -1059,6 +1075,12 @@ export default class Overworld extends Phaser.Scene {
           sprite.destroy();
           this.wildSprites.delete(payload.wildId);
         }
+      }
+      // A wild defeat must heal/relocate just like trainer defeats. Without this
+      // the team stays fainted, so every following encounter instant-escapes and
+      // the resume auto-save fires on a loop ("constant saves, no battles").
+      if (payload.result === "defeat") {
+        this.handleBattleDefeat();
       }
       this.scene.resume();
       Sound.playOverworldMusic();
@@ -1104,8 +1126,8 @@ export default class Overworld extends Phaser.Scene {
         const entry = pickWeighted(biome.spawns);
         const level = Math.min(100, Math.floor(randomLevel(entry.min, entry.max) * regionMult));
         const mon = makeWildPokemon(entry.id, level, zone.id);
-        mon.x = (zone.x + (Math.random() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
-        mon.y = (zone.y + (Math.random() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
+        mon.x = (zone.x + (rng() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
+        mon.y = (zone.y + (rng() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
         gameState.wildMons.push(mon);
       }
     });
@@ -1977,13 +1999,13 @@ export default class Overworld extends Phaser.Scene {
       const biome = BIOMES[zone.biome];
       const count = Math.floor(zone.r * 1.2);
       for (let i = 0; i < count; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * zone.r * 0.9;
+        const angle = rng() * Math.PI * 2;
+        const radius = rng() * zone.r * 0.9;
         const x = (zone.x + Math.cos(angle) * radius) * WORLD_SCALE;
         const y = (zone.y + Math.sin(angle) * radius) * WORLD_SCALE;
-        const type = biome.props[Math.floor(Math.random() * biome.props.length)];
-        const variant = Math.floor(Math.random() * 3); // 0, 1, or 2 variant
-        const scale = 0.8 + Math.random() * 0.4; // 0.8 to 1.2 scale
+        const type = biome.props[Math.floor(rng() * biome.props.length)];
+        const variant = Math.floor(rng() * 3); // 0, 1, or 2 variant
+        const scale = 0.8 + rng() * 0.4; // 0.8 to 1.2 scale
         this.props.push({ x, y, type, variant, scale });
         const size = this.getPropBodySize(type);
         // Position collision body at the base of the prop, make it smaller
@@ -2393,7 +2415,7 @@ export default class Overworld extends Phaser.Scene {
 
     for (let i = 0; i < count; i++) {
       const offsetX = (i - count / 2) * 4 * s;
-      const height = (14 + Math.random() * 6) * s;
+      const height = (14 + rng() * 6) * s;
 
       // Stem
       g.fillStyle(0x15803d, 1);
@@ -2960,6 +2982,7 @@ export default class Overworld extends Phaser.Scene {
       backgroundColor: "#374151",
       padding: { left: 28, right: 28, top: 9, bottom: 9 }
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    mapClose.setData("testid", "close-map");
     mapClose.on("pointerover", () => mapClose.setStyle({ backgroundColor: "#4b5563" }));
     mapClose.on("pointerout",  () => mapClose.setStyle({ backgroundColor: "#374151" }));
     mapClose.on("pointerdown", () => this.closeVisualMap());
@@ -3001,6 +3024,7 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private closeVisualMap(): void {
+    emitTestEvent("menu:close", { menu: "map" });
     this.mapOpen = false;
     this.touch?.setVisible(true);
     this.setHudVisible(true);
@@ -3194,12 +3218,17 @@ export default class Overworld extends Phaser.Scene {
       color: "#f8fafc", backgroundColor: "#374151",
       padding: { left: 40, right: 40, top: 14, bottom: 14 }
     }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH + 2).setInteractive({ useHandCursor: true });
+    closeBtn.setData("testid", "close-team");
     closeBtn.on("pointerover", () => closeBtn.setStyle({ backgroundColor: "#4b5563" }));
     closeBtn.on("pointerout",  () => closeBtn.setStyle({ backgroundColor: "#374151" }));
     closeBtn.on("pointerdown", () => this.closeTeamScreen());
     this.teamText.push(closeBtn);
 
     this.teamContainer = this.add.container(0, 0, [this.teamOverlay!, ...this.teamText]);
+    // Must be scrollFactor 0 so refreshCameraAssignments() routes it to the UI
+    // camera. Without this the whole screen renders through the zoomed world
+    // camera — appearing scaled/offset and making touch targets miss on mobile.
+    this.teamContainer.setScrollFactor(0);
     this.teamContainer.setDepth(DEPTH);
   }
 
@@ -3492,6 +3521,7 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private closeTeamScreen(): void {
+    emitTestEvent("menu:close", { menu: "team" });
     this.teamOpen = false;
     this.teamSelectedMon = null;
     this.touch?.setVisible(true);
@@ -3613,12 +3643,15 @@ export default class Overworld extends Phaser.Scene {
       color: "#f8fafc", backgroundColor: "#374151",
       padding: { left: 32, right: 32, top: 14, bottom: 14 }
     }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH + 1).setInteractive({ useHandCursor: true });
+    closeBtn.setData("testid", "close-pokedex");
     closeBtn.on("pointerover", () => closeBtn.setStyle({ backgroundColor: "#4b5563" }));
     closeBtn.on("pointerout",  () => closeBtn.setStyle({ backgroundColor: "#374151" }));
     closeBtn.on("pointerdown", () => this.closePokedex());
     this.pokedexText.push(closeBtn);
 
     this.pokedexContainer = this.add.container(0, 0, [panelG, ...this.pokedexText]);
+    // scrollFactor 0 → routed to the UI camera (see teamContainer note above).
+    this.pokedexContainer.setScrollFactor(0);
     this.pokedexContainer.setDepth(DEPTH);
   }
 
@@ -4049,6 +4082,7 @@ export default class Overworld extends Phaser.Scene {
       color: "#f8fafc", backgroundColor: "#374151",
       padding: { left: 40, right: 40, top: 14, bottom: 14 }
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.setData("testid", "close-mart");
     closeBtn.on("pointerover", () => closeBtn.setStyle({ backgroundColor: "#4b5563" }));
     closeBtn.on("pointerout",  () => closeBtn.setStyle({ backgroundColor: "#374151" }));
     closeBtn.on("pointerdown", () => this.closeMart());

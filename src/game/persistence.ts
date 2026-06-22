@@ -1,3 +1,4 @@
+import { rng } from "./rng";
 import { GameState, PokemonInstance, calculateStats, createInitialState } from "./state";
 import { SPECIES } from "../data/species";
 import { randomNature } from "../data/natures";
@@ -146,7 +147,7 @@ function migrateToV2(state: GameState): void {
     if (!mon) return;
     if (!mon.nature) mon.nature = randomNature();
     if (!mon.ivs) {
-      const r = () => Math.floor(Math.random() * 32);
+      const r = () => Math.floor(rng() * 32);
       mon.ivs = { hp: r(), atk: r(), def: r(), spd: r(), spAtk: r(), spDef: r() };
     }
     if (mon.ability === undefined) mon.ability = SPECIES[mon.speciesId]?.ability;

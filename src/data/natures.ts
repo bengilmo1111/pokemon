@@ -1,3 +1,4 @@
+import { rng } from "../game/rng";
 // Pokémon Natures: each raises one stat by 10% and lowers another by 10%.
 // "neutral" natures (up === down) have no net effect. Mirrors the canonical
 // 25-nature table, mapped onto this game's stat keys.
@@ -41,7 +42,7 @@ export const NATURES: Record<string, NatureData> = {
 const NATURE_IDS = Object.keys(NATURES);
 
 export function randomNature(): string {
-  return NATURE_IDS[Math.floor(Math.random() * NATURE_IDS.length)];
+  return NATURE_IDS[Math.floor(rng() * NATURE_IDS.length)];
 }
 
 export function getNatureName(id?: string): string {

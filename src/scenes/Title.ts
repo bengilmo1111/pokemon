@@ -1,3 +1,4 @@
+import { rng } from "../game/rng";
 import Phaser from "phaser";
 import { deleteSave, getSaveSlots, hasSaveData, loadGame, renameSaveSlot, saveGame, setActiveSaveSlot } from "../game/persistence";
 import { gameState } from "../game/store";
@@ -45,7 +46,7 @@ export default class Title extends Phaser.Scene {
       const color = TYPE_COLOURS[i % TYPE_COLOURS.length];
       const x = Phaser.Math.Between(radius, W - radius);
       const y = Phaser.Math.Between(0, H);
-      const vy = -(0.3 + Math.random() * 0.5);
+      const vy = -(0.3 + rng() * 0.5);
 
       const graphic = this.add.arc(x, y, radius, 0, 360, false, color, 0.35);
       graphic.setScrollFactor(0).setDepth(1);
