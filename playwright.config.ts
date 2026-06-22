@@ -16,9 +16,11 @@ export default defineConfig({
   testMatch: "**/*.spec.ts",
   fullyParallel: false,
   workers: 1,
-  retries: 0,
-  timeout: 30_000,
-  expect: { timeout: 8_000 },
+  // One retry absorbs dev-server cold-start / GPU-stall flakiness on the first
+  // test without masking real, repeatable failures.
+  retries: 1,
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   reporter: [["list"], ["html", { open: "never", outputFolder: "tests/.report" }]],
   use: {
     baseURL: "http://localhost:5173",

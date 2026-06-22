@@ -23,6 +23,7 @@ export interface GameSnapshot {
     menus: Record<string, boolean>;
     anyMenuOpen: boolean;
     player: { x: number; y: number };
+    notification: { text: string; visible: boolean };
   };
   battleActive: boolean;
   game: {

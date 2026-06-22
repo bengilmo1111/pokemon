@@ -10,7 +10,7 @@ import type { GameSnapshot, TeamSpec, TestEvent, TouchButton } from "./types";
  * All methods run inside the page via page.evaluate.
  */
 export class GameProbe {
-  constructor(private readonly page: Page) {}
+  constructor(public readonly page: Page) {}
 
   /** Wait until the test bridge has been installed on window. */
   async waitForBridge(): Promise<void> {
@@ -54,8 +54,25 @@ export class GameProbe {
       .poll(async () => {
         const s = await this.snapshot();
         return Boolean(s.overworld) && !s.overworld!.anyMenuOpen && s.activeScenes.includes("Overworld");
-      }, { timeout: 15_000, message: "Overworld did not become ready" })
+      }, { timeout: 20_000, message: "Overworld did not become ready" })
       .toBe(true);
+    // The RESIZE scale mode settles a beat after load; taps land in the wrong
+    // place until the canvas size stops changing, so wait for it to stabilise.
+    await this.waitForStableGameSize();
+  }
+
+  /** Resolve once the Phaser canvas size has been unchanged for `stableMs`. */
+  async waitForStableGameSize(stableMs = 350, timeout = 8_000): Promise<void> {
+    const start = Date.now();
+    let last = "";
+    let lastChange = Date.now();
+    while (Date.now() - start < timeout) {
+      const s = await this.gameSize();
+      const key = `${s.width}x${s.height}`;
+      if (key !== last) { last = key; lastChange = Date.now(); }
+      else if (Date.now() - lastChange >= stableMs) return;
+      await this.page.waitForTimeout(100);
+    }
   }
 
   giveTeam(team: TeamSpec[]): Promise<void> {

@@ -549,11 +549,15 @@ export default class Overworld extends Phaser.Scene {
       this.interactPressed = true;
     }
     if (this.touch.wasButtonPressed("item")) {
-      if (usePotion(gameState)) {
+      // Distinguish "no potions" from "nobody needs healing" — previously both
+      // showed "No potions left!", which lied when the team was simply full HP.
+      if (gameState.inventory.potion <= 0) {
+        this.showNotification("No potions left!");
+      } else if (!gameState.team.some((m) => m.hp > 0 && m.hp < m.maxHp)) {
+        this.showNotification("Team already at full HP!");
+      } else if (usePotion(gameState)) {
         Sound.playHeal();
         this.showNotification("Used Potion!");
-      } else {
-        this.showNotification("No potions left!");
       }
     }
     if (this.touch.wasButtonPressed("team")) {
@@ -3276,11 +3280,13 @@ export default class Overworld extends Phaser.Scene {
       const BAR_W = Math.floor(W * 0.5);
       const BAR_H = 10;
       const barX = 14;
-      const barY = y + 52;
-      this.teamText.push(
-        this.add.rectangle(barX + BAR_W / 2, barY, BAR_W, BAR_H, 0x334155, 1)
-          .setScrollFactor(0).setDepth(DEPTH + 1)
-      );
+      // Sits below the "Lv/HP" text line (at y+36) so the bar doesn't slice
+      // through it; ROW_H (72) leaves room.
+      const barY = y + 60;
+      const hpBarTrack = this.add.rectangle(barX + BAR_W / 2, barY, BAR_W, BAR_H, 0x334155, 1)
+        .setScrollFactor(0).setDepth(DEPTH + 1);
+      hpBarTrack.setData("testid", `team-hpbar-${index}`);
+      this.teamText.push(hpBarTrack);
       if (hpPct > 0) {
         const fillW = Math.max(4, Math.floor(BAR_W * hpPct / 100));
         this.teamText.push(
@@ -3294,9 +3300,11 @@ export default class Overworld extends Phaser.Scene {
         fontFamily: "monospace", fontSize: "22px", fontStyle: "bold",
         color: mon.hp > 0 ? "#f8fafc" : "#6b7280"
       }));
-      push(this.add.text(14, y + 36, `Lv.${mon.level}  HP ${mon.hp}/${mon.maxHp}`, {
+      const statText = this.add.text(14, y + 36, `Lv.${mon.level}  HP ${mon.hp}/${mon.maxHp}`, {
         fontFamily: "monospace", fontSize: "15px", color: hpTextColor
-      }));
+      });
+      statText.setData("testid", `team-stat-${index}`);
+      push(statText);
 
       // Right: status badge
       if (mon.status !== "none") {
