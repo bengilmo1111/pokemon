@@ -14,6 +14,8 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
   testMatch: "**/*.spec.ts",
+  // Warm the Vite dev server once so the first test doesn't race its cold compile.
+  globalSetup: "./tests/global-setup.ts",
   fullyParallel: false,
   workers: 1,
   // One retry absorbs dev-server cold-start / GPU-stall flakiness on the first
