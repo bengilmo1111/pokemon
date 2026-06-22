@@ -2869,6 +2869,34 @@ export default class Overworld extends Phaser.Scene {
     const scaleX = mapWidth / bounds.width;
     const scaleY = mapHeight / bounds.height;
 
+    // Greedy label de-collision: town/gym/portal names cluster tightly in dense
+    // regions and used to render on top of each other. Each label is nudged
+    // vertically (alternating down/up) away from already-placed labels so they
+    // stay readable. Markers stay put; only the text moves.
+    const placedLabels: { l: number; t: number; r: number; b: number }[] = [];
+    const placeLabel = (label: Phaser.GameObjects.Text, px: number, py: number): void => {
+      const w = label.width;
+      const h = label.height;
+      const xOverlaps = () => placedLabels.filter((p) => px - w / 2 < p.r && px + w / 2 > p.l);
+      const hits = (cy: number) =>
+        xOverlaps().some((p) => cy - h / 2 < p.b && cy + h / 2 > p.t);
+      const step = h + 2;
+      let cy = py;
+      // Search outward (alternating down/up) for a free vertical slot.
+      for (let i = 1; i <= 24 && hits(cy); i++) {
+        const dir = i % 2 === 1 ? 1 : -1;
+        cy = py + dir * Math.ceil(i / 2) * step;
+      }
+      // Guaranteed fallback: if still clashing, stack just below the lowest
+      // label sharing this column so nothing is ever left overlapping.
+      if (hits(cy)) {
+        const lowest = xOverlaps().reduce((m, p) => Math.max(m, p.b), -Infinity);
+        cy = lowest + h / 2 + 2;
+      }
+      label.setPosition(px, cy);
+      placedLabels.push({ l: px - w / 2, t: cy - h / 2, r: px + w / 2, b: cy + h / 2 });
+    };
+
     // Draw zones
     region.zones.forEach((zone) => {
       const biome = BIOMES[zone.biome];
@@ -2900,6 +2928,8 @@ export default class Overworld extends Phaser.Scene {
         backgroundColor: "#0b1220cc",
         padding: { left: 5, right: 5, top: 2, bottom: 2 }
       }).setOrigin(0.5).setDepth(2);
+      label.setData("testid", "map-label");
+      placeLabel(label, x, y + 12);
       this.mapContainer!.add(label);
     });
 
@@ -2923,6 +2953,8 @@ export default class Overworld extends Phaser.Scene {
         backgroundColor: "#0b1220dd",
         padding: { left: 5, right: 5, top: 2, bottom: 2 }
       }).setOrigin(0.5).setDepth(3);
+      label.setData("testid", "map-label");
+      placeLabel(label, x, y - 16);
       this.mapContainer!.add(label);
     });
 
@@ -2947,6 +2979,8 @@ export default class Overworld extends Phaser.Scene {
           backgroundColor: "#0b1220cc",
           padding: { left: 5, right: 5, top: 2, bottom: 2 }
         }).setOrigin(0.5).setDepth(2);
+        label.setData("testid", "map-label");
+        placeLabel(label, x, y + 16);
         this.mapContainer!.add(label);
       });
     }

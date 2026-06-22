@@ -121,7 +121,7 @@ export interface TestBridgeApi {
    * the harness tap real controls inside menus, including ones nested in
    * scaled/positioned containers.
    */
-  uiTargets(): Array<{ testid: string; x: number; y: number }>;
+  uiTargets(): Array<{ testid: string; x: number; y: number; w: number; h: number }>;
 }
 
 const MAX_EVENTS = 2000;
@@ -281,10 +281,12 @@ export function installTestBridge(game: Phaser.Game): void {
     uiTargets: () => {
       const scene = game.scene.getScene("Overworld") as unknown as Phaser.Scene | null;
       if (!scene) return [];
-      const out: Array<{ testid: string; x: number; y: number }> = [];
+      const out: Array<{ testid: string; x: number; y: number; w: number; h: number }> = [];
       const visit = (obj: Phaser.GameObjects.GameObject) => {
         const go = obj as Phaser.GameObjects.GameObject & {
           visible?: boolean;
+          displayWidth?: number;
+          displayHeight?: number;
           getData?: (k: string) => unknown;
           getWorldTransformMatrix?: () => { tx: number; ty: number };
           list?: Phaser.GameObjects.GameObject[];
@@ -293,7 +295,13 @@ export function installTestBridge(game: Phaser.Game): void {
         const testid = go.getData?.("testid");
         if (typeof testid === "string" && go.getWorldTransformMatrix) {
           const m = go.getWorldTransformMatrix();
-          out.push({ testid, x: Math.round(m.tx), y: Math.round(m.ty) });
+          out.push({
+            testid,
+            x: Math.round(m.tx),
+            y: Math.round(m.ty),
+            w: Math.round(go.displayWidth ?? 0),
+            h: Math.round(go.displayHeight ?? 0)
+          });
         }
         if (Array.isArray(go.list)) go.list.forEach(visit);
       };

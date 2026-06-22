@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import type { GameSnapshot, TeamSpec, TestEvent, TouchButton } from "./types";
+import type { GameSnapshot, TeamSpec, TestEvent, TouchButton, UiTarget } from "./types";
 
 /**
  * GameProbe — a typed window into the running game via the in-game test bridge
@@ -97,13 +97,13 @@ export class GameProbe {
     return this.page.evaluate(() => (window as any).__GAME__.touchButtons() as TouchButton[]);
   }
 
-  /** Screen-space centres of UI elements tagged with a testid (e.g. close buttons). */
-  uiTargets(): Promise<Array<{ testid: string; x: number; y: number }>> {
-    return this.page.evaluate(() => (window as any).__GAME__.uiTargets() as Array<{ testid: string; x: number; y: number }>);
+  /** Screen-space bounds (centre + size) of UI elements tagged with a testid. */
+  uiTargets(): Promise<Array<UiTarget>> {
+    return this.page.evaluate(() => (window as any).__GAME__.uiTargets() as UiTarget[]);
   }
 
   /** Look up one tagged UI target by testid (e.g. "close-map"). */
-  async uiTarget(testid: string): Promise<{ testid: string; x: number; y: number }> {
+  async uiTarget(testid: string): Promise<UiTarget> {
     const all = await this.uiTargets();
     const found = all.find((t) => t.testid === testid);
     if (!found) {
