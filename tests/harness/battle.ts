@@ -36,6 +36,22 @@ export function battleSnapshot(page: Page): Promise<BattleSnapshot> {
   });
 }
 
+/** Whether a full-screen dim backdrop (depth 95) is present in the Battle scene. */
+export function battleHasBackdrop(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const g: any = (window as any).__GAME__.game;
+    const bs: any = g.scene.getScene("Battle");
+    if (!bs) return false;
+    return bs.children.list.some(
+      (o: any) =>
+        o.depth === 95 &&
+        o.visible !== false &&
+        Math.round(o.width) >= Math.round(g.scale.width) &&
+        Math.round(o.height) >= Math.round(g.scale.height)
+    );
+  });
+}
+
 /** Whether the battle message bar (rectangle + text) is currently visible. */
 export function battleMessageVisible(page: Page): Promise<boolean> {
   return page.evaluate(() => {
@@ -69,7 +85,8 @@ async function tapFirstMove(page: Page): Promise<boolean> {
   const coord = await page.evaluate(() => {
     const bs: any = (window as any).__GAME__.game.scene.getScene("Battle");
     const pool = bs?.moveMenuItems || [];
-    const it = pool.find((t: any) => t?.visible);
+    // Skip the modal backdrop (a Rectangle) — only real move buttons have text.
+    const it = pool.find((t: any) => t?.visible && typeof t.text === "string" && t.text.trim().length > 0 && t.input);
     if (!it) return null;
     const m = it.getWorldTransformMatrix();
     return { x: Math.round(m.tx), y: Math.round(m.ty) };
