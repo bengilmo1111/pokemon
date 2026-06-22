@@ -102,6 +102,21 @@ export class GameProbe {
     return this.page.evaluate(() => (window as any).__GAME__.uiTargets() as UiTarget[]);
   }
 
+  /** The text of a tagged Text element (null if not a visible text target). */
+  uiTargetText(testid: string): Promise<string | null> {
+    return this.page.evaluate((id) => {
+      const scene: any = (window as any).__GAME__.game.scene.getScene("Overworld");
+      let found: string | null = null;
+      const visit = (o: any) => {
+        if (found !== null) return;
+        if (o.getData && o.getData("testid") === id && typeof o.text === "string") { found = o.text; return; }
+        if (Array.isArray(o.list)) o.list.forEach(visit);
+      };
+      scene?.children.list.forEach(visit);
+      return found;
+    }, testid);
+  }
+
   /** Look up one tagged UI target by testid (e.g. "close-map"). */
   async uiTarget(testid: string): Promise<UiTarget> {
     const all = await this.uiTargets();

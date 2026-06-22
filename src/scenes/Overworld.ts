@@ -3250,8 +3250,9 @@ export default class Overworld extends Phaser.Scene {
       this.renderBoxTab(0, 0, W, H, 22, push);
     }
 
-    // Close — full-width footer button
-    const closeBtn = this.add.text(cx, H - 36, "✕  Close Team", {
+    // Close — full-width footer button (labelled for the active tab)
+    const closeLabel = this.teamTab === "box" ? "✕  Close Box" : "✕  Close Team";
+    const closeBtn = this.add.text(cx, H - 36, closeLabel, {
       fontFamily: "monospace", fontSize: "22px", fontStyle: "bold",
       color: "#f8fafc", backgroundColor: "#374151",
       padding: { left: 40, right: 40, top: 14, bottom: 14 }
