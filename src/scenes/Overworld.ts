@@ -3412,6 +3412,25 @@ export default class Overworld extends Phaser.Scene {
         this.teamText.push(toBoxBtn);
         btnX += toBoxBtn.width + 10;
 
+        // Revive a fainted team member (otherwise only reachable via the "R"
+        // key, i.e. impossible on touch).
+        if (mon.hp <= 0 && gameState.inventory.revive > 0) {
+          const reviveBtn = this.add.text(btnX, btnY, `Revive (${gameState.inventory.revive})`, {
+            ...BTN_STYLE, color: "#f8fafc", backgroundColor: "#16a34a",
+            padding: { left: 14, right: 14, top: 10, bottom: 10 }
+          }).setScrollFactor(0).setDepth(DEPTH + 2).setInteractive({ useHandCursor: true });
+          reviveBtn.setData("testid", "team-revive");
+          reviveBtn.on("pointerdown", () => {
+            gameState.inventory.revive -= 1;
+            mon.hp = Math.max(1, Math.floor(mon.maxHp / 2));
+            Sound.playHeal();
+            this.renderTeamScreen();
+            this.showNotification(`${mon.nickname || mon.name} was revived!`, 1500);
+          });
+          this.teamText.push(reviveBtn);
+          btnX += reviveBtn.width + 10;
+        }
+
         // Stone evolution
         const evo = SPECIES[mon.speciesId]?.evolution;
         if (evo?.item && (gameState.inventory[evo.item as keyof typeof gameState.inventory] ?? 0) > 0) {

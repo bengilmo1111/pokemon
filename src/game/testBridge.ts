@@ -308,22 +308,22 @@ export function installTestBridge(game: Phaser.Game): void {
       const visit = (obj: Phaser.GameObjects.GameObject) => {
         const go = obj as Phaser.GameObjects.GameObject & {
           visible?: boolean;
-          displayWidth?: number;
-          displayHeight?: number;
           getData?: (k: string) => unknown;
-          getWorldTransformMatrix?: () => { tx: number; ty: number };
+          getBounds?: () => { centerX: number; centerY: number; width: number; height: number };
           list?: Phaser.GameObjects.GameObject[];
         };
         if (go.visible === false) return;
         const testid = go.getData?.("testid");
-        if (typeof testid === "string" && go.getWorldTransformMatrix) {
-          const m = go.getWorldTransformMatrix();
+        if (typeof testid === "string" && go.getBounds) {
+          // getBounds() is origin-agnostic — its centre is the true tap point
+          // whether the element uses a top-left or centre origin.
+          const b = go.getBounds();
           out.push({
             testid,
-            x: Math.round(m.tx),
-            y: Math.round(m.ty),
-            w: Math.round(go.displayWidth ?? 0),
-            h: Math.round(go.displayHeight ?? 0)
+            x: Math.round(b.centerX),
+            y: Math.round(b.centerY),
+            w: Math.round(b.width),
+            h: Math.round(b.height)
           });
         }
         if (Array.isArray(go.list)) go.list.forEach(visit);
