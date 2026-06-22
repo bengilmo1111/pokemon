@@ -2769,6 +2769,7 @@ export default class Overworld extends Phaser.Scene {
 
       const hit = this.add.rectangle(cx, btnY + BTN_H / 2, btnW, BTN_H, 0, 0)
         .setScrollFactor(0).setDepth(DEPTH + 3).setInteractive({ useHandCursor: true });
+      hit.setData("testid", `service-${svc.label.toLowerCase().replace(/\s+/g, "-")}`);
       hit.on("pointerover", () => drawBtn(true));
       hit.on("pointerout",  () => drawBtn(false));
       hit.on("pointerdown", () => { closeMenu(); svc.action(); });
