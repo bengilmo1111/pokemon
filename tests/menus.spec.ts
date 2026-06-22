@@ -130,3 +130,26 @@ test("HUD is hidden while the pause menu is open", async ({ probe, touch }) => {
   expect(save).not.toContain("[");
   expect(load).not.toContain("[");
 });
+
+test("Pokédex is reachable on touch (via the pause menu)", async ({ probe, touch }) => {
+  await probe.bootIntoOverworld();
+
+  // Open the pause menu.
+  await expect
+    .poll(async () => {
+      const snap = await probe.snapshot();
+      if (snap.overworld!.isPaused) return true;
+      const btn = await probe.touchButton("menu");
+      await touch.tap(btn.x, btn.y);
+      return (await probe.snapshot()).overworld!.isPaused;
+    })
+    .toBe(true);
+
+  // The pause menu offers a Pokédex entry...
+  expect(await probe.uiTargetText("pause-pokedex")).toContain("Pokédex");
+
+  // ...and tapping it opens the Pokédex (otherwise keyboard-only).
+  const dex = await probe.uiTarget("pause-pokedex");
+  await touch.tap(dex.x, dex.y);
+  await expect.poll(async () => (await probe.snapshot()).overworld!.menus.pokedexOpen).toBe(true);
+});
