@@ -48,6 +48,21 @@ export class GameProbe {
     await this.waitForOverworld();
   }
 
+  /**
+   * Boot a fresh game with no team so the starter-select modal opens (the new-
+   * game flow). Resolves once `starterOpen` is true and the canvas has settled.
+   */
+  async bootIntoStarterSelect(): Promise<void> {
+    await this.page.evaluate(() => (window as any).__GAME__.bootIntoOverworld({ team: [] }));
+    await expect
+      .poll(async () => (await this.snapshot()).overworld?.menus.starterOpen === true, {
+        timeout: 20_000,
+        message: "starter select did not open"
+      })
+      .toBe(true);
+    await this.waitForStableGameSize();
+  }
+
   /** Wait until the Overworld scene is live and no menu/modal is open. */
   async waitForOverworld(): Promise<void> {
     await expect
