@@ -1,3 +1,4 @@
+import { rng } from "./rng";
 import { MOVES } from "../data/moves";
 import { REGIONS } from "../data/regions";
 import { SPECIES, canEvolve, getEvolution } from "../data/species";
@@ -6,7 +7,7 @@ import { NATURES, randomNature } from "../data/natures";
 import { randRange } from "./utils";
 
 function randomIvs(): NonNullable<PokemonInstance["ivs"]> {
-  const r = () => Math.floor(Math.random() * 32);
+  const r = () => Math.floor(rng() * 32);
   return { hp: r(), atk: r(), def: r(), spd: r(), spAtk: r(), spDef: r() };
 }
 
@@ -246,7 +247,7 @@ export function makePokemon(speciesId: string, level: number): PokemonInstance {
   const moves = availableMoves.length > 0 ? availableMoves : species.moves.slice(0, 4);
 
   return {
-    id: `${speciesId}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    id: `${speciesId}-${Date.now()}-${Math.floor(rng() * 10000)}`,
     speciesId,
     name: species.name,
     types: species.types,
@@ -268,13 +269,13 @@ export function makePokemon(speciesId: string, level: number): PokemonInstance {
 
 export function makeWildPokemon(speciesId: string, level: number, zoneId: string): WildPokemon {
   return {
-    id: `${speciesId}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    id: `${speciesId}-${Date.now()}-${Math.floor(rng() * 10000)}`,
     speciesId,
     level,
     x: 0,
     y: 0,
-    vx: (Math.random() - 0.5) * 0.6,
-    vy: (Math.random() - 0.5) * 0.6,
+    vx: (rng() - 0.5) * 0.6,
+    vy: (rng() - 0.5) * 0.6,
     zoneId
   };
 }

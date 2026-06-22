@@ -1,3 +1,5 @@
+import { rng } from "../game/rng";
+import { emitTestEvent } from "../game/testBridge";
 import Phaser from "phaser";
 import { MOVES } from "../data/moves";
 import { SPECIES } from "../data/species";
@@ -182,6 +184,10 @@ export default class Battle extends Phaser.Scene {
     this.pendingLevelUps = [];
 
     if (!this.playerMon) {
+      // Instant-escape: the whole team has fainted, so there is nobody to send
+      // out. This is the root cause of the "encounter just auto-saves" loop —
+      // the overworld should never let the player reach this state.
+      emitTestEvent("battle:instant-escape", { type: data.type, reason: "no-alive-team" });
       this.endBattle("escape");
       return;
     }
@@ -190,6 +196,7 @@ export default class Battle extends Phaser.Scene {
       this.wildId = data.wildId ?? "";
       const wild = gameState.wildMons.find((m) => m.id === data.wildId);
       if (!wild) {
+        emitTestEvent("battle:instant-escape", { type: data.type, reason: "wild-missing" });
         this.endBattle("escape");
         return;
       }
@@ -219,6 +226,13 @@ export default class Battle extends Phaser.Scene {
 
     this.enemyIndex = 0;
     this.enemyMon = this.enemyTeam[this.enemyIndex];
+
+    // The battle is now genuinely running (all guards passed, combatants set).
+    emitTestEvent("battle:active", {
+      type: data.type,
+      enemySpeciesId: this.enemyMon?.speciesId,
+      playerSpeciesId: this.playerMon.speciesId
+    });
 
     // Atmospheric, type-themed battle background + layered platforms.
     this.createBattleBackground();
@@ -977,8 +991,8 @@ export default class Battle extends Phaser.Scene {
     // Create sparkle effect
     for (let i = 0; i < 8; i++) {
       const sparkle = this.add.circle(
-        this.playerSprite!.x + (Math.random() - 0.5) * 80,
-        this.playerSprite!.y + (Math.random() - 0.5) * 80,
+        this.playerSprite!.x + (rng() - 0.5) * 80,
+        this.playerSprite!.y + (rng() - 0.5) * 80,
         4,
         0xfbbf24
       );
@@ -1215,7 +1229,7 @@ export default class Battle extends Phaser.Scene {
       await this.wait(300);
       // Perfect throw - much higher catch rate
       const baseChance = attemptCatch(this.enemyMon, this.targetingBallType);
-      caught = baseChance || Math.random() < 0.3; // Extra 30% chance on perfect
+      caught = baseChance || rng() < 0.3; // Extra 30% chance on perfect
     } else {
       // Good hit - normal catch chance
       caught = attemptCatch(this.enemyMon, this.targetingBallType);
@@ -1548,7 +1562,7 @@ export default class Battle extends Phaser.Scene {
     // Defender ability: Static may paralyze a physical (contact) attacker.
     const defAbility = getAbility(defender.ability);
     if (defAbility?.contactParalyze && move.category === "physical" &&
-        attacker.status === "none" && Math.random() < defAbility.contactParalyze) {
+        attacker.status === "none" && rng() < defAbility.contactParalyze) {
       if (tryInflictStatus(attacker, "paralysis")) {
         const atkName = attacker === this.playerMon ? (attacker.nickname || attacker.name) : attacker.name;
         this.setMessage(`${atkName} was paralyzed by ${defAbility.name}!`);
@@ -1767,8 +1781,8 @@ export default class Battle extends Phaser.Scene {
     const originalY = sprite.y - 100;
     for (let i = 0; i < 8; i++) {
       const puff = this.add.circle(
-        sprite.x + (Math.random() - 0.5) * 60,
-        originalY + (Math.random() - 0.5) * 40,
+        sprite.x + (rng() - 0.5) * 60,
+        originalY + (rng() - 0.5) * 40,
         15,
         0x888888,
         0.7
@@ -1803,10 +1817,10 @@ export default class Battle extends Phaser.Scene {
     });
 
     if (effectiveMoves.length > 0) {
-      return effectiveMoves[Math.floor(Math.random() * effectiveMoves.length)];
+      return effectiveMoves[Math.floor(rng() * effectiveMoves.length)];
     }
 
-    return moves[Math.floor(Math.random() * moves.length)];
+    return moves[Math.floor(rng() * moves.length)];
   }
 
   private findNextAlive(): number {
@@ -2260,6 +2274,7 @@ export default class Battle extends Phaser.Scene {
       }
     }
 
+    emitTestEvent("battle:complete", { result, wildId: this.wildId });
     this.events.emit("battle-complete", { result, wildId: this.wildId });
     this.scene.stop();
   }

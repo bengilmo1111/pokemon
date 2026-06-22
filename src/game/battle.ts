@@ -1,3 +1,4 @@
+import { rng } from "./rng";
 import { MOVES, MoveData } from "../data/moves";
 import { SPECIES } from "../data/species";
 import { getEffectivenessText, getTypeEffectiveness } from "../data/types";
@@ -56,7 +57,7 @@ export function calculateDamage(
   }
 
   // Check for critical hit (6.25% chance, 1.5x damage)
-  const isCritical = Math.random() < 0.0625;
+  const isCritical = rng() < 0.0625;
   const critMultiplier = isCritical ? 1.5 : 1;
 
   // Pick offensive/defensive stats and stages by move category.
@@ -95,7 +96,7 @@ export function calculateDamage(
   modifier *= critMultiplier;
 
   // Random variance (85-100%)
-  modifier *= 0.85 + Math.random() * 0.15;
+  modifier *= 0.85 + rng() * 0.15;
 
   // Burn halves physical damage
   if (attacker.status === "burn" && move.category === "physical") {
@@ -121,8 +122,8 @@ export function calculateDamage(
   let statusInflicted: StatusEffect | undefined;
   if (defender.status === "none") {
     if (move.effect?.status && move.effectChance) {
-      if (Math.random() < move.effectChance) statusInflicted = move.effect.status;
-    } else if (!move.effect && Math.random() < 0.1) {
+      if (rng() < move.effectChance) statusInflicted = move.effect.status;
+    } else if (!move.effect && rng() < 0.1) {
       if (move.type === "fire") statusInflicted = "burn";
       else if (move.type === "electric") statusInflicted = "paralysis";
       else if (move.type === "ice") statusInflicted = "freeze";
@@ -144,14 +145,14 @@ export function rollAccuracy(moveId: string, attacker: PokemonInstance): boolean
     accuracy *= 0.75;
   }
 
-  return Math.random() <= accuracy;
+  return rng() <= accuracy;
 }
 
 export function canAct(pokemon: PokemonInstance): { canAct: boolean; reason?: string } {
   switch (pokemon.status) {
     case "sleep":
       // 33% chance to wake up each turn
-      if (Math.random() < 0.33) {
+      if (rng() < 0.33) {
         pokemon.status = "none";
         return { canAct: true, reason: `${pokemon.name} woke up!` };
       }
@@ -159,7 +160,7 @@ export function canAct(pokemon: PokemonInstance): { canAct: boolean; reason?: st
 
     case "freeze":
       // 20% chance to thaw each turn
-      if (Math.random() < 0.2) {
+      if (rng() < 0.2) {
         pokemon.status = "none";
         return { canAct: true, reason: `${pokemon.name} thawed out!` };
       }
@@ -167,7 +168,7 @@ export function canAct(pokemon: PokemonInstance): { canAct: boolean; reason?: st
 
     case "paralysis":
       // 25% chance to be fully paralyzed
-      if (Math.random() < 0.25) {
+      if (rng() < 0.25) {
         return { canAct: false, reason: `${pokemon.name} is paralyzed and can't move!` };
       }
       return { canAct: true };
@@ -226,7 +227,7 @@ export function attemptCatch(target: PokemonInstance, ballType: "pokeball" | "gr
   const hpFactor = 1 - target.hp / target.maxHp;
   const chance = Math.min(0.95, 0.15 + hpFactor * (rate / 255) * ballMod * statusMod);
 
-  return Math.random() < chance;
+  return rng() < chance;
 }
 
 export function getStatusDisplayText(status: StatusEffect): string {

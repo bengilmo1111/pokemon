@@ -1,3 +1,4 @@
+import { rng } from "./rng";
 // Retro-style sound system using Web Audio API
 // Generates chiptune-like sounds without external audio files
 
@@ -123,7 +124,7 @@ export function playHit(): void {
   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
   const data = buffer.getChannelData(0);
   for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.1));
+    data[i] = (rng() * 2 - 1) * Math.exp(-i / (bufferSize * 0.1));
   }
   const noise = ctx.createBufferSource();
   noise.buffer = buffer;
