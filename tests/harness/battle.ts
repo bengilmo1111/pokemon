@@ -36,6 +36,19 @@ export function battleSnapshot(page: Page): Promise<BattleSnapshot> {
   });
 }
 
+/** Text of a tagged element in the Battle scene (e.g. "targeting-instructions"). */
+export function battleText(page: Page, testid: string): Promise<string | null> {
+  return page.evaluate((id) => {
+    const bs: any = (window as any).__GAME__.game.scene.getScene("Battle");
+    if (!bs) return null;
+    let found: string | null = null;
+    bs.children.list.forEach((o: any) => {
+      if (found === null && o.getData && o.getData("testid") === id && typeof o.text === "string") found = o.text;
+    });
+    return found;
+  }, testid);
+}
+
 /** Whether a full-screen dim backdrop (depth 95) is present in the Battle scene. */
 export function battleHasBackdrop(page: Page): Promise<boolean> {
   return page.evaluate(() => {

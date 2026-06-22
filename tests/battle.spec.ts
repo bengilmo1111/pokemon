@@ -1,5 +1,5 @@
 import { test, expect } from "./harness/fixtures";
-import { battleHasBackdrop, battleMessageVisible, battleSnapshot, fightUntilOver, tapBattleLabel } from "./harness/battle";
+import { battleHasBackdrop, battleMessageVisible, battleSnapshot, battleText, fightUntilOver, tapBattleLabel } from "./harness/battle";
 
 /**
  * Full wild-battle playthrough driven via touch: trigger an encounter, fight to
@@ -66,4 +66,20 @@ test("battle submenus hide the message bar (no overlap), restored on Back", asyn
   expect(await tapBattleLabel(page, "fight")).toBe(true);
   await expect.poll(() => battleMessageVisible(page)).toBe(false);
   expect(await battleHasBackdrop(page)).toBe(true);
+});
+
+test("ball targeting instructions use touch wording (no keyboard hint)", async ({ probe, page }) => {
+  await probe.bootIntoOverworld({ team: [{ speciesId: "charizard", level: 40 }] });
+  await probe.forceEncounter();
+  await probe.waitForEvent("battle:active");
+  await expect.poll(async () => (await battleSnapshot(page)).busy === false).toBe(true);
+
+  expect(await tapBattleLabel(page, "bag")).toBe(true);
+  await page.waitForTimeout(300);
+  expect(await tapBattleLabel(page, "poke ball")).toBe(true);
+
+  await expect.poll(() => battleText(page, "targeting-instructions")).toContain("tap THROW");
+  const instr = await battleText(page, "targeting-instructions");
+  expect(instr).not.toContain("arrow keys");
+  expect(instr).not.toContain("SPACE");
 });

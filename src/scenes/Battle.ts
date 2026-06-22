@@ -1,5 +1,6 @@
 import { rng } from "../game/rng";
 import { emitTestEvent } from "../game/testBridge";
+import { TouchControls } from "../game/touch";
 import Phaser from "phaser";
 import { MOVES } from "../data/moves";
 import { SPECIES } from "../data/species";
@@ -1141,15 +1142,19 @@ export default class Battle extends Phaser.Scene {
     this.reticle.add([lineH, lineV, dot, crosshairRing]);
     this.targetingElements.push(this.reticle);
 
-    // Instructions text
-    const instructions = this.add.text(this.scale.width / 2, this.scale.height - 60,
-      "Drag to aim • tap THROW (or arrow keys + SPACE)", {
+    // Instructions text — drop the keyboard hint on touch devices.
+    const isTouch = TouchControls.shouldEnable(this);
+    const instrText = isTouch
+      ? "Drag to aim, then tap THROW"
+      : "Drag to aim • THROW, or arrow keys + SPACE";
+    const instructions = this.add.text(this.scale.width / 2, this.scale.height - 60, instrText, {
         fontFamily: "monospace",
         fontSize: "14px",
         color: "#fbbf24",
         backgroundColor: "#1e293b",
         padding: { left: 12, right: 12, top: 6, bottom: 6 }
       }).setOrigin(0.5).setDepth(100);
+    instructions.setData("testid", "targeting-instructions");
     this.targetingElements.push(instructions);
 
     // THROW button (touch-friendly; also works with mouse)
