@@ -52,6 +52,7 @@ export default class Overworld extends Phaser.Scene {
   private worldBounds = { x: 0, y: 0, width: 0, height: 0 };
   private propBodies!: Phaser.Physics.Arcade.StaticGroup;
   private hudText!: Phaser.GameObjects.Text;
+  private hudVisible = true;
   private mapContainer?: Phaser.GameObjects.Container;
   private mapGraphics?: Phaser.GameObjects.Graphics;
   private mapPlayerMarker?: Phaser.GameObjects.Arc;
@@ -2668,6 +2669,7 @@ export default class Overworld extends Phaser.Scene {
     if (this.serviceMenuOpen) return;
     this.serviceMenuOpen = true;
     this.touch?.setVisible(false);
+    this.setHudVisible(false);
 
     const W = this.scale.width;
     const H = this.scale.height;
@@ -2678,6 +2680,7 @@ export default class Overworld extends Phaser.Scene {
     const closeMenu = () => {
       this.serviceMenuOpen = false;
       this.touch?.setVisible(true);
+      this.setHudVisible(true);
       elements.forEach(e => e.destroy());
       this.serviceMenuElements = [];
     };
@@ -2789,6 +2792,7 @@ export default class Overworld extends Phaser.Scene {
   private openVisualMap(): void {
     this.mapOpen = true;
     this.touch?.setVisible(false);
+    this.setHudVisible(false);
     const region = getRegion(gameState);
     const bounds = this.getWorldBounds(region);
 
@@ -2983,6 +2987,7 @@ export default class Overworld extends Phaser.Scene {
   private closeVisualMap(): void {
     this.mapOpen = false;
     this.touch?.setVisible(true);
+    this.setHudVisible(true);
     if (this.mapContainer) {
       this.mapContainer.destroy();
       this.mapContainer = undefined;
@@ -2995,6 +3000,7 @@ export default class Overworld extends Phaser.Scene {
     this.isPaused = true;
     this.physics.pause();
     this.touch?.setVisible(false);
+    this.setHudVisible(false);
 
     // Close any open menus
     if (this.mapOpen) this.closeVisualMap();
@@ -3078,10 +3084,17 @@ export default class Overworld extends Phaser.Scene {
     this.pauseText.push(hint);
   }
 
+  private setHudVisible(visible: boolean): void {
+    this.hudVisible = visible;
+    this.hudText?.setVisible(visible);
+    if (!visible) this.notificationText?.setVisible(false);
+  }
+
   private resumeGame(): void {
     this.isPaused = false;
     this.physics.resume();
     this.touch?.setVisible(true);
+    this.setHudVisible(true);
 
     // Clean up pause UI
     if (this.pauseOverlay) {
@@ -3098,6 +3111,7 @@ export default class Overworld extends Phaser.Scene {
     this.teamTab = "team";
     this.teamSelectedMon = null;
     this.touch?.setVisible(false);
+    this.setHudVisible(false);
     this.renderTeamScreen();
   }
 
@@ -3465,6 +3479,7 @@ export default class Overworld extends Phaser.Scene {
     this.teamOpen = false;
     this.teamSelectedMon = null;
     this.touch?.setVisible(true);
+    this.setHudVisible(true);
     if (this.teamContainer) { this.teamContainer.destroy(true); this.teamContainer = undefined; }
     this.teamOverlay = undefined;
     this.teamText = [];
@@ -3504,6 +3519,7 @@ export default class Overworld extends Phaser.Scene {
     if (this.pokedexOpen) return;
     this.pokedexOpen = true;
     this.touch?.setVisible(false);
+    this.setHudVisible(false);
 
     const W = this.scale.width;
     const H = this.scale.height;
@@ -3593,6 +3609,7 @@ export default class Overworld extends Phaser.Scene {
   private closePokedex(): void {
     this.pokedexOpen = false;
     this.touch?.setVisible(true);
+    this.setHudVisible(true);
     if (this.pokedexContainer) {
       this.pokedexContainer.destroy(true);
       this.pokedexContainer = undefined;
@@ -3873,6 +3890,7 @@ export default class Overworld extends Phaser.Scene {
 
   private renderMart(): void {
     this.touch?.setVisible(false);
+    this.setHudVisible(false);
     if (this.martContainer) {
       this.martContainer.destroy(true);
       this.martContainer = undefined;
@@ -4027,6 +4045,7 @@ export default class Overworld extends Phaser.Scene {
   private closeMart(): void {
     this.martOpen = false;
     this.touch?.setVisible(true);
+    this.setHudVisible(true);
     if (this.martContainer) {
       this.martContainer.destroy(true);
       this.martContainer = undefined;
