@@ -112,6 +112,11 @@ export class GameProbe {
     return this.page.evaluate((i) => (window as any).__GAME__.teleportToTown(i) as string | null, index);
   }
 
+  /** Move the player onto a gym in the current region; returns its name. */
+  teleportToGym(index = 0): Promise<string | null> {
+    return this.page.evaluate((i) => (window as any).__GAME__.teleportToGym(i) as string | null, index);
+  }
+
   /** Screen-space positions of the on-screen touch buttons. */
   touchButtons(): Promise<TouchButton[]> {
     return this.page.evaluate(() => (window as any).__GAME__.touchButtons() as TouchButton[]);

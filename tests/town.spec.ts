@@ -1,9 +1,9 @@
 import { test, expect } from "./harness/fixtures";
 
 /**
- * Town services on touch: standing on a town and tapping Talk opens a service
- * choice menu, and its options actually open the corresponding screens.
- * (Relies on the harness teleport helper to reach a town deterministically.)
+ * Town & gym services on touch: standing on a location and tapping Talk opens a
+ * service choice menu whose options open the right screens / battles.
+ * (Relies on the harness teleport helpers to reach places deterministically.)
  */
 test("tapping Talk in a town opens the service menu", async ({ probe, touch }) => {
   await probe.bootIntoOverworld();
@@ -38,4 +38,27 @@ test("the Visit Mart service opens the shop", async ({ probe, touch }) => {
   const close = await probe.uiTarget("close-mart");
   expect(next.y + next.h / 2, "Next button must be above the Leave Shop button")
     .toBeLessThan(close.y - close.h / 2);
+});
+
+test("a gym is challengeable on touch", async ({ probe, touch }) => {
+  await probe.bootIntoOverworld({ team: [{ speciesId: "charizard", level: 60 }] });
+  const gym = await probe.teleportToGym(0);
+  expect(gym, "should have teleported onto a gym").toBeTruthy();
+
+  const since = await probe.clearEvents();
+  const talk = await probe.touchButton("interact");
+  await touch.tap(talk.x, talk.y);
+
+  // Tapping Talk at a gym either offers the battle in the service menu (when the
+  // gym shares a town with other services) or starts the gym battle directly
+  // (a lone gym). Either way it must be reachable on touch.
+  await expect
+    .poll(async () => {
+      const snap = await probe.snapshot();
+      if (snap.overworld!.menus.serviceMenuOpen) {
+        return (await probe.uiTargets()).some((t) => t.testid.startsWith("service-battle"));
+      }
+      return (await probe.events(since)).some((e) => e.type === "battle:active");
+    }, { timeout: 12_000, message: "gym was not challengeable via Talk" })
+    .toBe(true);
 });
