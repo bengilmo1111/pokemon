@@ -36,6 +36,7 @@ import {
   usePp,
   hasUsableMove
 } from "../game/state";
+import { drawPanel, UI } from "../game/ui/theme";
 
 interface BattleData {
   type: "wild" | "gym" | "trainer" | "rival" | "elite";
@@ -80,7 +81,7 @@ export default class Battle extends Phaser.Scene {
   private playerShadow?: Phaser.GameObjects.Ellipse;
   private enemyShadow?: Phaser.GameObjects.Ellipse;
   private messageText!: Phaser.GameObjects.Text;
-  private messageBg?: Phaser.GameObjects.Rectangle;
+  private messageBg?: Phaser.GameObjects.Graphics;
   private playerHpText!: Phaser.GameObjects.Text;
   private enemyHpText!: Phaser.GameObjects.Text;
   private playerHpBar?: Phaser.GameObjects.Graphics;
@@ -303,8 +304,8 @@ export default class Battle extends Phaser.Scene {
     // Message bar — full-width, anchored just above the battle buttons, high depth
     // so it always renders over enemy stats (which sit at depth 0).
     const msgY = this.scale.height - 205;
-    this.messageBg = this.add.rectangle(this.scale.width / 2, msgY, this.scale.width, 56, 0x0f172a, 0.92)
-      .setDepth(149).setScrollFactor(0);
+    this.messageBg = this.add.graphics().setDepth(149).setScrollFactor(0);
+    drawPanel(this.messageBg, 8, msgY - 28, this.scale.width - 16, 56, { radius: 12 });
     this.messageText = this.add.text(this.scale.width / 2, msgY, introText, {
       fontFamily: "monospace",
       fontSize: "20px",
@@ -318,8 +319,9 @@ export default class Battle extends Phaser.Scene {
     Sound.playEncounter();
     this.time.delayedCall(500, () => Sound.playBattleMusic());
 
-    // Player Pokemon info box
-    this.add.rectangle(this.scale.width - 220, this.scale.height * 0.6, 200, 90, 0x1e293b, 0.9).setOrigin(0);
+    // Player & enemy info boxes — shared themed panels.
+    const infoPanels = this.add.graphics();
+    drawPanel(infoPanels, this.scale.width - 220, this.scale.height * 0.6, 200, 90, { radius: 12, shadow: false });
     this.playerHpText = this.add.text(this.scale.width - 210, this.scale.height * 0.61, "", {
       fontFamily: "monospace",
       fontSize: "14px",
@@ -340,11 +342,11 @@ export default class Battle extends Phaser.Scene {
     this.xpBarX = this.scale.width - 210;
     this.xpBarY = this.scale.height * 0.70;
     this.xpBarW = 180;
-    this.xpBarBg = this.add.rectangle(this.xpBarX, this.xpBarY, this.xpBarW, 6, 0x1e293b).setOrigin(0);
+    this.xpBarBg = this.add.rectangle(this.xpBarX, this.xpBarY, this.xpBarW, 6, UI.borderSoft).setOrigin(0);
     this.xpBarFill = this.add.rectangle(this.xpBarX, this.xpBarY, 0, 6, 0x8b5cf6).setOrigin(0);
 
     // Enemy Pokemon info box
-    this.add.rectangle(20, this.scale.height * 0.08, 200, 70, 0x1e293b, 0.9).setOrigin(0);
+    drawPanel(infoPanels, 20, this.scale.height * 0.08, 200, 70, { radius: 12, shadow: false });
     this.enemyHpText = this.add.text(30, this.scale.height * 0.09, "", {
       fontFamily: "monospace",
       fontSize: "14px",
