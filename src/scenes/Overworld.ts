@@ -49,7 +49,7 @@ import {
   lighten,
   darken
 } from "../game/terrain/stamps";
-import { drawPanel } from "../game/ui/theme";
+import { drawPanel, UI } from "../game/ui/theme";
 
 type WildSprite = Phaser.Physics.Arcade.Sprite & { wildId: string };
 
@@ -131,6 +131,7 @@ export default class Overworld extends Phaser.Scene {
   private ambientParticles: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
   private isPaused = false;
   private pauseOverlay?: Phaser.GameObjects.Rectangle;
+  private pausePanel?: Phaser.GameObjects.Graphics;
   private pauseText: Phaser.GameObjects.Text[] = [];
   private portalSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private portalTransitioning = false;
@@ -386,6 +387,14 @@ export default class Overworld extends Phaser.Scene {
       this.keepPlayerOnMap();
       gameState.portalTargetX = undefined;
       gameState.portalTargetY = undefined;
+    } else if (gameState.lastPlayerX !== undefined && gameState.lastPlayerY !== undefined) {
+      // Resuming a saved game: drop the player at the town nearest where they
+      // last saved, rather than the default new-game start (region.zones[0]).
+      const town = this.nearestTownTo(region, gameState.lastPlayerX, gameState.lastPlayerY);
+      if (town) {
+        this.player.setPosition(town.x * WORLD_SCALE, town.y * WORLD_SCALE);
+        this.keepPlayerOnMap();
+      }
     }
 
     if (gameState.team.length === 0) {
@@ -571,11 +580,15 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private showNotification(message: string, duration = 2000): void {
-    if (this.notificationText) {
+    // Guard against a stale field: on a same-instance scene restart (Load Game,
+    // portals) create() calls this before notificationText is recreated, and the
+    // previous life's text has been destroyed (.scene === null). Touching it
+    // would throw mid-create and abort the restart. A live text has a scene.
+    if (this.notificationText && this.notificationText.scene) {
       this.notificationText.setText(message).setVisible(true);
       // Anchor the toast just under the HUD box so the two never overlap
       // (the HUD grows/shrinks with contextual hints, so measure it each time).
-      const hudBottom = this.hudText ? this.hudText.y + this.hudText.height : 64;
+      const hudBottom = this.hudText && this.hudText.scene ? this.hudText.y + this.hudText.height : 64;
       this.notificationText.setPosition(this.scale.width / 2, hudBottom + 22);
       this.notificationTimer = duration;
     }
@@ -678,6 +691,11 @@ export default class Overworld extends Phaser.Scene {
       this.playerShadow.setPosition(this.player.x, this.player.y + 26);
       this.playerShadow.setScale(moving ? 0.9 : 1);
     }
+
+    // Remember where the player is so any save captures it; resuming a saved
+    // game then drops the player at the town nearest this spot (see create()).
+    gameState.lastPlayerX = this.player.x;
+    gameState.lastPlayerY = this.player.y;
   }
 
   private updateWildMons(delta: number): void {
@@ -1598,6 +1616,28 @@ export default class Overworld extends Phaser.Scene {
       this.scene.resume();
       Sound.playOverworldMusic();
     });
+  }
+
+  /** Nearest town to an arbitrary world point (px). Prefers towns with a
+   * Pokémon Center so a resumed game lands at a proper rest stop, falling back
+   * to the closest town of any kind. */
+  private nearestTownTo(region: RegionData, px: number, py: number): TownData | null {
+    let nearest: TownData | null = null;
+    let nearestCenter: TownData | null = null;
+    let minDist = Infinity;
+    let minCenterDist = Infinity;
+    for (const town of region.towns) {
+      const dist = Phaser.Math.Distance.Between(px, py, town.x * WORLD_SCALE, town.y * WORLD_SCALE);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = town;
+      }
+      if (town.services.includes("center") && dist < minCenterDist) {
+        minCenterDist = dist;
+        nearestCenter = town;
+      }
+    }
+    return nearestCenter ?? nearest;
   }
 
   private findNearestTown(): TownData | null {
@@ -2980,10 +3020,7 @@ export default class Overworld extends Phaser.Scene {
     const panelTop = H / 2 - panelH / 2;
 
     const panelBg = this.add.graphics().setScrollFactor(0).setDepth(DEPTH);
-    panelBg.fillStyle(0x0f172a, 0.98);
-    panelBg.fillRoundedRect(cx - panelW / 2, panelTop, panelW, panelH, 18);
-    panelBg.lineStyle(2, 0x7c3aed, 1);
-    panelBg.strokeRoundedRect(cx - panelW / 2, panelTop, panelW, panelH, 18);
+    drawPanel(panelBg, cx - panelW / 2, panelTop, panelW, panelH, { radius: 18 });
     elements.push(panelBg);
 
     const title = this.add.text(cx, panelTop + 30, "What would you like to do?", {
@@ -3353,6 +3390,10 @@ export default class Overworld extends Phaser.Scene {
     this.pauseOverlay.setScrollFactor(0);
     this.pauseOverlay.setDepth(1000);
 
+    // Themed panel framing the pause options.
+    this.pausePanel = this.add.graphics().setScrollFactor(0).setDepth(1000.5);
+    drawPanel(this.pausePanel, centerX - 180, centerY - 135, 360, 312, { radius: 18 });
+
     // Pause title
     const title = this.add.text(centerX, centerY - 100, "PAUSED", {
       fontFamily: "monospace",
@@ -3450,6 +3491,10 @@ export default class Overworld extends Phaser.Scene {
       this.pauseOverlay.destroy();
       this.pauseOverlay = undefined;
     }
+    if (this.pausePanel) {
+      this.pausePanel.destroy();
+      this.pausePanel = undefined;
+    }
     this.pauseText.forEach(t => t.destroy());
     this.pauseText = [];
   }
@@ -3488,6 +3533,9 @@ export default class Overworld extends Phaser.Scene {
     const headerBg = this.add.rectangle(cx, 28, W, 56, 0x7c3aed, 1)
       .setScrollFactor(0).setDepth(DEPTH + 1);
     this.teamText.push(headerBg);
+    // Amber accent line ties the header to the shared UI theme.
+    this.teamText.push(this.add.rectangle(cx, 56, W, 2, UI.border, 0.9)
+      .setScrollFactor(0).setDepth(DEPTH + 2));
     push(this.add.text(cx, 28, "MY TEAM", {
       fontFamily: "monospace", fontSize: "24px", fontStyle: "bold", color: "#f8fafc"
     }).setOrigin(0.5));
@@ -3910,12 +3958,14 @@ export default class Overworld extends Phaser.Scene {
       this.pokedexText.push(go as Phaser.GameObjects.Text);
     };
 
-    // Full-screen dark panel
+    // Full-screen dark panel with a themed header + amber accent line.
     const panelG = this.add.graphics().setScrollFactor(0).setDepth(DEPTH);
-    panelG.fillStyle(0x0f172a, 0.97);
+    panelG.fillStyle(UI.bg, 0.97);
     panelG.fillRect(0, 0, W, H);
-    panelG.fillStyle(0x1e3a8a, 1);
+    panelG.fillStyle(UI.bgTop, 1);
     panelG.fillRect(0, 0, W, 56);
+    panelG.fillStyle(UI.border, 0.9);
+    panelG.fillRect(0, 54, W, 2);
     this.pokedexOverlay = panelG as unknown as Phaser.GameObjects.Rectangle;
 
     // Title bar
@@ -4305,6 +4355,9 @@ export default class Overworld extends Phaser.Scene {
     const headerBg = this.add.rectangle(cx, 28, W, 56, 0xb45309, 1)
       .setScrollFactor(0).setDepth(DEPTH + 1);
     this.martElements.push(headerBg);
+    // Amber accent line ties the header to the shared UI theme.
+    this.martElements.push(this.add.rectangle(cx, 56, W, 2, UI.border, 0.9)
+      .setScrollFactor(0).setDepth(DEPTH + 2));
     push(this.add.text(cx, 28, "🛒  Poké Mart", {
       fontFamily: "monospace", fontSize: "26px", fontStyle: "bold", color: "#fff7ed"
     }).setOrigin(0.5));

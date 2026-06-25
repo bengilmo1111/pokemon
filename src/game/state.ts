@@ -158,6 +158,8 @@ export interface GameState {
   xpMultiplier: number;  // For power spot XP boosts
   portalTargetX?: number;  // Target X position after portal transition
   portalTargetY?: number;  // Target Y position after portal transition
+  lastPlayerX?: number;  // Player world position (px) at last save; resume spawns at the nearest town
+  lastPlayerY?: number;
   tutorialSeen: boolean;  // Whether the tutorial overlay has been shown
   money: number;  // Player's current money (Pokedollars)
   e4Progress: number;  // 0–4: how many E4 trainers have been defeated
