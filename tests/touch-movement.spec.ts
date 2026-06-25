@@ -22,6 +22,24 @@ test.describe("touch movement", () => {
     expect(afterDown.y, "holding down should increase y").toBeGreaterThan(start.y);
   });
 
+  test("the player faces the direction of horizontal travel", async ({ probe, touch }) => {
+    await probe.bootIntoOverworld();
+
+    // Walk right: the sprite's stored art faces left, so moving right must flip it.
+    await touch.walk(DIR.right, 400);
+    const facingRight = (await probe.snapshot()).overworld!.player.flipX;
+    expect(facingRight, "walking right should flip the sprite to face right").toBe(true);
+
+    // Walk left: the sprite should return to its un-flipped, left-facing pose.
+    await touch.walk(DIR.left, 400);
+    const facingLeft = (await probe.snapshot()).overworld!.player.flipX;
+    expect(facingLeft, "walking left should leave the sprite un-flipped").toBe(false);
+
+    // The two directions must produce opposite facings (the reversal bug made
+    // both directions resolve to the wrong flip).
+    expect(facingRight).not.toBe(facingLeft);
+  });
+
   test("the on-screen action buttons are laid out on the right edge", async ({ probe }) => {
     await probe.bootIntoOverworld();
 
