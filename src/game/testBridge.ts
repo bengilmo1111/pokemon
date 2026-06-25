@@ -117,6 +117,8 @@ export interface TestBridgeApi {
    * services are in range. Returns the town name, or null if unavailable.
    */
   teleportToTown(index?: number): string | null;
+  /** Move the player onto a gym in the current region (by index). */
+  teleportToGym(index?: number): string | null;
   /**
    * Screen-space positions of the on-screen touch buttons, so the harness can
    * tap them where a real thumb would. Empty when touch controls are inactive.
@@ -293,6 +295,16 @@ export function installTestBridge(game: Phaser.Game): void {
       scene.player.setPosition(town.x * WORLD_SCALE, town.y * WORLD_SCALE);
       emitTestEvent("scenario:teleport-town", { town: town.name });
       return town.name;
+    },
+    teleportToGym: (index = 0) => {
+      const scene = game.scene.getScene("Overworld") as unknown as {
+        player?: { setPosition: (x: number, y: number) => void };
+      } | null;
+      const gym = getRegion(gameState).gyms[index];
+      if (!scene?.player || !gym) return null;
+      scene.player.setPosition(gym.x * WORLD_SCALE, gym.y * WORLD_SCALE);
+      emitTestEvent("scenario:teleport-gym", { gym: gym.name });
+      return gym.name;
     },
     touchButtons: () => {
       const scene = game.scene.getScene("Overworld") as unknown as {
