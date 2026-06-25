@@ -12,6 +12,13 @@ export interface TouchButtonConfig {
   primary?: boolean;
   /** place in top-right corner instead of the right-side stack */
   corner?: boolean;
+  /**
+   * Fired synchronously inside the pointerdown handler. Use this (instead of the
+   * deferred {@link TouchControls.wasButtonPressed} poll) for actions that must
+   * run within the originating user gesture — e.g. requesting fullscreen, which
+   * the browser rejects outside of a user activation.
+   */
+  onPress?: () => void;
 }
 
 /**
@@ -141,6 +148,8 @@ export class TouchControls {
         bg.setScale(0.88);
         bg.setFillStyle(color, 0.92);
         if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(10);
+        // Run within the user gesture (fullscreen etc. must not be deferred).
+        cfg.onPress?.();
         ev?.stopPropagation();
       });
       const release = () => {
