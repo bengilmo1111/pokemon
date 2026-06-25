@@ -38,7 +38,7 @@ import { pickWeighted } from "../game/utils";
 import { getStatusColor, getStatusDisplayText } from "../game/battle";
 import * as Sound from "../game/sound";
 import { saveGame, loadGame } from "../game/persistence";
-import { TouchControls } from "../game/touch";
+import { TouchControls, type TouchButtonConfig } from "../game/touch";
 import { fitMenu } from "../game/uiLayout";
 
 type WildSprite = Phaser.Physics.Arcade.Sprite & { wildId: string };
@@ -253,13 +253,24 @@ export default class Overworld extends Phaser.Scene {
     // On-screen touch controls (only created on touch / coarse-pointer devices).
     // Hidden immediately if a modal (starter select / tutorial) is about to show —
     // they'll be restored when that modal closes.
-    this.touch = new TouchControls(this, [
+    const touchButtons: TouchButtonConfig[] = [
       { id: "interact", label: "Talk",  primary: true, color: 0x16a34a },
       { id: "item",     label: "Items", color: 0x0ea5e9 },
       { id: "team",     label: "Team",  color: 0x7c3aed },
       { id: "map",      label: "Map",   color: 0xb45309 },
       { id: "menu",     label: "≡",     color: 0x334155, corner: true }
-    ]);
+    ];
+    // Fullscreen is mobile's most-wanted comfort feature, but the API isn't
+    // available everywhere (notably iPhone Safari), so only surface the control
+    // when the browser can actually honour it. onPress fires inside the gesture,
+    // which fullscreen requests require.
+    if (this.scale.fullscreen.available) {
+      touchButtons.push({
+        id: "fullscreen", label: "⛶", color: 0x334155, corner: true,
+        onPress: () => this.scale.toggleFullscreen()
+      });
+    }
+    this.touch = new TouchControls(this, touchButtons);
     if (gameState.team.length === 0 || !gameState.tutorialSeen) {
       this.touch?.setVisible(false);
     }

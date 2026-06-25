@@ -27,7 +27,11 @@ test.describe("touch movement", () => {
 
     const buttons = await probe.touchButtons();
     const ids = buttons.map((b) => b.id).sort();
-    expect(ids).toEqual(["interact", "item", "map", "menu", "team"]);
+    // Core buttons always present; "fullscreen" may or may not appear depending
+    // on browser support, so we check for containment rather than exact equality.
+    const core = ["interact", "item", "map", "menu", "team"];
+    expect(core.every((id) => ids.includes(id))).toBe(true);
+    expect(ids.every((id) => [...core, "fullscreen"].includes(id))).toBe(true);
 
     // Every button should sit within the viewport (no off-screen controls).
     const vp = { width: 412, height: 915 };

@@ -5,6 +5,7 @@ import Preload from "./scenes/Preload";
 import Overworld from "./scenes/Overworld";
 import Battle from "./scenes/Battle";
 import { installTestBridge, isTestMode } from "./game/testBridge";
+import { installViewportHandlers } from "./game/viewport";
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -31,6 +32,9 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 const game = new Phaser.Game(config);
+
+// Keep the canvas correctly sized across device rotation (see viewport.ts).
+installViewportHandlers(game);
 
 // Test-only: expose an observability/control bridge for the automated harness.
 // No effect on normal play (gated behind ?test=1 / localStorage flag).
