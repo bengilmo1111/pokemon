@@ -46,6 +46,8 @@ export class TouchControls {
   private buttons: Array<{
     cfg: TouchButtonConfig;
     bg: Phaser.GameObjects.Arc;
+    shadow: Phaser.GameObjects.Arc;
+    gloss: Phaser.GameObjects.Ellipse;
     text: Phaser.GameObjects.Text;
     label: Phaser.GameObjects.Text;
     pressed: boolean;
@@ -110,12 +112,25 @@ export class TouchControls {
     configs.forEach((cfg) => {
       const r = cfg.primary ? 44 : cfg.corner ? 28 : 34;
       const color = cfg.color ?? 0x1e293b;
+
+      // Soft drop shadow so buttons lift off the world.
+      const shadow = this.scene.add
+        .circle(0, 0, r + 1, 0x000000, 0.28)
+        .setScrollFactor(0)
+        .setDepth(this.depth - 1);
+
       const bg = this.scene.add
-        .circle(0, 0, r, color, 0.72)
-        .setStrokeStyle(2, 0xffffff, 0.55)
+        .circle(0, 0, r, color, 0.86)
+        .setStrokeStyle(2, 0xffffff, 0.6)
         .setScrollFactor(0)
         .setDepth(this.depth)
         .setInteractive({ useHandCursor: true });
+
+      // Glossy top highlight for a tactile, premium pill look.
+      const gloss = this.scene.add
+        .ellipse(0, 0, r * 1.2, r * 0.8, 0xffffff, 0.16)
+        .setScrollFactor(0)
+        .setDepth(this.depth);
 
       // Button icon / short name centred in circle
       const text = this.scene.add
@@ -142,11 +157,12 @@ export class TouchControls {
         .setScrollFactor(0)
         .setDepth(this.depth + 1);
 
-      const entry = { cfg, bg, text, label, pressed: false };
+      const entry = { cfg, bg, shadow, gloss, text, label, pressed: false };
       bg.on("pointerdown", (_p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => {
         entry.pressed = true;
         bg.setScale(0.88);
-        bg.setFillStyle(color, 0.92);
+        gloss.setScale(0.88);
+        bg.setFillStyle(color, 1);
         if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(10);
         // Run within the user gesture (fullscreen etc. must not be deferred).
         cfg.onPress?.();
@@ -154,7 +170,8 @@ export class TouchControls {
       });
       const release = () => {
         bg.setScale(1);
-        bg.setFillStyle(color, 0.72);
+        gloss.setScale(1);
+        bg.setFillStyle(color, 0.86);
       };
       bg.on("pointerup", release);
       bg.on("pointerout", release);
@@ -250,6 +267,13 @@ export class TouchControls {
       cornerY += r * 2 + 14;
     });
 
+    // Keep each button's shadow/gloss locked to its background circle.
+    this.buttons.forEach((b) => {
+      const r = rOf(b);
+      b.shadow.setPosition(b.bg.x, b.bg.y + 3);
+      b.gloss.setPosition(b.bg.x, b.bg.y - r * 0.34);
+    });
+
     // Ghost joystick rests at bottom-left of the play area
     const ghostX = safeAreaInset("left") + gap + this.joyRadius;
     const ghostY = h - safeAreaInset("bottom") - gap - this.joyRadius;
@@ -275,11 +299,14 @@ export class TouchControls {
     if (!this.active) return;
     this.buttons.forEach((b) => {
       b.bg.setVisible(visible);
+      b.shadow.setVisible(visible);
+      b.gloss.setVisible(visible);
       b.text.setVisible(visible);
       b.label.setVisible(visible);
       if (!visible) {
         b.pressed = false;
         b.bg.setScale(1);
+        b.gloss.setScale(1);
       }
     });
     this.joyGhost.setVisible(visible);
