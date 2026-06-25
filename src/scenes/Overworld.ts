@@ -3,7 +3,7 @@ import { emitTestEvent } from "../game/testBridge";
 import Phaser from "phaser";
 import { BIOMES } from "../data/biomes";
 import { SPECIES } from "../data/species";
-import type { LandmarkData, RegionData, TownData, PortalData } from "../data/regions";
+import type { LandmarkData, RegionData, TownData, PortalData, ZoneData } from "../data/regions";
 import { gameState } from "../game/store";
 import {
   WORLD_SCALE,
@@ -40,17 +40,35 @@ import * as Sound from "../game/sound";
 import { saveGame, loadGame } from "../game/persistence";
 import { TouchControls, type TouchButtonConfig } from "../game/touch";
 import { fitMenu } from "../game/uiLayout";
+import {
+  ensureTerrainTextures,
+  SOFT_CIRCLE_KEY,
+  SOFT_CIRCLE_SIZE,
+  NOISE_KEY,
+  OCEAN_GRADIENT_KEY,
+  lighten,
+  darken
+} from "../game/terrain/stamps";
+import { drawPanel } from "../game/ui/theme";
 
 type WildSprite = Phaser.Physics.Arcade.Sprite & { wildId: string };
 
 export default class Overworld extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private player!: Phaser.Physics.Arcade.Sprite;
-  private zoneGraphics!: Phaser.GameObjects.Graphics;
   private routeGraphics!: Phaser.GameObjects.Graphics;
   private poiGraphics!: Phaser.GameObjects.Graphics;
   private propGraphics!: Phaser.GameObjects.Graphics;
   private oceanGraphics!: Phaser.GameObjects.Graphics;
+  // Painterly terrain: a baked continent (sand/grass/biomes) in a RenderTexture,
+  // a stretched ocean gradient behind it, and a noise overlay masked to the land.
+  private terrainRT?: Phaser.GameObjects.RenderTexture;
+  private oceanImage?: Phaser.GameObjects.Image;
+  private terrainStamp?: Phaser.GameObjects.Image;
+  // The terrain is baked at a fraction of world resolution and displayed scaled
+  // up: a full-size RenderTexture can exceed the framebuffer limit on software
+  // WebGL (the headless mobile test profile). Soft stamps upscale cleanly.
+  private terrainRes = 0.5;
   private worldBounds = { x: 0, y: 0, width: 0, height: 0 };
   private propBodies!: Phaser.Physics.Arcade.StaticGroup;
   private hudText!: Phaser.GameObjects.Text;
@@ -60,6 +78,18 @@ export default class Overworld extends Phaser.Scene {
   private mapPlayerMarker?: Phaser.GameObjects.Arc;
   private mapText!: Phaser.GameObjects.Text;
   private wildSprites: Map<string, WildSprite> = new Map();
+  // Per-wild animation state (idle ↔ hop). Scene-side so the saved wildMons
+  // shape stays untouched; rebuilt lazily as mons are encountered each frame.
+  private wildAnim: Map<string, {
+    mode: "idle" | "hop";
+    timer: number;       // ms left in the current mode
+    hopDur: number;      // ms for the active hop
+    hopT: number;        // 0..1 progress through the active hop
+    facing: number;      // -1 / 1
+    breath: number;      // ms accumulator for idle breathing
+    baseSX: number;      // sprite base scaleX (captured once)
+    baseSY: number;
+  }> = new Map();
   private trainerSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private itemSprites: Map<string, Phaser.GameObjects.Arc> = new Map();
   private rivalSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
@@ -149,15 +179,14 @@ export default class Overworld extends Phaser.Scene {
     this.physics.world.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
     this.cameras.main.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
 
+    ensureTerrainTextures(this);
     this.oceanGraphics = this.add.graphics();
-    this.oceanGraphics.setDepth(-200);
-    this.zoneGraphics = this.add.graphics();
+    this.oceanGraphics.setDepth(-199);
     this.routeGraphics = this.add.graphics();
     this.poiGraphics = this.add.graphics();
     this.propGraphics = this.add.graphics();
     this.propBodies = this.physics.add.staticGroup();
-    this.drawOceanBackground(region);
-    this.drawZones(region);
+    this.buildTerrain(region);
     this.drawRoutes(region);
     this.drawPointsOfInterest(region);
 
@@ -201,7 +230,6 @@ export default class Overworld extends Phaser.Scene {
     const startX = startZone.x * WORLD_SCALE;
     const startY = startZone.y * WORLD_SCALE;
     // Fixed depths for the ground layers so entities (depth = y) always sort above them
-    this.zoneGraphics.setDepth(-100);
     this.routeGraphics.setDepth(-90);
     this.poiGraphics.setDepth(-80);
     this.propGraphics.setDepth(-70);
@@ -431,7 +459,7 @@ export default class Overworld extends Phaser.Scene {
     }
 
     this.updatePlayer();
-    this.updateWildMons();
+    this.updateWildMons(delta);
     this.poiHudTimer -= delta;
     if (this.poiHudTimer <= 0 || this.interactPressed) {
       this.updatePoiHud();
@@ -635,8 +663,14 @@ export default class Overworld extends Phaser.Scene {
         this.playerBaseScale * (1 + bob * 0.05)
       );
     } else {
-      this.walkTime = 0;
-      this.player.setScale(this.playerBaseScale, this.playerBaseScale);
+      // Idle breathing: a slow, subtle squash/stretch so the player feels alive
+      // even when standing still.
+      this.walkTime += this.game.loop.delta;
+      const breath = Math.sin(this.walkTime * 0.004);
+      this.player.setScale(
+        this.playerBaseScale * (1 - breath * 0.012),
+        this.playerBaseScale * (1 + breath * 0.018)
+      );
     }
 
     // Keep the player's shadow under its feet
@@ -646,48 +680,100 @@ export default class Overworld extends Phaser.Scene {
     }
   }
 
-  private updateWildMons(): void {
+  private updateWildMons(delta: number): void {
     const region = getRegion(gameState);
     // Build/refresh the O(1) zone lookup when the region changes.
     if (this.zoneMapRegion !== gameState.regionIndex) {
       this.zoneMap = new Map(region.zones.map((z) => [z.id, { x: z.x, y: z.y, r: z.r }]));
       this.zoneMapRegion = gameState.regionIndex;
     }
+    // Normalised time step so motion is frame-rate independent (1 = 60fps frame).
+    const dt = Math.min(delta, 50) / 16.667;
     for (const wild of gameState.wildMons) {
       const zone = this.zoneMap.get(wild.zoneId);
       if (!zone) continue;
-      const jitter = 0.3;
-      wild.vx += (rng() - 0.5) * jitter;
-      wild.vy += (rng() - 0.5) * jitter;
-      const speed = Math.hypot(wild.vx, wild.vy) || 0.0001;
-      const maxSpeed = 1.2;
-      if (speed > maxSpeed) {
-        wild.vx = (wild.vx / speed) * maxSpeed;
-        wild.vy = (wild.vy / speed) * maxSpeed;
+
+      const sprite = this.wildSprites.get(wild.id);
+      let anim = this.wildAnim.get(wild.id);
+      if (!anim) {
+        anim = {
+          mode: "idle",
+          timer: 200 + rng() * 1200,
+          hopDur: 1,
+          hopT: 1,
+          facing: wild.vx < 0 ? -1 : 1,
+          breath: rng() * 1000,
+          baseSX: sprite ? Math.abs(sprite.scaleX) : 1,
+          baseSY: sprite ? sprite.scaleY : 1
+        };
+        this.wildAnim.set(wild.id, anim);
       }
 
       const zoneX = zone.x * WORLD_SCALE;
       const zoneY = zone.y * WORLD_SCALE;
       const zoneR = zone.r * WORLD_SCALE;
-      const dx = wild.x - zoneX;
-      const dy = wild.y - zoneY;
-      const dist = Math.hypot(dx, dy) || 0.0001;
-      if (dist > zoneR - 30) {
-        wild.vx -= (dx / dist) * 0.6;
-        wild.vy -= (dy / dist) * 0.6;
+
+      anim.timer -= delta;
+      let hopHeight = 0;
+
+      if (anim.mode === "idle") {
+        anim.breath += delta;
+        wild.vx = 0;
+        wild.vy = 0;
+        if (anim.timer <= 0) {
+          // Begin a hop: aim roughly toward the zone centre when near the edge,
+          // otherwise pick a fresh random heading. Keeps mons lively but penned.
+          const dx = wild.x - zoneX;
+          const dy = wild.y - zoneY;
+          const dist = Math.hypot(dx, dy) || 0.0001;
+          let ang: number;
+          if (dist > zoneR * 0.7) {
+            ang = Math.atan2(-dy, -dx) + (rng() - 0.5) * 1.4;
+          } else {
+            ang = rng() * Math.PI * 2;
+          }
+          const speed = 0.9 + rng() * 0.7;
+          wild.vx = Math.cos(ang) * speed;
+          wild.vy = Math.sin(ang) * speed;
+          anim.facing = wild.vx < 0 ? -1 : 1;
+          anim.mode = "hop";
+          anim.hopDur = 280 + rng() * 220;
+          anim.hopT = 0;
+        }
+      } else {
+        // Hop: ease forward and arc the body up over the (grounded) shadow.
+        anim.hopT += delta / anim.hopDur;
+        if (anim.hopT >= 1) {
+          anim.hopT = 1;
+          anim.mode = "idle";
+          anim.timer = 350 + rng() * 1600;
+          wild.vx = 0;
+          wild.vy = 0;
+        } else {
+          // Ease-out speed across the hop so it lands gently.
+          const ease = 1 - (1 - anim.hopT) * (1 - anim.hopT);
+          const step = (1 - Math.abs(anim.hopT - 0.5) * 0.6); // faster mid-hop
+          wild.x += wild.vx * dt * step * 1.4;
+          wild.y += wild.vy * dt * step * 1.4;
+          this.keepWildPokemonInZone(wild, zone);
+          hopHeight = Math.sin(ease * Math.PI) * 9;
+        }
       }
 
-      wild.x += wild.vx;
-      wild.y += wild.vy;
-      this.keepWildPokemonInZone(wild, zone);
-
-      const sprite = this.wildSprites.get(wild.id);
       if (sprite) {
-        sprite.setPosition(wild.x, wild.y);
-        sprite.setFlipX(wild.vx < 0);
+        // Idle breathing: gentle squash/stretch when stationary.
+        const breathe = anim.mode === "idle" ? Math.sin(anim.breath * 0.005) : 0;
+        const sx = anim.baseSX * (1 - breathe * 0.03);
+        const sy = anim.baseSY * (1 + breathe * 0.04 + hopHeight * 0.004);
+        sprite.setScale(anim.facing < 0 ? -sx : sx, sy);
+        sprite.setPosition(wild.x, wild.y - hopHeight);
         const shadow = (sprite as unknown as { shadow?: Phaser.GameObjects.Ellipse }).shadow;
         if (shadow) {
           shadow.setPosition(wild.x, wild.y + 20);
+          // Shadow shrinks/fades as the mon rises off the ground.
+          const lift = 1 - hopHeight / 9;
+          shadow.setScale(0.7 + lift * 0.3);
+          shadow.setAlpha(0.18 + lift * 0.12);
         }
       }
 
@@ -1542,127 +1628,225 @@ export default class Overworld extends Phaser.Scene {
     this.encounterCooldown = 5000;
   }
 
-  private drawZoneShape(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, shape: string, rotation: number): void {
-    switch (shape) {
-      case "ellipse": {
-        g.save();
-        g.translateCanvas(x, y);
-        g.rotateCanvas(rotation);
-        g.fillEllipse(0, 0, r * 1.4, r * 0.8);
-        g.restore();
-        break;
+  /**
+   * Paint one feathered radial disc into the terrain RenderTexture at world
+   * coordinates. Overlapping discs build a smooth union, so the whole continent
+   * reads as one organic landmass instead of separate hard circles.
+   */
+  private paintStamp(
+    wx: number, wy: number, radius: number, color: number, alpha: number,
+    squashX = 1, squashY = 1, rot = 0
+  ): void {
+    const rt = this.terrainRT;
+    const stamp = this.terrainStamp;
+    if (!rt || !stamp) return;
+    const res = this.terrainRes;
+    const d = ((radius * 2) / SOFT_CIRCLE_SIZE) * res;
+    stamp
+      .setPosition((wx - rt.x) * res, (wy - rt.y) * res)
+      .setScale(d * squashX, d * squashY)
+      .setRotation(rot)
+      .setTint(color)
+      .setAlpha(alpha);
+    rt.draw(stamp);
+  }
+
+  /** Paint a zone's footprint as feathered discs honouring its shape. */
+  private paintZoneFootprint(zone: ZoneData, scale: number, color: number, alpha: number): void {
+    const x = zone.x * WORLD_SCALE;
+    const y = zone.y * WORLD_SCALE;
+    const r = zone.r * WORLD_SCALE * scale;
+    const rot = (zone.rotation || 0) * Math.PI / 180;
+    const shape = zone.shape || "circle";
+    if (shape === "ellipse") {
+      this.paintStamp(x, y, r, color, alpha, 1.3, 0.72, rot);
+    } else if (shape === "rounded") {
+      this.paintStamp(x, y, r * 1.12, color, alpha, 1.3, 0.95);
+    } else if (shape === "blob") {
+      this.paintStamp(x, y, r * 0.95, color, alpha);
+      const seed = Math.abs(Math.sin(x * 12.9898 + y * 78.233));
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2 + seed * 6.283;
+        const dist = r * 0.55;
+        this.paintStamp(x + Math.cos(a) * dist, y + Math.sin(a) * dist, r * 0.6, color, alpha);
       }
-      case "blob": {
-        const seed = x * 1000 + y;
-        const mainRx = r * (0.9 + 0.2 * Math.sin(seed));
-        const mainRy = r * (0.9 + 0.2 * Math.cos(seed));
-        g.fillEllipse(x, y, mainRx * 2, mainRy * 2);
-        for (let i = 0; i < 5; i++) {
-          const angle = (i / 5) * Math.PI * 2 + seed * 0.1;
-          const dist = r * 0.6;
-          const bumpX = x + Math.cos(angle) * dist;
-          const bumpY = y + Math.sin(angle) * dist;
-          const bumpR = r * (0.4 + 0.15 * Math.sin(seed + i * 2));
-          g.fillEllipse(bumpX, bumpY, bumpR * 2, bumpR * 1.6);
-        }
-        break;
-      }
-      case "rounded": {
-        const width = r * 1.6;
-        const height = r * 1.2;
-        g.fillRoundedRect(x - width, y - height, width * 2, height * 2, r * 0.4);
-        break;
-      }
-      default:
-        g.fillCircle(x, y, r);
+    } else {
+      this.paintStamp(x, y, r, color, alpha);
     }
   }
 
-  private drawOceanBackground(region: RegionData): void {
-    this.oceanGraphics.clear();
+  /**
+   * Build the painterly overworld terrain. Composites a baked vertical ocean
+   * gradient, a feathered continent (sand → foam → grass → blended biomes →
+   * mottling) baked once into a RenderTexture, and a noise grain masked to the
+   * land. Replaces the old per-island flat fills + stacked concentric circles.
+   */
+  private buildTerrain(region: RegionData): void {
     const bounds = this.worldBounds;
-    const pad = 500;
-    const ox = bounds.x - pad;
-    const oy = bounds.y - pad;
-    const ow = bounds.width + pad * 2;
-    const oh = bounds.height + pad * 2;
 
-    // Deep ocean base
-    this.oceanGraphics.fillStyle(0x0a2540, 1);
-    this.oceanGraphics.fillRect(ox, oy, ow, oh);
+    // --- Ocean: a stretched vertical gradient with animated shimmer over it. ---
+    const seaPad = 600;
+    const ox = bounds.x - seaPad;
+    const oy = bounds.y - seaPad;
+    const ow = bounds.width + seaPad * 2;
+    const oh = bounds.height + seaPad * 2;
+    // Always build fresh objects: bootIntoOverworld restarts the scene, which
+    // destroys these, so a cached reference would be stale (a destroyed object's
+    // `.scene` is null — only destroy ones that still belong to a live scene).
+    if (this.oceanImage?.scene) this.oceanImage.destroy();
+    this.oceanImage = this.add.image(ox, oy, OCEAN_GRADIENT_KEY).setOrigin(0, 0).setDepth(-200);
+    this.oceanImage.setDisplaySize(ow, oh);
+    this.drawOceanShimmer(ox, oy, ow, oh);
 
-    // Mid-depth ocean variation — scattered ellipses using deterministic pseudo-random
-    this.oceanGraphics.fillStyle(0x1a4a7a, 0.35);
+    // --- Land: feathered union of all zones, baked into a RenderTexture. ---
+    const landPad = 200;
+    const rtX = bounds.x - landPad;
+    const rtY = bounds.y - landPad;
+    const rtW = bounds.width + landPad * 2;
+    const rtH = bounds.height + landPad * 2;
+
+    const res = this.terrainRes;
+    if (this.terrainRT?.scene) this.terrainRT.destroy();
+    // Physically smaller texture, displayed scaled up to cover the world rect.
+    this.terrainRT = this.add.renderTexture(rtX, rtY, Math.ceil(rtW * res), Math.ceil(rtH * res))
+      .setOrigin(0, 0)
+      .setScale(1 / res)
+      .setDepth(-100);
+    // The stamp is an off-list helper image; recreate it per build so it never
+    // points at a texture orphaned by the previous scene lifecycle.
+    if (this.terrainStamp?.scene) this.terrainStamp.destroy();
+    this.terrainStamp = this.make.image({ key: SOFT_CIRCLE_KEY, add: false }).setOrigin(0.5);
+
+    // 1. Coast: wet sand glow beyond the land, then a brighter dry-sand/foam rim.
+    region.zones.forEach((z) => this.paintZoneFootprint(z, 1.22, 0xb08d52, 1));
+    region.zones.forEach((z) => this.paintZoneFootprint(z, 1.12, 0xe7d2a0, 1));
+    // 2. Neutral grass union so every biome seam still reads as solid land.
+    region.zones.forEach((z) => this.paintZoneFootprint(z, 1.0, 0x6fae5a, 1));
+    // 3. Biome-coloured fills, feathered so adjacent biomes blend at the seam
+    //    (fixes the old hard dark seam lines between touching zones).
+    region.zones.forEach((z) => this.paintZoneFootprint(z, 0.98, BIOMES[z.biome].color, 1));
+    // 4. Soft lit centre + painterly mottling per zone (deterministic patches).
+    region.zones.forEach((z) => this.paintZoneDetail(z));
+    // 5. Fine ground detail: grass tufts / pebbles so the surface isn't bare.
+    this.paintGroundScatter(region);
+
+    // --- Painterly grain baked into the land. ---
+    // A MULTIPLY-blended noise tile is drawn directly into the RenderTexture:
+    // it only darkens pixels that already have land (multiply leaves the
+    // transparent ocean untouched). We deliberately avoid a live BitmapMask
+    // here — masks force per-frame GPU ReadPixels, which stalls hard on
+    // software/headless WebGL (the mobile test profile) and leaks a framebuffer
+    // on every region rebuild.
+    const noise = this.make.tileSprite(
+      { x: 0, y: 0, width: Math.ceil(rtW * res), height: Math.ceil(rtH * res), key: NOISE_KEY }, false
+    ).setOrigin(0, 0).setBlendMode(Phaser.BlendModes.MULTIPLY);
+    this.terrainRT.draw(noise);
+    noise.destroy();
+  }
+
+  /**
+   * Scatter fine ground detail (grass tufts, pebbles, snow/sand speckle) baked
+   * into the terrain RenderTexture so the land reads as textured ground rather
+   * than flat colour between the larger props. Uses a local deterministic PRNG
+   * so it never disturbs the seeded gameplay `rng()`.
+   */
+  private paintGroundScatter(region: RegionData): void {
+    const rt = this.terrainRT;
+    if (!rt) return;
+    // Drawn in full-res world-RT coordinates, then scaled to the RT's baked
+    // resolution so it lines up with the stamped land.
+    const gfx = this.make.graphics({ x: 0, y: 0 }, false).setScale(this.terrainRes);
+    let seed = 1337;
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    const grassy = new Set(["plains", "forest", "jungle", "marsh", "lake"]);
+    region.zones.forEach((zone) => {
+      const base = BIOMES[zone.biome].color;
+      const cx = zone.x * WORLD_SCALE;
+      const cy = zone.y * WORLD_SCALE;
+      const r = zone.r * WORLD_SCALE;
+      const count = Math.floor(zone.r * 1.4);
+      for (let i = 0; i < count; i++) {
+        const a = rand() * Math.PI * 2;
+        const dd = Math.sqrt(rand()) * r * 0.92;
+        const px = cx + Math.cos(a) * dd - rt.x;
+        const py = cy + Math.sin(a) * dd - rt.y;
+        const sc = 0.7 + rand() * 0.7;
+        if (grassy.has(zone.biome)) {
+          // A little tuft of three blades.
+          gfx.lineStyle(1.4 * sc, darken(base, 0.28), 0.85);
+          for (let b = -1; b <= 1; b++) {
+            gfx.beginPath();
+            gfx.moveTo(px + b * 2 * sc, py);
+            gfx.lineTo(px + b * 2 * sc + b * 1.2 * sc, py - (3 + rand() * 2) * sc);
+            gfx.strokePath();
+          }
+          gfx.fillStyle(lighten(base, 0.18), 0.5);
+          gfx.fillCircle(px, py - 3 * sc, 0.8 * sc);
+        } else if (zone.biome === "tundra") {
+          gfx.fillStyle(0xffffff, 0.55);
+          gfx.fillCircle(px, py, 1.4 * sc);
+        } else {
+          // Rocky/sandy biomes: a small pebble with a shaded base.
+          gfx.fillStyle(darken(base, 0.22), 0.7);
+          gfx.fillEllipse(px, py, 4 * sc, 2.4 * sc);
+          gfx.fillStyle(lighten(base, 0.16), 0.6);
+          gfx.fillEllipse(px - 0.6 * sc, py - 0.6 * sc, 2.2 * sc, 1.3 * sc);
+        }
+      }
+    });
+    rt.draw(gfx);
+    gfx.destroy();
+  }
+
+  /** Soft lit centre and deterministic light/dark mottle patches for one zone. */
+  private paintZoneDetail(zone: ZoneData): void {
+    const biome = BIOMES[zone.biome];
+    const cx = zone.x * WORLD_SCALE;
+    const cy = zone.y * WORLD_SCALE;
+    const r = zone.r * WORLD_SCALE;
+
+    // Gentle radial lift toward the centre (replaces the 12 stacked circles).
+    this.paintStamp(cx, cy, r * 0.62, lighten(biome.color, 0.16), 0.5);
+    this.paintStamp(cx, cy, r * 0.34, lighten(biome.color, 0.26), 0.45);
+
+    // Deterministic mottle so the surface looks hand-painted, not flat.
+    const seed = Math.floor(Math.abs(cx * 31.7 + cy * 13.3)) + 1;
+    const local = (n: number) => {
+      const s = Math.sin(seed * 0.013 + n * 2.399) * 43758.5453;
+      return s - Math.floor(s);
+    };
+    for (let i = 0; i < 6; i++) {
+      const a = local(i) * Math.PI * 2;
+      const dist = local(i + 50) * r * 0.78;
+      const pr = (0.12 + local(i + 99) * 0.18) * r;
+      const tone = local(i + 7) > 0.5 ? lighten(biome.color, 0.14) : darken(biome.color, 0.16);
+      this.paintStamp(cx + Math.cos(a) * dist, cy + Math.sin(a) * dist, pr, tone, 0.26);
+    }
+  }
+
+  /** Mid-depth swells and surface shimmer painted over the ocean gradient. */
+  private drawOceanShimmer(ox: number, oy: number, ow: number, oh: number): void {
+    const g = this.oceanGraphics;
+    g.clear();
+    g.fillStyle(0x17456f, 0.30);
     for (let i = 0; i < 30; i++) {
-      const s = i * 137.508; // golden angle distribution
+      const s = i * 137.508; // golden-angle distribution
       const wx = ox + (Math.sin(s) * 0.5 + 0.5) * ow;
       const wy = oy + (Math.cos(s * 0.7) * 0.5 + 0.5) * oh;
       const wr = 100 + Math.sin(s * 1.3) * 60;
-      this.oceanGraphics.fillEllipse(wx, wy, wr * 3, wr);
+      g.fillEllipse(wx, wy, wr * 3, wr);
     }
-
-    // Surface shimmer highlights
-    this.oceanGraphics.fillStyle(0x2d6fa5, 0.18);
+    g.fillStyle(0x3a7fb5, 0.16);
     for (let i = 0; i < 60; i++) {
       const s = i * 73.1;
       const wx = ox + (Math.sin(s * 0.31) * 0.5 + 0.5) * ow;
       const wy = oy + (Math.cos(s * 0.17) * 0.5 + 0.5) * oh;
       const wr = 25 + Math.sin(s * 2.1) * 15;
-      this.oceanGraphics.fillEllipse(wx, wy, wr * 2.5, wr * 0.5);
+      g.fillEllipse(wx, wy, wr * 2.5, wr * 0.5);
     }
-
-    // Island base / beach landmass — drawn slightly larger than zones so beach rim shows
-    // Pass 1: outer sandy beach ring (12% larger)
-    this.oceanGraphics.fillStyle(0xd4a853, 1.0);
-    region.zones.forEach((zone) => {
-      const x = zone.x * WORLD_SCALE;
-      const y = zone.y * WORLD_SCALE;
-      const r = zone.r * WORLD_SCALE;
-      const shape = zone.shape || "circle";
-      const rotation = (zone.rotation || 0) * Math.PI / 180;
-      this.drawZoneShape(this.oceanGraphics, x, y, r * 1.12, shape, rotation);
-    });
-
-    // Pass 2: inner beach / shore transition (sandy-green, 4% larger than zone)
-    this.oceanGraphics.fillStyle(0xc8b464, 1.0);
-    region.zones.forEach((zone) => {
-      const x = zone.x * WORLD_SCALE;
-      const y = zone.y * WORLD_SCALE;
-      const r = zone.r * WORLD_SCALE;
-      const shape = zone.shape || "circle";
-      const rotation = (zone.rotation || 0) * Math.PI / 180;
-      this.drawZoneShape(this.oceanGraphics, x, y, r * 1.04, shape, rotation);
-    });
-  }
-
-  private drawZones(region: RegionData): void {
-    this.zoneGraphics.clear();
-    const g = this.zoneGraphics;
-    region.zones.forEach((zone) => {
-      const biome = BIOMES[zone.biome];
-      const x = zone.x * WORLD_SCALE;
-      const y = zone.y * WORLD_SCALE;
-      const r = zone.r * WORLD_SCALE;
-      const shape = zone.shape || "circle";
-      const rotation = (zone.rotation || 0) * Math.PI / 180;
-      // Flat biome fill. (A previous depth pass drew a darker rim + inset
-      // fill, but the rim bled onto neighbouring zones and the blob bump
-      // geometry didn't nest, producing dark seam lines across the map.)
-      g.fillStyle(biome.color, 0.92);
-      this.drawZoneShape(g, x, y, r, shape, rotation);
-
-      // Lit centre: several lighter, concentric fills *inside* the zone fake a
-      // soft radial gradient for gentle depth. They stay well within the radius
-      // (same shape) so they never bleed onto neighbours the way an outer rim
-      // did. Many thin layers at low alpha keep the falloff smooth (no banding).
-      const layers = 12;
-      for (let i = 1; i <= layers; i++) {
-        const t = i / (layers + 1); // 0..1 inward
-        const lit = Phaser.Display.Color.IntegerToColor(biome.color).lighten(Math.round(24 * t)).color;
-        g.fillStyle(lit, 0.07);
-        this.drawZoneShape(g, x, y, r * (1 - t * 0.85), shape, rotation);
-      }
-    });
   }
 
 
@@ -1841,30 +2025,57 @@ export default class Overworld extends Phaser.Scene {
   private drawRoutes(region: RegionData): void {
     this.routeGraphics.clear();
 
-    // Draw each route as a dirt path: a darker earthy border underneath a
-    // lighter sandy track on top. (Previously two lineStyle calls ran back to
-    // back before any stroke, so only the last — a thin 3px white line — ever
-    // drew, which read as a stray scratch across the grass.)
-    const strokeAll = (width: number, color: number, alpha: number) => {
-      this.routeGraphics.lineStyle(width, color, alpha);
-      region.routes.forEach((route) => {
+    // Each route is a gently curved trodden path: a soft earthy shadow, an
+    // earthy border, a sandy track, then a faint highlight crown. The curve is
+    // a quadratic bend through a perpendicular-offset midpoint so paths meander
+    // organically across the continent instead of reading as straight scratches.
+    const curves = region.routes
+      .map((route) => {
         const from = this.findTownOrLandmark(region, route.from);
         const to = this.findTownOrLandmark(region, route.to);
-        if (!from || !to) return;
+        if (!from || !to) return null;
         const fromX = from.x * WORLD_SCALE;
         const fromY = from.y * WORLD_SCALE;
         const toX = to.x * WORLD_SCALE;
         const toY = to.y * WORLD_SCALE;
-        this.routeGraphics.strokeLineShape(new Phaser.Geom.Line(fromX, fromY, toX, toY));
+        const midX = (fromX + toX) / 2;
+        const midY = (fromY + toY) / 2;
+        const dx = toX - fromX;
+        const dy = toY - fromY;
+        const len = Math.hypot(dx, dy) || 1;
+        // Deterministic bend, sign varies per route so adjacent paths don't all bow the same way.
+        const bend = (Math.sin(fromX * 0.5 + toY * 0.5) * 0.18) * len;
+        const ctrlX = midX + (-dy / len) * bend;
+        const ctrlY = midY + (dx / len) * bend;
+        return new Phaser.Curves.QuadraticBezier(
+          new Phaser.Math.Vector2(fromX, fromY),
+          new Phaser.Math.Vector2(ctrlX, ctrlY),
+          new Phaser.Math.Vector2(toX, toY)
+        );
+      })
+      .filter((c): c is Phaser.Curves.QuadraticBezier => c !== null);
+
+    const strokeAll = (width: number, color: number, alpha: number, offsetY = 0) => {
+      this.routeGraphics.lineStyle(width, color, alpha);
+      curves.forEach((curve) => {
+        const pts = curve.getPoints(24);
+        this.routeGraphics.beginPath();
+        pts.forEach((p, i) => {
+          if (i === 0) this.routeGraphics.moveTo(p.x, p.y + offsetY);
+          else this.routeGraphics.lineTo(p.x, p.y + offsetY);
+        });
+        this.routeGraphics.strokePath();
         // Round end-caps so the track blends into towns instead of butting flat.
         this.routeGraphics.fillStyle(color, alpha);
-        this.routeGraphics.fillCircle(fromX, fromY, width / 2);
-        this.routeGraphics.fillCircle(toX, toY, width / 2);
+        this.routeGraphics.fillCircle(pts[0].x, pts[0].y + offsetY, width / 2);
+        this.routeGraphics.fillCircle(pts[pts.length - 1].x, pts[pts.length - 1].y + offsetY, width / 2);
       });
     };
 
-    strokeAll(16, 0x9c7b43, 0.55); // earthy border
-    strokeAll(10, 0xcdb074, 0.95); // sandy track
+    strokeAll(18, 0x000000, 0.12, 3); // soft cast shadow
+    strokeAll(16, 0x9c7b43, 0.6);     // earthy border
+    strokeAll(10, 0xcdb074, 0.95);    // sandy track
+    strokeAll(4, 0xe7d2a0, 0.5);      // highlight crown
   }
 
   private drawPointsOfInterest(region: RegionData): void {
@@ -2035,6 +2246,17 @@ export default class Overworld extends Phaser.Scene {
 
   private drawProps(): void {
     this.propGraphics.clear();
+
+    // Grounding pass: a soft elliptical contact shadow under every prop so it
+    // sits on the terrain instead of floating. Drawn first (under all props).
+    const g0 = this.propGraphics;
+    this.props.forEach((prop) => {
+      const size = this.getPropBodySize(prop.type);
+      const sw = size.w * prop.scale * 1.5;
+      g0.fillStyle(0x14281a, 0.18);
+      g0.fillEllipse(prop.x, prop.y + size.h * prop.scale * 0.45, sw, sw * 0.42);
+    });
+
     this.props.forEach((prop) => {
       const { x, y, type, variant, scale } = prop;
       const s = scale;
@@ -2102,6 +2324,9 @@ export default class Overworld extends Phaser.Scene {
       [0x86efac, 0x4ade80, 0x22c55e]   // Pale green
     ][variant];
 
+    // Shaded canopy base (darker) → mid → lit crown, building soft volume.
+    g.fillStyle(darken(colors[2], 0.22), 1);
+    g.fillCircle(x + 2 * s, y - 11 * s, 16 * s);
     g.fillStyle(colors[2], 1);
     g.fillCircle(x, y - 14 * s, 16 * s);
     g.fillStyle(colors[1], 1);
@@ -2110,9 +2335,11 @@ export default class Overworld extends Phaser.Scene {
     g.fillStyle(colors[0], 1);
     g.fillCircle(x, y - 22 * s, 10 * s);
 
-    // Highlight
-    g.fillStyle(0xffffff, 0.2);
-    g.fillCircle(x - 3 * s, y - 24 * s, 4 * s);
+    // Warm sun-side rim + a crisp highlight dab (top-left light).
+    g.fillStyle(lighten(colors[0], 0.22), 0.7);
+    g.fillCircle(x - 6 * s, y - 22 * s, 5 * s);
+    g.fillStyle(0xffffff, 0.22);
+    g.fillCircle(x - 3 * s, y - 24 * s, 3.5 * s);
   }
 
   private drawPine(x: number, y: number, variant: number, s: number): void {
@@ -2134,6 +2361,10 @@ export default class Overworld extends Phaser.Scene {
     g.fillTriangle(x, y - 26 * s, x - 14 * s, y - 6 * s, x + 14 * s, y - 6 * s);
     g.fillTriangle(x, y - 18 * s, x - 12 * s, y + 2 * s, x + 12 * s, y + 2 * s);
 
+    // Sun-side highlight down the left edge.
+    g.fillStyle(lighten(colors, 0.2), 0.55);
+    g.fillTriangle(x - 1 * s, y - 24 * s, x - 11 * s, y - 7 * s, x - 4 * s, y - 7 * s);
+
     // Snow caps on some variants
     if (variant === 2) {
       g.fillStyle(0xffffff, 0.7);
@@ -2149,7 +2380,9 @@ export default class Overworld extends Phaser.Scene {
       [0xf472b6, 0xec4899] // Flowering bush
     ][variant];
 
-    // Multiple overlapping circles for organic shape
+    // Multiple overlapping circles for organic shape, with a shaded underside.
+    g.fillStyle(darken(colors[1], 0.2), 1);
+    g.fillCircle(x + 1 * s, y - 2 * s, 9 * s);
     g.fillStyle(colors[1], 1);
     g.fillCircle(x - 4 * s, y - 4 * s, 9 * s);
     g.fillCircle(x + 5 * s, y - 3 * s, 8 * s);
@@ -2860,9 +3093,9 @@ export default class Overworld extends Phaser.Scene {
     this.mapContainer.setScrollFactor(0);
     this.mapContainer.setDepth(500);
 
-    // Background panel
-    const bg = this.add.rectangle(mapWidth / 2, mapHeight / 2, mapWidth, mapHeight + 92, 0x0f172a, 0.95);
-    bg.setStrokeStyle(3, 0xfbbf24);
+    // Background panel — shared themed look (gradient fill, shadow, amber border).
+    const bg = this.add.graphics();
+    drawPanel(bg, -12, -46, mapWidth + 24, mapHeight + 96, { radius: 16 });
     this.mapContainer.add(bg);
 
     // Title
@@ -2909,17 +3142,27 @@ export default class Overworld extends Phaser.Scene {
       placedLabels.push({ l: px - w / 2, t: cy - h / 2, r: px + w / 2, b: cy + h / 2 });
     };
 
-    // Draw zones
+    // Draw zones as one connected landmass (mirrors the overworld): overlapping
+    // sand discs merge into a single coastline, then biome fills + soft lit
+    // centres sit on top. No per-zone outline, so it reads as a continent rather
+    // than a scatter of separate circles.
+    const mapZoneR = (zone: ZoneData) =>
+      zone.r * WORLD_SCALE * Math.min(scaleX, scaleY);
+    region.zones.forEach((zone) => {
+      const x = (zone.x * WORLD_SCALE - bounds.x) * scaleX;
+      const y = (zone.y * WORLD_SCALE - bounds.y) * scaleY;
+      this.mapGraphics!.fillStyle(0xcdb57f, 0.9); // sandy coast union
+      this.mapGraphics!.fillCircle(x, y, mapZoneR(zone) * 1.16);
+    });
     region.zones.forEach((zone) => {
       const biome = BIOMES[zone.biome];
       const x = (zone.x * WORLD_SCALE - bounds.x) * scaleX;
       const y = (zone.y * WORLD_SCALE - bounds.y) * scaleY;
-      const r = zone.r * WORLD_SCALE * Math.min(scaleX, scaleY) * 0.8;
-
-      this.mapGraphics!.fillStyle(biome.color, 0.6);
+      const r = mapZoneR(zone);
+      this.mapGraphics!.fillStyle(biome.color, 0.95);
       this.mapGraphics!.fillCircle(x, y, r);
-      this.mapGraphics!.lineStyle(1, biome.color, 0.8);
-      this.mapGraphics!.strokeCircle(x, y, r);
+      this.mapGraphics!.fillStyle(lighten(biome.color, 0.18), 0.5);
+      this.mapGraphics!.fillCircle(x, y, r * 0.55);
     });
 
     // Draw towns
