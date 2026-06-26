@@ -22,7 +22,7 @@ export interface GameSnapshot {
     hudVisible: boolean;
     menus: Record<string, boolean>;
     anyMenuOpen: boolean;
-    player: { x: number; y: number };
+    player: { x: number; y: number; flipX: boolean };
     notification: { text: string; visible: boolean };
   };
   battleActive: boolean;

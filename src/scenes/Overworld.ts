@@ -664,8 +664,8 @@ export default class Overworld extends Phaser.Scene {
 
     const moving = velocityX !== 0 || velocityY !== 0;
     // Face the direction of horizontal travel
-    if (velocityX < 0) this.player.setFlipX(true);
-    else if (velocityX > 0) this.player.setFlipX(false);
+    if (velocityX < 0) this.player.setFlipX(false);
+    else if (velocityX > 0) this.player.setFlipX(true);
 
     // Walk bob: gentle squash-and-bounce while moving
     if (moving) {
