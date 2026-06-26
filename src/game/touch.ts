@@ -295,6 +295,11 @@ export class TouchControls {
     return false;
   }
 
+  /** Whether the action buttons are currently shown. */
+  isVisible(): boolean {
+    return this.buttons[0]?.bg.visible ?? false;
+  }
+
   setVisible(visible: boolean): void {
     if (!this.active) return;
     this.buttons.forEach((b) => {
