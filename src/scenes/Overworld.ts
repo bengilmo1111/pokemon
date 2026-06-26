@@ -3,7 +3,8 @@ import { emitTestEvent } from "../game/testBridge";
 import Phaser from "phaser";
 import { BIOMES } from "../data/biomes";
 import { SPECIES } from "../data/species";
-import type { LandmarkData, RegionData, TownData, PortalData, ZoneData } from "../data/regions";
+import type { LandmarkData, RegionData, TownData, PortalData, ZoneData, LegendarySanctumData } from "../data/regions";
+import { REGIONS } from "../data/regions";
 import { gameState } from "../game/store";
 import {
   WORLD_SCALE,
@@ -55,6 +56,8 @@ type WildSprite = Phaser.Physics.Arcade.Sprite & { wildId: string };
 
 const WILD_RESPAWN_INTERVAL_MS = 30_000;
 
+/** Flat fare charged by the Pokémon Center travel service per trip. */
+const TRAVEL_COST = 250;
 
 export default class Overworld extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -139,6 +142,8 @@ export default class Overworld extends Phaser.Scene {
   private pauseText: Phaser.GameObjects.Text[] = [];
   private portalSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private portalTransitioning = false;
+  private sanctumSprites: Map<string, Phaser.GameObjects.Container> = new Map();
+  private sanctumMessageCooldown = 0;
   private touch!: TouchControls;
   private interactPressed = false;
   private playerShadow!: Phaser.GameObjects.Ellipse;
@@ -384,6 +389,14 @@ export default class Overworld extends Phaser.Scene {
     this.createItemSprites();
     this.createRivalSprites();
     this.createPortalSprites();
+    this.createSanctumSprites();
+
+    // Record that the player has now set foot in this region so paid town
+    // travel can offer it as a fast-travel destination later.
+    if (!gameState.visitedRegions) gameState.visitedRegions = [];
+    if (!gameState.visitedRegions.includes(gameState.regionIndex)) {
+      gameState.visitedRegions.push(gameState.regionIndex);
+    }
 
     // Check if we came through a portal and need to set position
     if (gameState.portalTargetX !== undefined && gameState.portalTargetY !== undefined) {
@@ -489,8 +502,10 @@ export default class Overworld extends Phaser.Scene {
       this.checkPowerSpots();
       this.checkLeagueEntrance();
       this.checkPortals();
+      this.checkSanctums();
       this.nearbyCheckTimer = 100;
     }
+    if (this.sanctumMessageCooldown > 0) this.sanctumMessageCooldown -= delta;
 
     if (this.encounterCooldown > 0) {
       this.encounterCooldown -= delta;
@@ -1548,6 +1563,209 @@ export default class Overworld extends Phaser.Scene {
         // Restart scene to load new region
         this.scene.restart();
       });
+    });
+  }
+
+  // --- Legendary Sanctums: portal-style gateways into a single, gated,
+  // --- guaranteed legendary encounter. ------------------------------------
+
+  private createSanctumSprites(): void {
+    const region = getRegion(gameState);
+    if (!region.sanctums) return;
+
+    for (const sanctum of region.sanctums) {
+      const x = sanctum.x * WORLD_SCALE;
+      const y = sanctum.y * WORLD_SCALE;
+      const completed = Boolean(gameState.legendariesCompleted?.[sanctum.id]);
+      const unlocked = gameState.badges.length >= sanctum.requiredBadges;
+
+      // A swirling gateway, the same visual language as inter-region portals so
+      // it reads as "a way through" — here, into the legendary's domain. Bright
+      // and turning when open, dim and still when sealed or already claimed.
+      const container = this.add.container(x, y);
+      const live = unlocked && !completed;
+      const baseAlpha = completed ? 0.18 : unlocked ? 1 : 0.4;
+
+      const outer = this.add.circle(0, 0, 35, sanctum.color, 0.3 * baseAlpha);
+      const middle = this.add.circle(0, 0, 25, sanctum.color, 0.5 * baseAlpha);
+      const inner = this.add.circle(0, 0, 15, sanctum.color, 0.85 * baseAlpha);
+      const swirl1 = this.add.arc(0, 0, 20, 0, 90, false, 0xffffff, 0.6 * baseAlpha);
+      swirl1.setStrokeStyle(3, 0xffffff, 0.8 * baseAlpha);
+      const swirl2 = this.add.arc(0, 0, 20, 180, 270, false, 0xffffff, 0.6 * baseAlpha);
+      swirl2.setStrokeStyle(3, 0xffffff, 0.8 * baseAlpha);
+      container.add([outer, middle, inner, swirl1, swirl2]);
+
+      if (live) {
+        this.tweens.add({ targets: container, angle: 360, duration: 4000, repeat: -1, ease: "Linear" });
+        this.tweens.add({ targets: [outer, middle], scale: 1.2, alpha: 0.2, duration: 1500, yoyo: true, repeat: -1 });
+      }
+
+      const labelText = completed
+        ? `${sanctum.name} · claimed`
+        : unlocked ? sanctum.name : `${sanctum.name} · sealed`;
+      this.add.text(x, y + 50, labelText, {
+        fontFamily: "monospace",
+        fontSize: "12px",
+        color: completed ? "#9ca3af" : unlocked ? "#fde68a" : "#9ca3af"
+      }).setOrigin(0.5);
+
+      this.sanctumSprites.set(sanctum.id, container);
+    }
+  }
+
+  private checkSanctums(): void {
+    if (this.inBattle || this.battleStarting || this.portalTransitioning) return;
+    if (this.sanctumMessageCooldown > 0) return;
+    const region = getRegion(gameState);
+    if (!region.sanctums) return;
+
+    for (const sanctum of region.sanctums) {
+      const sx = sanctum.x * WORLD_SCALE;
+      const sy = sanctum.y * WORLD_SCALE;
+      const dx = this.player.x - sx;
+      const dy = this.player.y - sy;
+      if (dx * dx + dy * dy > 36 * 36) continue;
+
+      if (gameState.legendariesCompleted?.[sanctum.id]) {
+        this.showNotification(`${sanctum.name}: the gateway is quiet now. Its guardian is yours.`, 2200);
+        this.sanctumMessageCooldown = 4000;
+        return;
+      }
+      if (gameState.badges.length < sanctum.requiredBadges) {
+        const need = sanctum.requiredBadges - gameState.badges.length;
+        this.showNotification(
+          `${sanctum.name} is sealed. Earn ${need} more badge${need === 1 ? "" : "s"} to open the gateway.`,
+          2600
+        );
+        this.sanctumMessageCooldown = 4000;
+        return;
+      }
+      this.triggerLegendaryEncounter(sanctum);
+      return;
+    }
+  }
+
+  private triggerLegendaryEncounter(sanctum: LegendarySanctumData): void {
+    if (this.battleStarting) return;
+    this.battleStarting = true;
+    this.encounterCooldown = 1500;
+    this.player.setVelocity(0, 0);
+
+    const species = SPECIES[sanctum.legendaryId];
+    const name = species ? species.name : "A legendary";
+    this.showNotification(`You step through the ${sanctum.name}... ${name} awaits!`, 2400);
+    Sound.playEncounter();
+    this.cameras.main.flash(400, 255, 255, 255);
+    this.cameras.main.shake(360, 0.016);
+    emitTestEvent("sanctum:enter", { sanctum: sanctum.id, legendary: sanctum.legendaryId });
+
+    this.time.delayedCall(500, () => this.startLegendaryBattle(sanctum));
+  }
+
+  private startLegendaryBattle(sanctum: LegendarySanctumData): void {
+    this.battleStarting = false;
+
+    // The legendary is staged as a one-off wild encounter at the gateway, then
+    // handed straight to the Battle scene — no roaming, no escape into the world.
+    const mon = makeWildPokemon(sanctum.legendaryId, sanctum.level, "sanctum");
+    mon.x = sanctum.x * WORLD_SCALE;
+    mon.y = sanctum.y * WORLD_SCALE;
+    gameState.wildMons.push(mon);
+
+    const textureKey = this.textures.exists(`pokemon-${mon.speciesId}`)
+      ? `pokemon-${mon.speciesId}`
+      : "wild-fallback";
+    const sprite = this.physics.add.sprite(mon.x, mon.y, textureKey) as WildSprite;
+    this.applyDisplayHeight(sprite, 56);
+    sprite.wildId = mon.id;
+    this.wildSprites.set(mon.id, sprite);
+
+    this.inBattle = true;
+    this.scene.pause();
+    this.scene.launch("Battle", { wildId: mon.id, type: "wild" });
+    const battleScene = this.scene.get("Battle");
+    battleScene.events.once("battle-complete", (payload: { wildId: string; result?: string }) => {
+      const cleared = payload.result === "victory" || payload.result === "caught";
+      if (cleared) {
+        if (!gameState.legendariesCompleted) gameState.legendariesCompleted = {};
+        gameState.legendariesCompleted[sanctum.id] = true;
+        emitTestEvent("sanctum:cleared", { sanctum: sanctum.id, legendary: sanctum.legendaryId, result: payload.result });
+        // Dim the gateway so it reads as spent without a full re-render.
+        this.sanctumSprites.get(sanctum.id)?.setAlpha(0.25);
+        saveGame();
+      } else {
+        // Fled or fainted: pull the leftover legendary back out of the world so
+        // it never roams, and let the player try the gateway again.
+        const idx = gameState.wildMons.findIndex((m) => m.id === mon.id);
+        if (idx !== -1) gameState.wildMons.splice(idx, 1);
+        this.sanctumMessageCooldown = 2500;
+      }
+      // Tidy the staged sprite (victory/caught already removed the mon itself).
+      const staged = this.wildSprites.get(mon.id);
+      if (staged) {
+        (staged as unknown as { shadow?: Phaser.GameObjects.Ellipse }).shadow?.destroy();
+        staged.destroy();
+        this.wildSprites.delete(mon.id);
+      }
+      if (payload.result === "defeat") {
+        this.handleBattleDefeat();
+      }
+      this.scene.resume();
+      Sound.playOverworldMusic();
+    });
+  }
+
+  // --- Paid town travel: fast-travel between discovered regions for a fare. --
+
+  /** Region indices the player may currently travel to (visited, not current). */
+  private travelDestinations(): number[] {
+    const visited = gameState.visitedRegions ?? [];
+    return visited
+      .filter((index) => index !== gameState.regionIndex && index >= 0 && index < REGIONS.length)
+      .sort((a, b) => a - b);
+  }
+
+  private openTravelMenu(): void {
+    if (this.serviceMenuOpen) return;
+    const destinations = this.travelDestinations();
+    if (destinations.length === 0) {
+      this.showNotification("You haven't discovered anywhere else to travel to yet.", 2200);
+      return;
+    }
+    const actions = destinations.map((index) => ({
+      icon: "🧭",
+      label: `${REGIONS[index].name} · ₽${TRAVEL_COST}`,
+      action: () => this.travelToRegion(index)
+    }));
+    this.showServiceChoiceMenu(actions);
+  }
+
+  private travelToRegion(targetRegionIndex: number): void {
+    if (this.portalTransitioning) return;
+    if (targetRegionIndex === gameState.regionIndex) return;
+    if ((gameState.money ?? 0) < TRAVEL_COST) {
+      this.showNotification(`You need ₽${TRAVEL_COST} to travel. Not enough money.`, 2400);
+      return;
+    }
+
+    gameState.money -= TRAVEL_COST;
+    this.portalTransitioning = true;
+    Sound.playMenuSelect();
+    emitTestEvent("travel:depart", { to: targetRegionIndex, cost: TRAVEL_COST });
+
+    // Arrive at the destination region's first town (a safe, known landing).
+    const destRegion = REGIONS[targetRegionIndex];
+    const arrival = destRegion.towns[0] ?? destRegion.zones[0];
+
+    this.cameras.main.fadeOut(300, 0, 0, 0);
+    this.uiCamera?.fadeOut(300, 0, 0, 0);
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      gameState.wildMons = [];
+      gameState.portalTargetX = arrival.x;
+      gameState.portalTargetY = arrival.y;
+      gameState.regionIndex = targetRegionIndex;
+      saveGame();
+      this.scene.restart();
     });
   }
 
@@ -2781,6 +2999,7 @@ export default class Overworld extends Phaser.Scene {
     let gymHint = "";
     let healHint = "";
     let leagueHint = "";
+    let travelHint = "";
     let powerSpotHint = "";
     let xpBoostLabel = "";
     const distSq = (x: number, y: number) => {
@@ -2826,6 +3045,16 @@ export default class Overworld extends Phaser.Scene {
               healTeam(gameState);
               this.showNotification("Your Pokémon have been healed!");
             }});
+          }
+          // Pokémon Centers double as travel hubs: pay the fare to fast-travel
+          // to any region you've already discovered.
+          if (this.travelDestinations().length > 0) {
+            travelHint = isTouch ? "Talk: Travel!" : "[T] Travel";
+            if (isTouch) {
+              touchActions.push({ icon: "🧭", label: `Travel (₽${TRAVEL_COST})`, action: () => this.openTravelMenu() });
+            } else if (this.keyT && this.input.keyboard?.checkDown(this.keyT, 250) && !nearGymId) {
+              this.openTravelMenu();
+            }
           }
         }
         if (town.services.includes("mart") && distanceSq < 50 * 50) {
@@ -2933,6 +3162,7 @@ export default class Overworld extends Phaser.Scene {
       powerSpotHint,
       healHint,
       martHint,
+      travelHint,
       gymHint,
       leagueHint,
       footerLine,
@@ -3305,6 +3535,31 @@ export default class Overworld extends Phaser.Scene {
           fontFamily: "monospace",
           fontSize: `${labelFont}px`,
           color: "#ddd6fe",
+          backgroundColor: "#0b1220cc",
+          padding: { left: 5, right: 5, top: 2, bottom: 2 }
+        }).setOrigin(0.5).setDepth(2);
+        label.setData("testid", "map-label");
+        placeLabel(label, x, y + 16);
+        this.mapContainer!.add(label);
+      });
+    }
+
+    // Draw legendary sanctums (gateways) as a star marker.
+    if (region.sanctums) {
+      region.sanctums.forEach((sanctum) => {
+        const x = (sanctum.x * WORLD_SCALE - bounds.x) * scaleX;
+        const y = (sanctum.y * WORLD_SCALE - bounds.y) * scaleY;
+        const claimed = Boolean(gameState.legendariesCompleted?.[sanctum.id]);
+
+        this.mapGraphics!.fillStyle(sanctum.color, claimed ? 0.4 : 0.9);
+        this.mapGraphics!.fillCircle(x, y, 9);
+        this.mapGraphics!.lineStyle(2, 0xffffff, 0.7);
+        this.mapGraphics!.strokeCircle(x, y, 9);
+
+        const label = this.add.text(x, y + 16, claimed ? "Sanctum ✓" : "Sanctum", {
+          fontFamily: "monospace",
+          fontSize: `${labelFont}px`,
+          color: "#fde68a",
           backgroundColor: "#0b1220cc",
           padding: { left: 5, right: 5, top: 2, bottom: 2 }
         }).setOrigin(0.5).setDepth(2);

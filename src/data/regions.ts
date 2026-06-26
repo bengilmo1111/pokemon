@@ -73,6 +73,26 @@ export interface PortalData {
   color: number;
 }
 
+/**
+ * A Legendary Sanctum: a fixed, gated shrine that holds a single guaranteed,
+ * scripted legendary encounter. Unlike ordinary wild spawns it does not roam —
+ * the legendary only appears when the player has earned enough badges and walks
+ * into the sanctum, and it is removed from the world once caught or defeated.
+ */
+export interface LegendarySanctumData {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  color: number;
+  /** Species id of the legendary that dwells here. */
+  legendaryId: string;
+  /** Encounter level for the scripted battle. */
+  level: number;
+  /** Total badges required before the sanctum's seal opens. */
+  requiredBadges: number;
+}
+
 export interface RegionData {
   id: string;
   name: string;
@@ -83,6 +103,8 @@ export interface RegionData {
   gyms: GymData[];
   powerSpots: PowerSpotData[];
   portals: PortalData[];
+  /** Optional legendary shrines (end-game, gated guaranteed encounters). */
+  sanctums?: LegendarySanctumData[];
 }
 
 export const REGIONS: RegionData[] = [
@@ -481,6 +503,9 @@ export const REGIONS: RegionData[] = [
       { id: "portal-s-to-verdania", name: "To Verdania", x: -38, y: -30, targetRegionIndex: 2, targetX: 40, targetY: 45, color: 0x9f5bff },
       { id: "portal-s-to-frostholm", name: "To Frostholm", x: 45, y: 5, targetRegionIndex: 4, targetX: -35, targetY: 10, color: 0x9f5bff },
     ],
+    sanctums: [
+      { id: "sanctum-moltres", name: "Ember Sanctum", x: 40, y: -8, color: 0xf97316, legendaryId: "moltres", level: 50, requiredBadges: 13 },
+    ],
   },
   {
     id: "frostholm",
@@ -558,6 +583,9 @@ export const REGIONS: RegionData[] = [
       { id: "portal-f-to-solstice", name: "To Solstice Isles", x: -38, y: 15, targetRegionIndex: 3, targetX: 45, targetY: 5, color: 0x9f5bff },
       { id: "portal-f-to-urbania", name: "To Urbania", x: 40, y: 55, targetRegionIndex: 5, targetX: -40, targetY: -35, color: 0x9f5bff },
     ],
+    sanctums: [
+      { id: "sanctum-articuno", name: "Frostbound Sanctum", x: 36, y: 28, color: 0x7dd3fc, legendaryId: "articuno", level: 50, requiredBadges: 16 },
+    ],
   },
   {
     id: "urbania",
@@ -634,6 +662,9 @@ export const REGIONS: RegionData[] = [
     portals: [
       { id: "portal-u-to-frostholm", name: "To Frostholm", x: -42, y: -38, targetRegionIndex: 4, targetX: 40, targetY: 55, color: 0x9f5bff },
       { id: "portal-u-to-shadow", name: "To Shadow Archipelago", x: 45, y: 20, targetRegionIndex: 1, targetX: -25, targetY: 0, color: 0x9f5bff },
+    ],
+    sanctums: [
+      { id: "sanctum-zapdos", name: "Storm Sanctum", x: 28, y: 38, color: 0xfacc15, legendaryId: "zapdos", level: 50, requiredBadges: 19 },
     ],
   },
 ];

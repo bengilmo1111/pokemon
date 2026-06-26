@@ -83,8 +83,7 @@ export const BIOMES: Record<string, BiomeData> = {
       { id: "shellder", weight: 3, min: 8, max: 12 },
       { id: "jynx", weight: 2, min: 10, max: 14 },
       { id: "clefairy", weight: 2, min: 8, max: 12 },
-      { id: "jigglypuff", weight: 2, min: 7, max: 11 },
-      { id: "articuno", weight: 0.05, min: 50, max: 50 }
+      { id: "jigglypuff", weight: 2, min: 7, max: 11 }
     ],
     props: ["glacier", "glacier", "rock", "snowdrift", "snowdrift"]
   },
@@ -96,8 +95,7 @@ export const BIOMES: Record<string, BiomeData> = {
       { id: "geodude", weight: 4, min: 6, max: 10 },
       { id: "diglett", weight: 3, min: 5, max: 9 },
       { id: "pidgey", weight: 2, min: 5, max: 8 },
-      { id: "charmander", weight: 1, min: 8, max: 12 },
-      { id: "moltres", weight: 0.05, min: 50, max: 50 }
+      { id: "charmander", weight: 1, min: 8, max: 12 }
     ],
     props: ["cactus", "rock", "rock", "boulder"]
   },
@@ -112,8 +110,7 @@ export const BIOMES: Record<string, BiomeData> = {
       { id: "onix", weight: 2, min: 10, max: 14 },
       { id: "golbat", weight: 2, min: 10, max: 14 },
       { id: "pidgeotto", weight: 2, min: 10, max: 14 },
-      { id: "dratini", weight: 1, min: 12, max: 16 },
-      { id: "zapdos", weight: 0.05, min: 50, max: 50 }
+      { id: "dratini", weight: 1, min: 12, max: 16 }
     ],
     props: ["rockspire", "rock", "rock", "pine"]
   },
@@ -125,8 +122,7 @@ export const BIOMES: Record<string, BiomeData> = {
       { id: "magnemite", weight: 5, min: 8, max: 12 },
       { id: "voltorb", weight: 4, min: 8, max: 12 },
       { id: "pikachu", weight: 3, min: 8, max: 12 },
-      { id: "pichu", weight: 2, min: 5, max: 8 },
-      { id: "zapdos", weight: 0.1, min: 50, max: 50 }
+      { id: "pichu", weight: 2, min: 5, max: 8 }
     ],
     props: ["rock", "rock", "crystal"]
   },
@@ -196,7 +192,6 @@ export const BIOMES: Record<string, BiomeData> = {
       { id: "ponyta", weight: 3, min: 22, max: 32 },
       { id: "magmar", weight: 2, min: 24, max: 34 },
       { id: "geodude", weight: 2, min: 22, max: 32 },
-      { id: "moltres", weight: 0.05, min: 50, max: 50 },
     ],
     props: ["rock", "rock", "boulder", "rockspire", "boulder"],
   },
