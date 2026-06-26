@@ -1265,8 +1265,14 @@ export default class Overworld extends Phaser.Scene {
       const entry = pickWeighted(biome.spawns);
       const level = Math.min(100, Math.floor(randomLevel(entry.min, entry.max) * regionMult));
       const mon = makeWildPokemon(entry.id, level, zone.id);
-      mon.x = (zone.x + (rng() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
-      mon.y = (zone.y + (rng() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
+      // Sample a point inside the zone's *circle*, not its bounding box. Offsetting
+      // x and y independently could push a corner spawn to ~0.8·r·√2 ≈ 1.13·r from
+      // the centre — outside the round zone the roaming clamp keeps mons within.
+      // Polar sampling (√ for uniform area) guarantees the spawn is inside.
+      const angle = rng() * Math.PI * 2;
+      const radius = Math.sqrt(rng()) * zone.r * 0.8;
+      mon.x = (zone.x + Math.cos(angle) * radius) * WORLD_SCALE;
+      mon.y = (zone.y + Math.sin(angle) * radius) * WORLD_SCALE;
       gameState.wildMons.push(mon);
     }
   }
