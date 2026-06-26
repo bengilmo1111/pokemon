@@ -126,6 +126,21 @@ export interface TestBridgeApi {
    * Returns the sanctum id, or null if the region has none.
    */
   teleportToSanctum(index?: number): string | null;
+  /** True if a world-pixel point is on the playable map (zones/routes/POI). */
+  isWalkable(x: number, y: number): boolean;
+  /**
+   * Read-only geometry of the current region in WORLD PIXELS, for layout/
+   * walkability assertions (start, bounds, zone/town/gym centres).
+   */
+  regionInfo(): {
+    id: string;
+    name: string;
+    start: { x: number; y: number } | null;
+    bounds: { x: number; y: number; width: number; height: number } | null;
+    zones: Array<{ id: string; x: number; y: number; r: number }>;
+    towns: Array<{ id: string; x: number; y: number }>;
+    gyms: Array<{ id: string; x: number; y: number }>;
+  };
   /**
    * Screen-space positions of the on-screen touch buttons, so the harness can
    * tap them where a real thumb would. Empty when touch controls are inactive.
@@ -324,6 +339,28 @@ export function installTestBridge(game: Phaser.Game): void {
       scene.player.setPosition(sanctum.x * WORLD_SCALE, sanctum.y * WORLD_SCALE);
       emitTestEvent("scenario:teleport-sanctum", { sanctum: sanctum.id });
       return sanctum.id;
+    },
+    isWalkable: (x: number, y: number) => {
+      const scene = game.scene.getScene("Overworld") as unknown as {
+        isPointOnPlayableMap?: (x: number, y: number, region: ReturnType<typeof getRegion>) => boolean;
+      } | null;
+      if (!scene?.isPointOnPlayableMap) return false;
+      return scene.isPointOnPlayableMap(x, y, getRegion(gameState));
+    },
+    regionInfo: () => {
+      const region = getRegion(gameState);
+      const scene = game.scene.getScene("Overworld") as unknown as {
+        worldBounds?: { x: number; y: number; width: number; height: number };
+      } | null;
+      return {
+        id: region.id,
+        name: region.name,
+        start: region.start ? { x: region.start.x * WORLD_SCALE, y: region.start.y * WORLD_SCALE } : null,
+        bounds: scene?.worldBounds ?? null,
+        zones: region.zones.map((z) => ({ id: z.id, x: z.x * WORLD_SCALE, y: z.y * WORLD_SCALE, r: z.r * WORLD_SCALE })),
+        towns: region.towns.map((t) => ({ id: t.id, x: t.x * WORLD_SCALE, y: t.y * WORLD_SCALE })),
+        gyms: region.gyms.map((g) => ({ id: g.id, x: g.x * WORLD_SCALE, y: g.y * WORLD_SCALE }))
+      };
     },
     touchButtons: () => {
       const scene = game.scene.getScene("Overworld") as unknown as {
