@@ -180,6 +180,23 @@ export default class Overworld extends Phaser.Scene {
   }
 
   create(): void {
+    // Phaser reuses the scene instance across scene.restart() and does NOT re-run
+    // class-field initialisers, so transient flags survive a restart. A region
+    // portal restarts the scene with portalTransitioning still true, which froze
+    // further portal/sanctum use and (via the visibility reconcile) hid the touch
+    // controls. Reset all transient transition/menu flags so a (re)created scene
+    // always starts in a clean, interactive state.
+    this.portalTransitioning = false;
+    this.battleStarting = false;
+    this.inBattle = false;
+    this.isPaused = false;
+    this.teamOpen = false;
+    this.martOpen = false;
+    this.pokedexOpen = false;
+    this.mapOpen = false;
+    this.serviceMenuOpen = false;
+    this.starterOpen = false;
+
     // Smooth fade-in (pairs with the portal/scene fade-out).
     this.cameras.main.fadeIn(250, 0, 0, 0);
     const region = getRegion(gameState);
@@ -433,6 +450,22 @@ export default class Overworld extends Phaser.Scene {
     if (this.cameraAssignmentTimer <= 0) {
       this.refreshCameraAssignments();
       this.cameraAssignmentTimer = 250;
+    }
+
+    // Reconcile the on-screen touch controls with the true UI state so they can
+    // never get stuck hidden — notably after a region portal restarts the scene
+    // or an arrival encounter pauses/resumes it. A paused scene (in battle) does
+    // not update, so this only ever runs during real overworld play.
+    if (this.touch?.active) {
+      const menuOpen = this.starterOpen || this.isPaused || this.teamOpen ||
+        this.martOpen || this.pokedexOpen || this.mapOpen || this.serviceMenuOpen;
+      const desired = gameState.team.length > 0 && this.tutorialElements.length === 0 &&
+        !menuOpen && !this.inBattle && !this.battleStarting && !this.portalTransitioning;
+      // Compare against the controls' actual state so any out-of-sync hide is
+      // corrected, not just transitions this method itself drove.
+      if (desired !== this.touch.isVisible()) {
+        this.touch.setVisible(desired);
+      }
     }
 
     if (this.starterOpen || this.isPaused || this.teamOpen || this.martOpen || this.pokedexOpen || this.mapOpen || this.serviceMenuOpen) {
