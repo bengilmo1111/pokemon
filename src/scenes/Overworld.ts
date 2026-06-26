@@ -2083,7 +2083,7 @@ export default class Overworld extends Phaser.Scene {
       seed = (seed * 1103515245 + 12345) & 0x7fffffff;
       return seed / 0x7fffffff;
     };
-    const grassy = new Set(["plains", "forest", "jungle", "marsh", "lake"]);
+    const grassy = new Set(["plains", "forest", "jungle", "marsh", "lake", "savanna", "swamp", "taiga"]);
     region.zones.forEach((zone) => {
       const base = BIOMES[zone.biome].color;
       const cx = zone.x * WORLD_SCALE;
