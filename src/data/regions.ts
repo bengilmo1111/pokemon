@@ -322,13 +322,19 @@ export const REGIONS: RegionData[] = [
     id: "shadow",
     name: "Shadow Archipelago",
     zones: [
-      { id: "dark-forest", name: "Dark Forest", biome: "forest", x: 0, y: 0, r: 20, shape: "blob" },
-      { id: "volcanic", name: "Volcanic Crater", biome: "cave", x: 25, y: 15, r: 18, shape: "rounded" },
-      { id: "mystic-lake", name: "Mystic Lake", biome: "lake", x: -20, y: 25, r: 16, shape: "ellipse", rotation: 15 },
-      { id: "shadow-peaks", name: "Shadow Peaks", biome: "mountain", x: 10, y: -20, r: 16, shape: "rounded" }
+      { id: "dark-forest", name: "Dark Forest", biome: "forest", x: -2, y: 0, r: 18, shape: "blob" },
+      { id: "shadow-peaks", name: "Shadow Peaks", biome: "mountain", x: 10, y: -18, r: 16, shape: "rounded" },
+      { id: "mystic-lake", name: "Mystic Lake", biome: "lake", x: -18, y: 18, r: 16, shape: "ellipse", rotation: 15 },
+      { id: "volcanic", name: "Volcanic Crater", biome: "volcano", x: 24, y: 12, r: 17, shape: "rounded" },
+      { id: "shadowport-fen", name: "Shadowport Fen", biome: "swamp", x: -24, y: -4, r: 15, shape: "blob" },
+      { id: "gloom-marsh", name: "Gloom Marsh", biome: "swamp", x: -12, y: 20, r: 14, shape: "blob" },
+      { id: "ashen-savanna", name: "Ashen Savanna", biome: "savanna", x: 14, y: 4, r: 15, shape: "blob" },
+      { id: "obsidian-badlands", name: "Obsidian Badlands", biome: "badlands", x: 30, y: -8, r: 15, shape: "rounded" },
+      { id: "ember-grove", name: "Ember Grove", biome: "taiga", x: 20, y: 24, r: 14, shape: "blob" }
     ],
     towns: [
       { id: "shadow-port", name: "Shadow Port", x: -25, y: -5, services: ["center", "mart"] },
+      { id: "mist-harbor", name: "Mist Harbor", x: -14, y: 16, services: ["center", "mart"] },
       { id: "ember-village", name: "Ember Village", x: 20, y: 25, services: ["center"] }
     ],
     landmarks: [
@@ -369,12 +375,12 @@ export const REGIONS: RegionData[] = [
       }
     ],
     powerSpots: [
-      { id: "spot-delta", name: "Shadow Spring", x: -30, y: 15, color: 0x7c3aed, effect: "heal" },
-      { id: "spot-epsilon", name: "Dragon Shrine", x: 35, y: 5, color: 0xf59e0b, effect: "xpboost" }
+      { id: "spot-delta", name: "Shadow Spring", x: -20, y: 6, color: 0x7c3aed, effect: "heal" },
+      { id: "spot-epsilon", name: "Dragon Shrine", x: 28, y: 6, color: 0xf59e0b, effect: "xpboost" }
     ],
     portals: [
-      { id: "portal-aurora", name: "Portal to Aurora Vale", x: -25, y: 0, targetRegionIndex: 0, targetX: 55, targetY: -15, color: 0x9f5bff },
-      { id: "portal-shadow-to-verdania", name: "To Verdania", x: -25, y: -20, targetRegionIndex: 2, targetX: -35, targetY: -30, color: 0x9f5bff }
+      { id: "portal-aurora", name: "To Kanto", x: -24, y: 0, targetRegionIndex: 0, targetX: -44, targetY: 30, color: 0x9f5bff },
+      { id: "portal-shadow-to-verdania", name: "To Verdania", x: -14, y: -12, targetRegionIndex: 2, targetX: -35, targetY: -30, color: 0x9f5bff }
     ]
   },
   {
@@ -389,6 +395,7 @@ export const REGIONS: RegionData[] = [
       { id: "sacred-woods", name: "Sacred Woods", biome: "forest", x: -30, y: 5, r: 20, shape: "blob" },
       { id: "ghost-graveyard", name: "Ghost Graveyard", biome: "ruins", x: 35, y: 20, r: 15, shape: "rounded" },
       { id: "honey-grove", name: "Honey Grove", biome: "jungle", x: 10, y: 40, r: 14, shape: "blob" },
+      { id: "thornwood-swamp", name: "Thornwood Swamp", biome: "swamp", x: 12, y: 28, r: 14, shape: "blob" },
     ],
     towns: [
       { id: "bloom-town", name: "Bloom Town", x: -32, y: -8, services: ["center", "mart"] },
@@ -459,13 +466,14 @@ export const REGIONS: RegionData[] = [
     id: "solstice",
     name: "Solstice Isles",
     zones: [
-      { id: "tropical-beach", name: "Tropical Beach", biome: "plains", x: -30, y: 5, r: 20, shape: "blob" },
+      { id: "tropical-beach", name: "Tropical Beach", biome: "beach", x: -30, y: 5, r: 20, shape: "blob" },
       { id: "coral-reef", name: "Coral Reef", biome: "lake", x: 10, y: -15, r: 18, shape: "ellipse", rotation: 45 },
       { id: "volcano-island", name: "Volcano Island", biome: "volcano", x: 25, y: 10, r: 20, shape: "rounded" },
       { id: "jungle-canopy", name: "Jungle Canopy", biome: "jungle", x: -15, y: 25, r: 22, shape: "blob" },
       { id: "ocean-cave", name: "Deep Ocean Cave", biome: "cave", x: 15, y: 35, r: 16, shape: "rounded" },
       { id: "mystical-isle", name: "Mystical Isle", biome: "ruins", x: -5, y: 45, r: 14, shape: "blob" },
       { id: "fissure-valley", name: "Fissure Valley", biome: "volcano", x: 35, y: 25, r: 15, shape: "rounded" },
+      { id: "palm-cove", name: "Palm Cove", biome: "beach", x: -32, y: 22, r: 14, shape: "blob" },
     ],
     towns: [
       { id: "coral-cove", name: "Coral Cove", x: -35, y: 0, services: ["center", "mart"] },
@@ -546,6 +554,7 @@ export const REGIONS: RegionData[] = [
       { id: "frosted-marsh", name: "Frosted Marsh", biome: "marsh", x: -25, y: 30, r: 18, shape: "blob" },
       { id: "sacred-mountain-f", name: "Sacred Mountain", biome: "mountain", x: 20, y: 35, r: 20, shape: "rounded" },
       { id: "glacier-cavern", name: "Glacier Cavern", biome: "tundra", x: 35, y: 20, r: 15, shape: "rounded" },
+      { id: "frostpine-taiga", name: "Frostpine Taiga", biome: "taiga", x: 3, y: -12, r: 15, shape: "blob" },
     ],
     towns: [
       { id: "snowdrift-city", name: "Snowdrift City", x: -30, y: -5, services: ["center", "mart"] },
@@ -626,6 +635,7 @@ export const REGIONS: RegionData[] = [
       { id: "seaside-cliffs", name: "Seaside Cliffs", biome: "mountain", x: 0, y: 30, r: 18, shape: "rounded" },
       { id: "subway-tunnel", name: "Subway Tunnels", biome: "cave", x: -10, y: 15, r: 16, shape: "rounded" },
       { id: "harbor-pier", name: "Harbor Pier", biome: "lake", x: 15, y: 45, r: 14, shape: "ellipse" },
+      { id: "rust-flats", name: "Rust Flats", biome: "badlands", x: 28, y: 20, r: 15, shape: "rounded" },
     ],
     towns: [
       { id: "metro-city", name: "Metro City", x: -22, y: -20, services: ["center", "mart", "school"] },

@@ -136,4 +136,23 @@ test.describe("world overhaul", () => {
       expect(result.unreachable, `${result.regionId}: unreachable towns ${result.unreachable.join(", ")}`).toEqual([]);
     }
   });
+
+  test("wild Pokémon spawn on walkable land in every region", async ({ probe }) => {
+    await probe.bootIntoOverworld();
+
+    for (let region = 0; region < REGION_COUNT; region++) {
+      await enterRegion(probe, region);
+      const offmap = await probe.page.evaluate(() => {
+        const g = (window as any).__GAME__;
+        const mons = g.gameState.wildMons as Array<{ id: string; x: number; y: number }>;
+        return {
+          regionId: g.regionInfo().id,
+          count: mons.length,
+          off: mons.filter((m) => !g.isWalkable(m.x, m.y)).map((m) => m.id)
+        };
+      });
+      expect(offmap.count, `${offmap.regionId}: should spawn wild Pokémon`).toBeGreaterThan(0);
+      expect(offmap.off, `${offmap.regionId}: mons off walkable land ${offmap.off.join(", ")}`).toEqual([]);
+    }
+  });
 });

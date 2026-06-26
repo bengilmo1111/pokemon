@@ -28,19 +28,28 @@ async function travelTo(probe: import("./harness/probe").GameProbe, index: numbe
   }, index);
 }
 
+/**
+ * Travel and wait for arrival. Travel runs an async camera fade then a scene
+ * restart; poll the lightweight live gameState in-page (rather than churning
+ * full snapshots, which can race the fade) until the region actually changes.
+ */
+async function travelToAndArrive(probe: import("./harness/probe").GameProbe, index: number): Promise<void> {
+  await travelTo(probe, index);
+  await probe.page.waitForFunction(
+    (i) => (window as any).__GAME__.gameState.regionIndex === i,
+    index,
+    { timeout: 15000 }
+  );
+}
+
 test.describe("paid town travel", () => {
   test("travelling to a discovered region charges the fare and moves you", async ({ probe }) => {
     await probe.bootIntoOverworld();
     await setState(probe, { money: 1000, visitedRegions: [0, 3], regionIndex: 0 });
 
-    await travelTo(probe, 3);
+    await travelToAndArrive(probe, 3);
 
-    await expect
-      .poll(async () => (await probe.snapshot()).game.regionIndex, {
-        timeout: 5000,
-        message: "should arrive in the destination region"
-      })
-      .toBe(3);
+    expect((await probe.snapshot()).game.regionIndex).toBe(3);
     expect((await probe.snapshot()).game.money).toBe(1000 - FARE);
   });
 
@@ -75,10 +84,7 @@ test.describe("paid town travel", () => {
 
     // Travel to a discovered region, then confirm it is now in the visited set.
     await setState(probe, { money: 1000, visitedRegions: [0, 3], regionIndex: 0 });
-    await travelTo(probe, 3);
-    await expect
-      .poll(async () => (await probe.snapshot()).game.regionIndex, { timeout: 5000 })
-      .toBe(3);
+    await travelToAndArrive(probe, 3);
 
     expect((await probe.snapshot()).game.visitedRegions).toContain(3);
   });
