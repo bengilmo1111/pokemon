@@ -53,6 +53,9 @@ import { drawPanel, UI } from "../game/ui/theme";
 
 type WildSprite = Phaser.Physics.Arcade.Sprite & { wildId: string };
 
+const WILD_RESPAWN_INTERVAL_MS = 30_000;
+
+
 export default class Overworld extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -78,6 +81,7 @@ export default class Overworld extends Phaser.Scene {
   private mapPlayerMarker?: Phaser.GameObjects.Arc;
   private mapText!: Phaser.GameObjects.Text;
   private wildSprites: Map<string, WildSprite> = new Map();
+  private wildRespawnTimer = 0;
   // Per-wild animation state (idle ↔ hop). Scene-side so the saved wildMons
   // shape stays untouched; rebuilt lazily as mons are encountered each frame.
   private wildAnim: Map<string, {
@@ -454,11 +458,13 @@ export default class Overworld extends Phaser.Scene {
     }
 
     // Update total play time and check for item respawns
+    const region = getRegion(gameState);
     gameState.totalPlayTime += delta;
     const respawnedItems = checkItemRespawns(gameState);
     if (respawnedItems.length > 0) {
       this.createItemSpritesForIds(respawnedItems);
     }
+    this.checkWildRespawns(region, delta);
 
     // Update power spot cooldowns
     for (const [spotId, cooldown] of this.powerSpotCooldowns.entries()) {
@@ -947,14 +953,7 @@ export default class Overworld extends Phaser.Scene {
     mon.y = spotY * WORLD_SCALE + Math.sin(angle) * dist;
     gameState.wildMons.push(mon);
 
-    // Create sprite for the new Pokemon
-    const textureKey = this.textures.exists(`pokemon-${mon.speciesId}`)
-      ? `pokemon-${mon.speciesId}`
-      : "wild-fallback";
-    const sprite = this.physics.add.sprite(mon.x, mon.y, textureKey) as WildSprite;
-    this.applyDisplayHeight(sprite, 48);
-    sprite.wildId = mon.id;
-    this.wildSprites.set(mon.id, sprite);
+    const sprite = this.createWildSprite(mon);
 
     // Add sparkle effect to indicate rarity
     this.tweens.add({
@@ -1228,6 +1227,14 @@ export default class Overworld extends Phaser.Scene {
   }
 
   private spawnWildMons(region: RegionData): void {
+    region.zones.forEach((zone) => this.spawnWildMonsForZone(region, zone));
+  }
+
+  private targetWildMonCount(region: RegionData): number {
+    return region.zones.reduce((sum, zone) => sum + Math.floor(4 + zone.r * 0.3), 0);
+  }
+
+  private spawnWildMonsForZone(region: RegionData, zone: RegionData["zones"][number], count = Math.floor(4 + zone.r * 0.3)): void {
     const difficultyByRegion: Record<string, number> = {
       aurora: 1.0,
       "shadow-archipelago": 1.3,
@@ -1238,32 +1245,62 @@ export default class Overworld extends Phaser.Scene {
     };
     const regionMult = difficultyByRegion[region.id] ?? 1.0;
 
-    region.zones.forEach((zone) => {
-      const biome = BIOMES[zone.biome];
-      const spawnCount = Math.floor(4 + zone.r * 0.3);
-      for (let i = 0; i < spawnCount; i++) {
-        const entry = pickWeighted(biome.spawns);
-        const level = Math.min(100, Math.floor(randomLevel(entry.min, entry.max) * regionMult));
-        const mon = makeWildPokemon(entry.id, level, zone.id);
-        mon.x = (zone.x + (rng() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
-        mon.y = (zone.y + (rng() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
-        gameState.wildMons.push(mon);
-      }
-    });
+    const biome = BIOMES[zone.biome];
+    for (let i = 0; i < count; i++) {
+      const entry = pickWeighted(biome.spawns);
+      const level = Math.min(100, Math.floor(randomLevel(entry.min, entry.max) * regionMult));
+      const mon = makeWildPokemon(entry.id, level, zone.id);
+      mon.x = (zone.x + (rng() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
+      mon.y = (zone.y + (rng() * 2 - 1) * zone.r * 0.8) * WORLD_SCALE;
+      gameState.wildMons.push(mon);
+    }
+  }
+
+  private checkWildRespawns(region: RegionData, delta: number): void {
+    const targetCount = this.targetWildMonCount(region);
+    if (gameState.wildMons.length >= targetCount) {
+      this.wildRespawnTimer = 0;
+      return;
+    }
+
+    this.wildRespawnTimer += delta;
+    if (this.wildRespawnTimer < WILD_RESPAWN_INTERVAL_MS) return;
+    this.wildRespawnTimer = 0;
+
+    const zoneCounts = new Map<string, number>();
+    for (const wild of gameState.wildMons) {
+      zoneCounts.set(wild.zoneId, (zoneCounts.get(wild.zoneId) ?? 0) + 1);
+    }
+    const zone = region.zones.find((candidate) => {
+      const target = Math.floor(4 + candidate.r * 0.3);
+      return (zoneCounts.get(candidate.id) ?? 0) < target;
+    }) ?? region.zones[0];
+    if (!zone) return;
+
+    this.spawnWildMonsForZone(region, zone, 1);
+    const mon = gameState.wildMons[gameState.wildMons.length - 1];
+    if (!mon) return;
+    const sprite = this.createWildSprite(mon);
+    sprite.setAlpha(0.2);
+    this.tweens.add({ targets: sprite, alpha: 1, duration: 350, ease: "Sine.easeOut" });
+    emitTestEvent("wild:respawn", { wildId: mon.id, speciesId: mon.speciesId, zoneId: mon.zoneId });
+  }
+
+  private createWildSprite(wild: { id: string; speciesId: string; x: number; y: number }): WildSprite {
+    const textureKey = this.textures.exists(`pokemon-${wild.speciesId}`)
+      ? `pokemon-${wild.speciesId}`
+      : "wild-fallback";
+    const sprite = this.physics.add.sprite(wild.x, wild.y, textureKey) as WildSprite;
+    this.applyDisplayHeight(sprite, 48);
+    sprite.wildId = wild.id;
+    const shadow = this.makeShadow(wild.x, wild.y + 20, 32);
+    (sprite as unknown as { shadow: Phaser.GameObjects.Ellipse }).shadow = shadow;
+    this.wildSprites.set(wild.id, sprite);
+    return sprite;
   }
 
   private createWildSprites(): void {
-    gameState.wildMons.forEach((wild) => {
-      const textureKey = this.textures.exists(`pokemon-${wild.speciesId}`)
-        ? `pokemon-${wild.speciesId}`
-        : "wild-fallback";
-      const sprite = this.physics.add.sprite(wild.x, wild.y, textureKey) as WildSprite;
-      this.applyDisplayHeight(sprite, 48);
-      sprite.wildId = wild.id;
-      const shadow = this.makeShadow(wild.x, wild.y + 20, 32);
-      (sprite as unknown as { shadow: Phaser.GameObjects.Ellipse }).shadow = shadow;
-      this.wildSprites.set(wild.id, sprite);
-    });
+    gameState.wildMons.forEach((wild) => this.createWildSprite(wild));
   }
 
   private createTrainerSprites(): void {
