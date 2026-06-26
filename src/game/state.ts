@@ -165,6 +165,8 @@ export interface GameState {
   e4Progress: number;  // 0–4: how many E4 trainers have been defeated
   e4Trainers: NpcTrainer[];  // The four Elite Four trainers
   storyFlags: Record<string, boolean>;  // One-off scripted story beats (e.g. Team Rocket)
+  legendariesCompleted: Record<string, boolean>;  // Sanctum id -> caught/defeated the legendary there
+  visitedRegions: number[];  // Region indices the player has set foot in (unlocks paid town travel)
 }
 
 // ---------- Held Items ----------
@@ -424,7 +426,9 @@ export function createInitialState(): GameState {
     money: 500,
     e4Progress: 0,
     e4Trainers: [],
-    storyFlags: {}
+    storyFlags: {},
+    legendariesCompleted: {},
+    visitedRegions: [0]
   };
 }
 

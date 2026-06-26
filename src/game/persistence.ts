@@ -7,7 +7,7 @@ import { gameState } from "./store";
 const LEGACY_SAVE_KEY = "pokemon_game_save";
 const SAVE_KEY_PREFIX = "pokemon_game_save_slot_";
 const ACTIVE_SLOT_KEY = "pokemon_game_active_slot";
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 export const SAVE_SLOT_COUNT = 3;
 
 interface SaveData {
@@ -125,6 +125,10 @@ export function loadGame(slot = getActiveSaveSlot()): boolean {
     if (saveData.version < 3) {
       migrateToV3(gameState);
     }
+    // v4 adds legendary-sanctum completion tracking and visited-region travel unlocks.
+    if (saveData.version < 4) {
+      migrateToV4(gameState);
+    }
     setActiveSaveSlot(normalized);
     return true;
   } catch (e) {
@@ -139,6 +143,16 @@ function migrateToV3(state: GameState): void {
   // Merge any inventory keys missing from the old save (defaults to 0).
   state.inventory = { ...defaults.inventory, ...state.inventory };
   if (!state.storyFlags) state.storyFlags = {};
+}
+
+/** Backfill legendary-sanctum progress and the visited-region travel list. */
+function migrateToV4(state: GameState): void {
+  if (!state.legendariesCompleted) state.legendariesCompleted = {};
+  if (!state.visitedRegions || state.visitedRegions.length === 0) {
+    // Old saves have explored at least their current region; seed it plus the
+    // starting region so paid travel has somewhere to go straight away.
+    state.visitedRegions = Array.from(new Set([0, state.regionIndex]));
+  }
 }
 
 /** Backfill v1 Pokémon with nature/IVs/ability and recompute split stats. */

@@ -34,6 +34,8 @@ export interface GameSnapshot {
     badges: number;
     wildMonCount: number;
     money: number;
+    legendariesCompleted: number;
+    visitedRegions: number[];
   };
   rngSeed: number;
 }

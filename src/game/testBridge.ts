@@ -67,6 +67,8 @@ export interface GameSnapshot {
     badges: number;
     wildMonCount: number;
     money: number;
+    legendariesCompleted: number;
+    visitedRegions: number[];
   };
   rngSeed: number;
 }
@@ -119,6 +121,11 @@ export interface TestBridgeApi {
   teleportToTown(index?: number): string | null;
   /** Move the player onto a gym in the current region (by index). */
   teleportToGym(index?: number): string | null;
+  /**
+   * Move the player onto a legendary sanctum in the current region (by index).
+   * Returns the sanctum id, or null if the region has none.
+   */
+  teleportToSanctum(index?: number): string | null;
   /**
    * Screen-space positions of the on-screen touch buttons, so the harness can
    * tap them where a real thumb would. Empty when touch controls are inactive.
@@ -213,7 +220,9 @@ function snapshot(game: Phaser.Game): GameSnapshot {
       regionIndex: gameState.regionIndex,
       badges: gameState.badges.length,
       wildMonCount: gameState.wildMons.length,
-      money: gameState.money
+      money: gameState.money,
+      legendariesCompleted: Object.values(gameState.legendariesCompleted ?? {}).filter(Boolean).length,
+      visitedRegions: [...(gameState.visitedRegions ?? [])]
     },
     rngSeed: getSeed()
   };
@@ -305,6 +314,16 @@ export function installTestBridge(game: Phaser.Game): void {
       scene.player.setPosition(gym.x * WORLD_SCALE, gym.y * WORLD_SCALE);
       emitTestEvent("scenario:teleport-gym", { gym: gym.name });
       return gym.name;
+    },
+    teleportToSanctum: (index = 0) => {
+      const scene = game.scene.getScene("Overworld") as unknown as {
+        player?: { setPosition: (x: number, y: number) => void };
+      } | null;
+      const sanctum = getRegion(gameState).sanctums?.[index];
+      if (!scene?.player || !sanctum) return null;
+      scene.player.setPosition(sanctum.x * WORLD_SCALE, sanctum.y * WORLD_SCALE);
+      emitTestEvent("scenario:teleport-sanctum", { sanctum: sanctum.id });
+      return sanctum.id;
     },
     touchButtons: () => {
       const scene = game.scene.getScene("Overworld") as unknown as {
