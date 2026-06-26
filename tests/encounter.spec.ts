@@ -59,4 +59,27 @@ test.describe("wild encounters", () => {
     expect(snap.battleActive).toBe(false);
     expect(snap.game.anyAliveTeamMember, "team should be recovered, not stuck fainted").toBe(true);
   });
+
+  test("wild Pokémon respawn over time after encounters deplete them", async ({ probe }) => {
+    await probe.bootIntoOverworld({ team: [{ speciesId: "charmander", level: 14 }], seed: 7 });
+
+    const initial = (await probe.snapshot()).game.wildMonCount;
+    expect(initial, "region should start with wild Pokémon").toBeGreaterThan(0);
+
+    const since = await probe.clearEvents();
+    await probe.page.evaluate(() => {
+      const scene = (window as any).__GAME__.game.scene.getScene("Overworld") as any;
+      for (const sprite of scene.wildSprites.values()) {
+        sprite.shadow?.destroy();
+        sprite.destroy();
+      }
+      scene.wildSprites.clear();
+      scene.wildAnim.clear();
+      (window as any).__GAME__.gameState.wildMons = [];
+      scene.wildRespawnTimer = 30_000;
+    });
+
+    await probe.waitForEvent("wild:respawn", { sinceSeq: since });
+    expect((await probe.snapshot()).game.wildMonCount, "a depleted map should repopulate").toBeGreaterThan(0);
+  });
 });
