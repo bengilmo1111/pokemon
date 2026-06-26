@@ -236,9 +236,11 @@ export default class Overworld extends Phaser.Scene {
     this.createWeatherEffect(region);
     this.showNotification("📍 " + region.name, 2500);
 
-    const startZone = region.zones[0];
-    const startX = startZone.x * WORLD_SCALE;
-    const startY = startZone.y * WORLD_SCALE;
+    // Fresh games spawn at the region's canonical start (e.g. Pallet Town for
+    // Kanto) when defined, falling back to the first zone's centre otherwise.
+    const startPoint = region.start ?? region.zones[0];
+    const startX = startPoint.x * WORLD_SCALE;
+    const startY = startPoint.y * WORLD_SCALE;
     // Fixed depths for the ground layers so entities (depth = y) always sort above them
     this.routeGraphics.setDepth(-90);
     this.poiGraphics.setDepth(-80);
@@ -557,27 +559,27 @@ export default class Overworld extends Phaser.Scene {
     ].some((point) => Phaser.Math.Distance.Between(x, y, point.x * WORLD_SCALE, point.y * WORLD_SCALE) <= point.radius);
   }
 
+  /**
+   * Walkability for a zone, derived from the SAME footprint discs the terrain
+   * painter stamps (see zoneFootprintDiscs). A point is "in the zone" if it
+   * falls inside any of those discs, so what you can walk matches what you see
+   * painted as land — no more invisible walls on a visible beach or blob lobe.
+   */
   private isPointInZoneShape(x: number, y: number, zone: RegionData["zones"][number], scale = 1): boolean {
-    const centerX = zone.x * WORLD_SCALE;
-    const centerY = zone.y * WORLD_SCALE;
-    const r = zone.r * WORLD_SCALE * scale;
-    const rotation = -((zone.rotation || 0) * Math.PI / 180);
-    const dx = x - centerX;
-    const dy = y - centerY;
-    const localX = dx * Math.cos(rotation) - dy * Math.sin(rotation);
-    const localY = dx * Math.sin(rotation) + dy * Math.cos(rotation);
-
-    if (zone.shape === "ellipse") {
-      const radiusX = r * 0.7;
-      const radiusY = r * 0.4;
-      return (localX * localX) / (radiusX * radiusX) + (localY * localY) / (radiusY * radiusY) <= 1;
+    for (const d of this.zoneFootprintDiscs(zone, scale)) {
+      const dx = x - d.cx;
+      const dy = y - d.cy;
+      // Bounding-circle early reject keeps this cheap as regions grow.
+      const reach = d.r * Math.max(d.sx, d.sy);
+      if (dx * dx + dy * dy > reach * reach) continue;
+      const rot = -d.rot;
+      const localX = dx * Math.cos(rot) - dy * Math.sin(rot);
+      const localY = dx * Math.sin(rot) + dy * Math.cos(rot);
+      const rx = d.r * d.sx;
+      const ry = d.r * d.sy;
+      if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) return true;
     }
-
-    if (zone.shape === "rounded") {
-      return Math.abs(localX) <= r * 1.6 && Math.abs(localY) <= r * 1.2;
-    }
-
-    return localX * localX + localY * localY <= r * r;
+    return false;
   }
 
   private isPointOnRoute(x: number, y: number, route: RegionData["routes"][number], region: RegionData): boolean {
@@ -1952,27 +1954,46 @@ export default class Overworld extends Phaser.Scene {
     rt.draw(stamp);
   }
 
-  /** Paint a zone's footprint as feathered discs honouring its shape. */
-  private paintZoneFootprint(zone: ZoneData, scale: number, color: number, alpha: number): void {
+  /**
+   * The canonical footprint of a zone as a list of (possibly squashed/rotated)
+   * soft-circle discs, in world pixels, for a given scale. This is the SINGLE
+   * source of truth shared by the terrain painter (paintZoneFootprint) and the
+   * walkability test (isPointInZoneShape), so painted land and walkable land can
+   * never drift apart. Each disc mirrors exactly what the painter used to stamp
+   * per shape.
+   */
+  private zoneFootprintDiscs(
+    zone: ZoneData,
+    scale = 1
+  ): Array<{ cx: number; cy: number; r: number; sx: number; sy: number; rot: number }> {
     const x = zone.x * WORLD_SCALE;
     const y = zone.y * WORLD_SCALE;
     const r = zone.r * WORLD_SCALE * scale;
     const rot = (zone.rotation || 0) * Math.PI / 180;
     const shape = zone.shape || "circle";
     if (shape === "ellipse") {
-      this.paintStamp(x, y, r, color, alpha, 1.3, 0.72, rot);
-    } else if (shape === "rounded") {
-      this.paintStamp(x, y, r * 1.12, color, alpha, 1.3, 0.95);
-    } else if (shape === "blob") {
-      this.paintStamp(x, y, r * 0.95, color, alpha);
+      return [{ cx: x, cy: y, r, sx: 1.3, sy: 0.72, rot }];
+    }
+    if (shape === "rounded") {
+      return [{ cx: x, cy: y, r: r * 1.12, sx: 1.3, sy: 0.95, rot: 0 }];
+    }
+    if (shape === "blob") {
+      const discs = [{ cx: x, cy: y, r: r * 0.95, sx: 1, sy: 1, rot: 0 }];
       const seed = Math.abs(Math.sin(x * 12.9898 + y * 78.233));
       for (let i = 0; i < 3; i++) {
         const a = (i / 3) * Math.PI * 2 + seed * 6.283;
         const dist = r * 0.55;
-        this.paintStamp(x + Math.cos(a) * dist, y + Math.sin(a) * dist, r * 0.6, color, alpha);
+        discs.push({ cx: x + Math.cos(a) * dist, cy: y + Math.sin(a) * dist, r: r * 0.6, sx: 1, sy: 1, rot: 0 });
       }
-    } else {
-      this.paintStamp(x, y, r, color, alpha);
+      return discs;
+    }
+    return [{ cx: x, cy: y, r, sx: 1, sy: 1, rot: 0 }];
+  }
+
+  /** Paint a zone's footprint as feathered discs honouring its shape. */
+  private paintZoneFootprint(zone: ZoneData, scale: number, color: number, alpha: number): void {
+    for (const d of this.zoneFootprintDiscs(zone, scale)) {
+      this.paintStamp(d.cx, d.cy, d.r, color, alpha, d.sx, d.sy, d.rot);
     }
   }
 
@@ -2522,6 +2543,12 @@ export default class Overworld extends Phaser.Scene {
   private spawnProps(region: RegionData): void {
     this.props = [];
     this.propBodies.clear(true, true);
+    // Keep a clear radius around the spawn point so a prop's collision body can
+    // never wedge the player in at the start of a fresh game.
+    const start = region.start ?? region.zones[0];
+    const startX = start.x * WORLD_SCALE;
+    const startY = start.y * WORLD_SCALE;
+    const START_CLEARANCE = 80;
     region.zones.forEach((zone) => {
       const biome = BIOMES[zone.biome];
       const count = Math.floor(zone.r * 1.2);
@@ -2534,6 +2561,9 @@ export default class Overworld extends Phaser.Scene {
         const variant = Math.floor(rng() * 3); // 0, 1, or 2 variant
         const scale = 0.8 + rng() * 0.4; // 0.8 to 1.2 scale
         this.props.push({ x, y, type, variant, scale });
+        // Skip the blocking collision body near the spawn so the player is never
+        // wedged in at the start of a fresh game (the prop still draws).
+        if (Math.hypot(x - startX, y - startY) < START_CLEARANCE) continue;
         const size = this.getPropBodySize(type);
         // Position collision body at the base of the prop, make it smaller
         const body = this.propBodies.create(x, y + size.h * 0.3, "collider") as Phaser.Physics.Arcade.Image;

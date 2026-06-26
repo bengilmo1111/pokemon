@@ -105,24 +105,52 @@ export interface RegionData {
   portals: PortalData[];
   /** Optional legendary shrines (end-game, gated guaranteed encounters). */
   sanctums?: LegendarySanctumData[];
+  /**
+   * Canonical new-game spawn (logical units). Fresh games start here instead of
+   * zones[0]; must sit on connected walkable land (e.g. the starting town).
+   */
+  start?: { x: number; y: number };
 }
+
+/*
+ * Region authoring checklist (keep the world coherent + walkable):
+ *  - Mainland zones should OVERLAP so their footprints form ONE connected
+ *    walkable union: dist(centreA, centreB) ≲ (rA + rB) * 1.0. What is painted
+ *    as a continuous landmass is exactly what is walkable (see
+ *    Overworld.zoneFootprintDiscs / isPointInZoneShape).
+ *  - Islands are deliberate: keep their zones NON-overlapping with the mainland
+ *    and link them with a `route` (thin land bridge) or a `portal` (ferry).
+ *  - Every town/gym/start must sit over a walkable footprint.
+ *  - Keep zone/town/gym ids stable across edits — saves key off them.
+ */
 
 export const REGIONS: RegionData[] = [
   {
     id: "kanto",
     name: "Kanto",
+    // Fresh games begin in Pallet Town (south-west), on the connected mainland.
+    start: { x: -44, y: 30 },
     zones: [
-      { id: "route-1", name: "Route 1", biome: "plains", x: -40, y: 20, r: 18, shape: "ellipse", rotation: 30 },
-      { id: "viridian-forest", name: "Viridian Forest", biome: "forest", x: -38, y: -2, r: 18, shape: "blob" },
-      { id: "mt-moon", name: "Mt. Moon", biome: "cave", x: -14, y: -22, r: 16, shape: "rounded" },
-      { id: "cerulean-cape", name: "Cerulean Cape", biome: "lake", x: 6, y: -26, r: 16, shape: "ellipse", rotation: -20 },
-      { id: "rock-tunnel", name: "Rock Tunnel", biome: "cave", x: 22, y: -16, r: 14, shape: "rounded" },
-      { id: "power-plant", name: "Power Plant", biome: "powerplant", x: 30, y: -4, r: 14, shape: "rounded" },
-      { id: "pokemon-tower", name: "Pokémon Tower", biome: "ruins", x: 26, y: 6, r: 13, shape: "rounded" },
-      { id: "safari-zone", name: "Safari Zone", biome: "marsh", x: -4, y: 30, r: 18, shape: "blob" },
-      { id: "seafoam", name: "Seafoam Islands", biome: "tundra", x: -16, y: 40, r: 14, shape: "blob" },
-      { id: "cinnabar-volcano", name: "Cinnabar Volcano", biome: "volcano", x: 2, y: 46, r: 14, shape: "rounded" },
-      { id: "victory-road", name: "Victory Road", biome: "mountain", x: 40, y: 28, r: 16, shape: "rounded" }
+      // Western column: Pallet → Viridian → Viridian Forest → Mt. Moon, the
+      // gentle green start of the journey, overlapping into one landmass.
+      { id: "pallet-zone", name: "Pallet Town", biome: "plains", x: -43, y: 29, r: 14, shape: "blob" },
+      { id: "route-1", name: "Route 1", biome: "plains", x: -42, y: 18, r: 15, shape: "ellipse", rotation: 80 },
+      { id: "viridian-forest", name: "Viridian Forest", biome: "forest", x: -38, y: 0, r: 17, shape: "blob" },
+      { id: "mt-moon", name: "Mt. Moon", biome: "cave", x: -22, y: -15, r: 16, shape: "rounded" },
+      // Northern shore and the central city hub.
+      { id: "cerulean-cape", name: "Cerulean Cape", biome: "lake", x: -2, y: -20, r: 16, shape: "ellipse", rotation: -10 },
+      { id: "saffron-hub", name: "Saffron Plains", biome: "plains", x: 15, y: -4, r: 17, shape: "blob" },
+      // Eastern arm: Rock Tunnel → Power Plant → Lavender → Victory Road.
+      { id: "rock-tunnel", name: "Rock Tunnel", biome: "cave", x: 25, y: -14, r: 14, shape: "rounded" },
+      { id: "power-plant", name: "Power Plant", biome: "powerplant", x: 32, y: -4, r: 13, shape: "rounded" },
+      { id: "pokemon-tower", name: "Pokémon Tower", biome: "ruins", x: 30, y: 4, r: 13, shape: "rounded" },
+      { id: "victory-road", name: "Victory Road", biome: "mountain", x: 40, y: 26, r: 16, shape: "rounded" },
+      // Southern reach: the bay at Vermilion, the Safari marshes, then the
+      // detached-feeling Seafoam/Cinnabar island chain hanging into the sea.
+      { id: "vermilion-bay", name: "Vermilion Bay", biome: "plains", x: 6, y: 0, r: 14, shape: "ellipse", rotation: 70 },
+      { id: "safari-zone", name: "Safari Zone", biome: "marsh", x: 2, y: 22, r: 17, shape: "blob" },
+      { id: "seafoam", name: "Seafoam Islands", biome: "tundra", x: -12, y: 42, r: 12, shape: "blob" },
+      { id: "cinnabar-volcano", name: "Cinnabar Volcano", biome: "volcano", x: -4, y: 46, r: 13, shape: "rounded" }
     ],
     towns: [
       { id: "pallet", name: "Pallet Town", x: -44, y: 30, services: ["center", "mart"] },
