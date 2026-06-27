@@ -6,7 +6,7 @@
 // All game text already funnels through two sinks (Battle.setMessage and
 // Overworld.showNotification), so wiring speak() in there narrates the whole
 // game from one place.
-import { emitTestEvent } from "./testBridge";
+import { emitTestEvent, isTestMode } from "./testBridge";
 
 const STORAGE_KEY = "pokemon_narration_enabled";
 
@@ -64,6 +64,10 @@ export function speak(text: string): void {
 
   emitTestEvent("narrate:speak", { text: spoken });
 
+  // The test harness drives a headless browser with no speech service; calling
+  // speechSynthesis there is pointless and destabilises the engine, so we stop
+  // at the observable event. Real play (not test mode) speaks for real.
+  if (isTestMode()) return;
   if (!synthesisAvailable()) return;
   try {
     window.speechSynthesis.cancel();
