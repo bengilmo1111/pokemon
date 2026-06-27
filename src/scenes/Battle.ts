@@ -5,8 +5,10 @@ import Phaser from "phaser";
 import { MOVES } from "../data/moves";
 import { SPECIES } from "../data/species";
 import { getAbility } from "../data/abilities";
+import { getTypeEffectiveness } from "../data/types";
 import { gameState } from "../game/store";
 import * as Sound from "../game/sound";
+import { speak as narrate } from "../game/narrator";
 import {
   attemptCatch,
   calculateDamage,
@@ -579,6 +581,28 @@ export default class Battle extends Phaser.Scene {
       });
 
       this.moveMenuItems.push(text);
+
+      // Kid-friendly matchup hint: badge each damaging move with how it fares
+      // against THIS enemy, so players learn type matchups by seeing them
+      // (no 18-type chart to memorise). Status moves get no badge.
+      if (move && move.power > 0 && this.enemyMon) {
+        const eff = getTypeEffectiveness(move.type, this.enemyMon.types);
+        const badge = this.effectivenessBadge(eff);
+        if (badge) {
+          const badgeText = this.add.text(x, y - 30, badge.label, {
+            fontFamily: "monospace",
+            fontSize: "12px",
+            fontStyle: "bold",
+            color: badge.color,
+            backgroundColor: badge.bg,
+            align: "center",
+            padding: { left: 6, right: 6, top: 2, bottom: 2 }
+          });
+          badgeText.setOrigin(0.5).setDepth(101).setAlpha(disabled ? 0.55 : 1);
+          badgeText.setData("testid", `move-eff-${index}`);
+          this.moveMenuItems.push(badgeText);
+        }
+      }
     });
 
     // If every move is out of PP, offer Struggle.
@@ -2274,11 +2298,25 @@ export default class Battle extends Phaser.Scene {
     this.updateHpText();
   }
 
+  /**
+   * Map a type-effectiveness multiplier to a small move-button badge. Returns
+   * null for neutral hits (eff === 1) so the buttons stay clean. Wording mirrors
+   * the post-hit "It's super effective!" line kids already hear/read.
+   */
+  private effectivenessBadge(eff: number): { label: string; color: string; bg: string } | null {
+    if (eff > 1) return { label: "▲ Strong!", color: "#dcfce7", bg: "#15803d" };
+    if (eff === 0) return { label: "✕ No effect", color: "#e5e7eb", bg: "#374151" };
+    if (eff < 1) return { label: "▼ Weak", color: "#ffedd5", bg: "#9a3412" };
+    return null;
+  }
+
   private setMessage(message: string): void {
     // A message is always meant to be seen — make sure the bar wasn't left
     // hidden by an open submenu.
     this.setBattleMessageVisible(true);
     this.messageText.setText(message);
+    // Read every battle line aloud for players who follow the game by ear.
+    narrate(message);
   }
 
   private applyDisplayHeight(sprite: Phaser.GameObjects.Sprite, height: number): void {
