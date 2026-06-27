@@ -11,6 +11,7 @@ import {
   addToTeam,
   addToBox,
   getRegion,
+  deriveNextObjective,
   healTeam,
   makePokemon,
   makeWildPokemon,
@@ -38,6 +39,7 @@ import {
 import { pickWeighted } from "../game/utils";
 import { getStatusColor, getStatusDisplayText } from "../game/battle";
 import * as Sound from "../game/sound";
+import * as Narrator from "../game/narrator";
 import { saveGame, loadGame } from "../game/persistence";
 import { TouchControls, type TouchButtonConfig } from "../game/touch";
 import { fitMenu } from "../game/uiLayout";
@@ -79,6 +81,9 @@ export default class Overworld extends Phaser.Scene {
   private propBodies!: Phaser.Physics.Arcade.StaticGroup;
   private hudText!: Phaser.GameObjects.Text;
   private hudVisible = true;
+  private goalBanner!: Phaser.GameObjects.Text;
+  private goalArrow!: Phaser.GameObjects.Text;
+  private lastGoalLabel = "";
   private mapContainer?: Phaser.GameObjects.Container;
   private mapGraphics?: Phaser.GameObjects.Graphics;
   private mapPlayerMarker?: Phaser.GameObjects.Arc;
@@ -307,6 +312,30 @@ export default class Overworld extends Phaser.Scene {
     });
     this.notificationText.setScrollFactor(0).setOrigin(0.5).setVisible(false);
 
+    // "Where do I go?" guidance for young players: a persistent goal banner at
+    // the top of the screen, plus a world-space arrow that floats over the
+    // player and points toward the next objective (see deriveNextObjective).
+    this.goalBanner = this.add.text(this.scale.width / 2, 22, "", {
+      fontFamily: "monospace",
+      fontSize: "14px",
+      color: "#fde68a",
+      backgroundColor: "#0f172add",
+      align: "center",
+      fontStyle: "bold",
+      wordWrap: { width: Math.min(this.scale.width - 40, 520) },
+      padding: { left: 12, right: 12, top: 6, bottom: 6 }
+    });
+    this.goalBanner.setScrollFactor(0).setOrigin(0.5, 0).setDepth(60).setVisible(false);
+    this.goalBanner.setData("testid", "goal-banner");
+
+    this.goalArrow = this.add.text(0, 0, "➤", {
+      fontFamily: "monospace",
+      fontSize: "30px",
+      color: "#fde047"
+    });
+    this.goalArrow.setOrigin(0.5).setDepth(9000).setVisible(false);
+    this.goalArrow.setStroke("#1f2937", 5);
+
     // On-screen touch controls (only created on touch / coarse-pointer devices).
     // Hidden immediately if a modal (starter select / tutorial) is about to show —
     // they'll be restored when that modal closes.
@@ -470,6 +499,8 @@ export default class Overworld extends Phaser.Scene {
 
     if (this.starterOpen || this.isPaused || this.teamOpen || this.martOpen || this.pokedexOpen || this.mapOpen || this.serviceMenuOpen) {
       if (this.hudText?.visible) this.hudText.setVisible(false);
+      this.goalBanner?.setVisible(false);
+      this.goalArrow?.setVisible(false);
       return;
     }
     if (this.hudText && !this.hudText.visible) this.hudText.setVisible(true);
@@ -647,6 +678,8 @@ export default class Overworld extends Phaser.Scene {
       const hudBottom = this.hudText && this.hudText.scene ? this.hudText.y + this.hudText.height : 64;
       this.notificationText.setPosition(this.scale.width / 2, hudBottom + 22);
       this.notificationTimer = duration;
+      // Read overworld toasts aloud (badges, pickups, heals, rival lines…).
+      Narrator.speak(message);
     }
   }
 
@@ -3213,10 +3246,10 @@ export default class Overworld extends Phaser.Scene {
     }
 
     const pokedexCount = getPokedexCount(gameState);
-    const nextGym = region.gyms.find((gym) => !gameState.defeatedGyms[gym.id]);
-    const objective = gameState.isChampion ? "Champion!" :
-      allGymsDefeated ? "Challenge the Pokemon League!" :
-      nextGym ? `Defeat ${nextGym.name}` : "Explore!";
+
+    // Persistent goal banner + an arrow over the player so kids always know
+    // what to do next and which way to head.
+    this.updateGoalGuide();
 
     const inv = gameState.inventory;
     const footerLine = `💊×${inv.potion}  ✚×${inv.revive}`;
@@ -3225,7 +3258,6 @@ export default class Overworld extends Phaser.Scene {
       locationLabel,
       gymLabel,
       `★${gameState.badges.length}/${region.gyms.length}  #${pokedexCount.caught}  ₽${gameState.money ?? 500}`,
-      `→ ${objective}`,
       xpBoostLabel,
       "",
       powerSpotHint,
@@ -3254,6 +3286,36 @@ export default class Overworld extends Phaser.Scene {
       const markerX = (this.player.x - bounds.x) * scaleX;
       const markerY = (this.player.y - bounds.y) * scaleY;
       this.mapPlayerMarker.setPosition(markerX, markerY);
+    }
+  }
+
+  /**
+   * Drive the goal banner + the world-space "this way" arrow from the single
+   * objective source (deriveNextObjective). The arrow hides when there's no
+   * specific destination or the player is already on top of it.
+   */
+  private updateGoalGuide(): void {
+    const objective = deriveNextObjective(gameState);
+
+    if (objective.label !== this.lastGoalLabel) {
+      this.goalBanner.setText(objective.label);
+      this.lastGoalLabel = objective.label;
+    }
+    this.goalBanner.setVisible(true);
+
+    const target = objective.target;
+    if (target) {
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y);
+      if (dist > 90) {
+        const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y);
+        this.goalArrow.setPosition(this.player.x, this.player.y - 34);
+        this.goalArrow.setRotation(angle);
+        this.goalArrow.setVisible(true);
+      } else {
+        this.goalArrow.setVisible(false);
+      }
+    } else {
+      this.goalArrow.setVisible(false);
     }
   }
 
@@ -3753,10 +3815,10 @@ export default class Overworld extends Phaser.Scene {
 
     // Themed panel framing the pause options.
     this.pausePanel = this.add.graphics().setScrollFactor(0).setDepth(1000.5);
-    drawPanel(this.pausePanel, centerX - 180, centerY - 135, 360, 312, { radius: 18 });
+    drawPanel(this.pausePanel, centerX - 180, centerY - 150, 360, 372, { radius: 18 });
 
     // Pause title
-    const title = this.add.text(centerX, centerY - 100, "PAUSED", {
+    const title = this.add.text(centerX, centerY - 112, "PAUSED", {
       fontFamily: "monospace",
       fontSize: "36px",
       color: "#fbbf24",
@@ -3770,14 +3832,17 @@ export default class Overworld extends Phaser.Scene {
     const isTouch = Boolean(this.touch?.active);
     // The Pokédex is otherwise keyboard-only ([D]); surface it here so it's
     // reachable on touch. Items are laid out evenly from a top offset.
+    const narrationLabel = () =>
+      Narrator.isNarrationEnabled() ? "🔊  Read aloud: ON" : "🔇  Read aloud: OFF";
     const labels = [
       { id: "resume", label: "Resume Game" },
       { id: "pokedex", label: "📖  Pokédex" },
+      { id: "narration", label: narrationLabel() },
       { id: "save", label: isTouch ? "Save Game" : "Save Game [S]" },
       { id: "load", label: isTouch ? "Load Game" : "Load Game [F1]" }
     ];
-    const rowGap = 50;
-    const firstY = centerY - 45;
+    const rowGap = 48;
+    const firstY = centerY - 58;
     const menuItems = labels.map((item, i) => ({ ...item, y: firstY + i * rowGap }));
 
     menuItems.forEach((item) => {
@@ -3795,6 +3860,14 @@ export default class Overworld extends Phaser.Scene {
       text.on("pointerout", () => text.setStyle({ backgroundColor: "#1e293b" }));
       if (item.id === "resume") {
         text.on("pointerdown", () => this.resumeGame());
+      } else if (item.id === "narration") {
+        text.on("pointerdown", () => {
+          const enabled = Narrator.toggleNarration();
+          Sound.playMenuSelect();
+          text.setText(narrationLabel());
+          // Confirm by voice when switching on so a young player hears it work.
+          if (enabled) Narrator.speak("Read aloud is on");
+        });
       } else if (item.id === "pokedex") {
         text.on("pointerdown", () => {
           Sound.playMenuSelect();
@@ -3825,7 +3898,7 @@ export default class Overworld extends Phaser.Scene {
     });
 
     // Controls hint — keyboard wording on desktop, tap wording on touch.
-    const hint = this.add.text(centerX, centerY + 150,
+    const hint = this.add.text(centerX, centerY + 172,
       isTouch ? "Tap Resume to continue" : "Press ESC to resume", {
       fontFamily: "monospace",
       fontSize: "14px",
@@ -3838,7 +3911,11 @@ export default class Overworld extends Phaser.Scene {
   private setHudVisible(visible: boolean): void {
     this.hudVisible = visible;
     this.hudText?.setVisible(visible);
-    if (!visible) this.notificationText?.setVisible(false);
+    if (!visible) {
+      this.notificationText?.setVisible(false);
+      this.goalBanner?.setVisible(false);
+      this.goalArrow?.setVisible(false);
+    }
   }
 
   private resumeGame(): void {
@@ -4921,6 +4998,9 @@ export default class Overworld extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(1002);
     this.tutorialElements.push(descText);
 
+    // Read each tutorial card aloud so pre-readers can follow the instructions.
+    Narrator.speak(`${tips[0].title}. ${tips[0].desc}`);
+
     // Progress indicator
     const progressText = this.add.text(centerX, top + cardH - 78, "1 / 4", {
       fontFamily: "monospace",
@@ -4955,6 +5035,7 @@ export default class Overworld extends Phaser.Scene {
       const tip = tips[tipIndex];
       titleText.setText(tip.title);
       descText.setText(tip.desc);
+      Narrator.speak(`${tip.title}. ${tip.desc}`);
       progressText.setText(`${tipIndex + 1} / ${tips.length}`);
       if (tipIndex === tips.length - 1) {
         nextBtn.setText("Got it!");

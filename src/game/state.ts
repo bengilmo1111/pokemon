@@ -436,6 +436,53 @@ export function getRegion(state: GameState) {
   return REGIONS[state.regionIndex];
 }
 
+/** The player's current quest objective and where (in world pixels) it lives. */
+export interface NextObjective {
+  /** Short, kid-readable "what to do next" line for the HUD banner. */
+  label: string;
+  /** World-pixel point the compass should point at, or null when there's nowhere to go. */
+  target: { x: number; y: number } | null;
+}
+
+/**
+ * Work out the single most important thing the player should do next, derived
+ * purely from saved state. Young players get lost in the open world, so this
+ * drives a persistent goal banner + a compass arrow that points the way.
+ *
+ * Coordinates are returned in WORLD PIXELS (tile coords × WORLD_SCALE) so they
+ * line up with the player sprite's position.
+ */
+export function deriveNextObjective(state: GameState): NextObjective {
+  if (state.team.length === 0) {
+    return { label: "Choose your first Pokémon!", target: null };
+  }
+  if (state.isChampion) {
+    return { label: "You're the Champion! Catch 'em all! 🎉", target: null };
+  }
+
+  const region = getRegion(state);
+  // Gyms are listed in canonical order, so the first undefeated one is next.
+  const nextGym = region.gyms.find((g) => !state.defeatedGyms[g.id]);
+  if (nextGym) {
+    return {
+      label: `Goal: Beat ${nextGym.leader} at ${nextGym.name} — earn the ${nextGym.badge}!`,
+      target: { x: nextGym.x * WORLD_SCALE, y: nextGym.y * WORLD_SCALE }
+    };
+  }
+
+  // Every gym here is cleared. In Kanto that means the Indigo Plateau is open
+  // (the league sits at tile 45,35 — the same coords updatePoiHud uses).
+  if (state.regionIndex === 0) {
+    const target = { x: 45 * WORLD_SCALE, y: 35 * WORLD_SCALE };
+    if (state.e4Progress > 0 && state.e4Progress < 4) {
+      return { label: `Goal: Win Elite Four battle ${state.e4Progress + 1} of 4!`, target };
+    }
+    return { label: "Goal: Challenge the Elite Four at the Indigo Plateau!", target };
+  }
+
+  return { label: "Goal: Explore and catch new Pokémon!", target: null };
+}
+
 export function getMoveName(moveId: string) {
   return MOVES[moveId]?.name ?? moveId;
 }
