@@ -17,7 +17,8 @@ import {
   getStatusColor,
   tryInflictStatus,
   StatStages,
-  Weather
+  Weather,
+  DamageResult
 } from "../game/battle";
 import {
   addToBox,
@@ -54,7 +55,8 @@ const STAT_LABELS: Record<StatStageKey, string> = {
   def: "Defense",
   spd: "Speed",
   spAtk: "Sp. Atk",
-  spDef: "Sp. Def"
+  spDef: "Sp. Def",
+  acc: "Accuracy"
 };
 
 // Per-type base hue for the battle backdrop (sky + ground are tinted from this).
@@ -86,6 +88,9 @@ export default class Battle extends Phaser.Scene {
   private enemyHpText!: Phaser.GameObjects.Text;
   private playerHpBar?: Phaser.GameObjects.Graphics;
   private enemyHpBar?: Phaser.GameObjects.Graphics;
+  // Currently-rendered HP ratios, tweened toward the real value so bars drain smoothly.
+  private playerHpDisplay = 1;
+  private enemyHpDisplay = 1;
   private weather: Weather = "none";
   private weatherTurns = 0;
   private weatherOverlay?: Phaser.GameObjects.Rectangle;
@@ -129,9 +134,13 @@ export default class Battle extends Phaser.Scene {
   // Held item state (per battle)
   private usedOranBerry = false;
 
+  // Flash Fire: set once a side absorbs a Fire move, boosting its own Fire moves.
+  private playerFlashFire = false;
+  private enemyFlashFire = false;
+
   // Stat stages (per battle, reset on switch)
-  private playerStages: StatStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
-  private enemyStages: StatStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
+  private playerStages: StatStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0, acc: 0 };
+  private enemyStages: StatStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0, acc: 0 };
 
   // XP bar graphics
   private xpBarBg?: Phaser.GameObjects.Rectangle;
@@ -170,9 +179,12 @@ export default class Battle extends Phaser.Scene {
     this.weatherOverlay = undefined;
     // Reset held item state
     this.usedOranBerry = false;
+    // Reset Flash Fire absorption
+    this.playerFlashFire = false;
+    this.enemyFlashFire = false;
     // Reset stat stages
-    this.playerStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
-    this.enemyStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
+    this.playerStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0, acc: 0 };
+    this.enemyStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0, acc: 0 };
     // Reset XP bar refs
     this.xpBarBg = undefined;
     this.xpBarFill = undefined;
@@ -1003,8 +1015,9 @@ export default class Battle extends Phaser.Scene {
     if (this.enemyIndex < this.enemyTeam.length - 1) {
       this.enemyIndex += 1;
       this.enemyMon = this.enemyTeam[this.enemyIndex];
-      // Reset enemy stat stages on switch
-      this.enemyStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
+      // Reset enemy stat stages + Flash Fire on switch
+      this.enemyStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0, acc: 0 };
+      this.enemyFlashFire = false;
       this.setMessage(`${this.trainerName} sent out ${this.enemyMon.name}!`);
       this.updateEnemySprite();
       await this.showEntranceAnimation(this.enemySprite!, false);
@@ -1373,8 +1386,9 @@ export default class Battle extends Phaser.Scene {
     this.closeSwitchMenu();
     this.playerIndex = index;
     this.playerMon = gameState.team[this.playerIndex];
-    // Reset player stat stages on switch
-    this.playerStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0 };
+    // Reset player stat stages + Flash Fire on switch
+    this.playerStages = { atk: 0, def: 0, spd: 0, spAtk: 0, spDef: 0, acc: 0 };
+    this.playerFlashFire = false;
     this.setMessage(`Go ${this.playerMon.nickname || this.playerMon.name}!`);
     this.updatePlayerSprite();
     await this.wait(400);
@@ -1394,6 +1408,7 @@ export default class Battle extends Phaser.Scene {
     "leer":         { target: "foe",  stat: "def", stages: -1 },
     "tail-whip":    { target: "foe",  stat: "def", stages: -1 },
     "string-shot":  { target: "foe",  stat: "spd", stages: -1 },
+    "sand-attack":  { target: "foe",  stat: "acc", stages: -1 },
     "screech":      { target: "foe",  stat: "def", stages: -2 },
     "harden":       { target: "user", stat: "def", stages: +1 },
     "withdraw":     { target: "user", stat: "def", stages: +1 },
@@ -1426,6 +1441,49 @@ export default class Battle extends Phaser.Scene {
     });
   }
 
+  /** Pop the damage dealt above the defender — gold on a crit, red when super-effective. */
+  private showDamageNumber(result: DamageResult, defenderSprite: Phaser.GameObjects.Sprite): void {
+    if (result.damage <= 0) return;
+    const color = result.isCritical ? "#fbbf24" : result.effectiveness > 1 ? "#f87171" : "#ffffff";
+    const big = result.isCritical || result.effectiveness > 1;
+    const ft = this.add.text(defenderSprite.x, defenderSprite.y - 40, `-${result.damage}`, {
+      fontFamily: "monospace",
+      fontSize: big ? "26px" : "20px",
+      fontStyle: "bold",
+      color,
+      stroke: "#000000",
+      strokeThickness: 4
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(500);
+
+    this.tweens.add({
+      targets: ft,
+      y: ft.y - 36,
+      alpha: 0,
+      duration: 750,
+      ease: "Quad.easeOut",
+      onComplete: () => ft.destroy()
+    });
+    emitTestEvent("battle:damage", {
+      amount: result.damage,
+      effectiveness: result.effectiveness,
+      crit: result.isCritical
+    });
+  }
+
+  /** Brief colour pulse on a sprite to underline a freshly-applied status. */
+  private pulseStatus(sprite: Phaser.GameObjects.Sprite | undefined, status: StatusEffect): void {
+    if (!sprite || status === "none") return;
+    sprite.setTint(getStatusColor(status));
+    this.tweens.add({
+      targets: sprite,
+      duration: 140,
+      repeat: 2,
+      yoyo: true,
+      alpha: 0.55,
+      onComplete: () => { sprite.setAlpha(1); sprite.clearTint(); }
+    });
+  }
+
   private async executeMove(attacker: PokemonInstance, defender: PokemonInstance, moveId: string): Promise<void> {
     const move = MOVES[moveId];
     if (!move) {
@@ -1441,7 +1499,8 @@ export default class Battle extends Phaser.Scene {
     this.setMessage(`${attackerDisplayName} used ${move.name}!`);
     await this.wait(450);
 
-    if (!rollAccuracy(moveId, attacker)) {
+    const attackerAccStage = (attacker === this.playerMon ? this.playerStages : this.enemyStages).acc;
+    if (!rollAccuracy(moveId, attacker, attackerAccStage)) {
       Sound.playMiss();
       this.setMessage("The move missed!");
       await this.wait(400);
@@ -1456,6 +1515,14 @@ export default class Battle extends Phaser.Scene {
       const stages = targetIsPlayer ? this.playerStages : this.enemyStages;
       const targetSprite = targetIsPlayer ? this.playerSprite : this.enemySprite;
       const targetMon = targetIsPlayer ? this.playerMon : this.enemyMon;
+
+      // Keen Eye refuses accuracy drops.
+      if (statDef.stat === "acc" && statDef.stages < 0 && getAbility(targetMon.ability)?.keenEye) {
+        this.setMessage(`${targetMon.nickname || targetMon.name}'s Keen Eye kept its accuracy!`);
+        emitTestEvent("ability:keen-eye", { ability: "Keen Eye" });
+        await this.wait(700);
+        return;
+      }
 
       // Apply stage change clamped to [-6, +6]
       stages[statDef.stat] = Math.max(-6, Math.min(6, stages[statDef.stat] + statDef.stages));
@@ -1484,6 +1551,7 @@ export default class Battle extends Phaser.Scene {
       const inflicted = tryInflictStatus(defender, move.effect.status, moveId);
       const defenderName = defender === this.playerMon ? (defender.nickname || defender.name) : defender.name;
       if (inflicted) {
+        this.pulseStatus(defender === this.playerMon ? this.playerSprite : this.enemySprite, move.effect.status);
         this.updateHpText();
         const verb: Record<string, string> = {
           poison: "was poisoned", burn: "was burned", paralysis: "was paralyzed",
@@ -1512,18 +1580,49 @@ export default class Battle extends Phaser.Scene {
 
     const attackerStages = attacker === this.playerMon ? this.playerStages : this.enemyStages;
     const defenderStages = defender === this.playerMon ? this.playerStages : this.enemyStages;
-    const result = calculateDamage(attacker, defender, moveId, attackerStages, defenderStages, this.weather);
+    const attackerFlashFire = attacker === this.playerMon ? this.playerFlashFire : this.enemyFlashFire;
+    const result = calculateDamage(attacker, defender, moveId, attackerStages, defenderStages, this.weather, attackerFlashFire);
     const moveType = MOVES[moveId]?.type || "normal";
+    const attackerSprite = attacker === this.playerMon ? this.playerSprite! : this.enemySprite!;
+    const defenderSprite = defender === this.playerMon ? this.playerSprite! : this.enemySprite!;
+    const defAbilityName = getAbility(defender.ability)?.name ?? "the foe";
 
-    // Show attack animation with type-based effects
-    if (attacker === this.playerMon) {
-      await this.showAttackAnimation(this.playerSprite!, this.enemySprite!, result.isCritical, moveType);
-    } else {
-      await this.showAttackAnimation(this.enemySprite!, this.playerSprite!, result.isCritical, moveType);
+    // Defender ability absorbed the hit (Water/Volt Absorb heal, or Flash Fire boost).
+    if (result.absorbed) {
+      const defenderName = defender === this.playerMon ? (defender.nickname || defender.name) : defender.name;
+      if (result.absorbed === "heal") {
+        defender.hp = Math.min(defender.maxHp, defender.hp + (result.healAmount ?? 0));
+        this.showFloatingText(`+${result.healAmount ?? 0}`, defenderSprite.x, defenderSprite.y - 60, "#34d399");
+        this.updateHpText();
+        this.setMessage(`${defenderName}'s ${defAbilityName} restored its HP!`);
+        emitTestEvent("ability:absorb-heal", { ability: defAbilityName, amount: result.healAmount ?? 0 });
+      } else {
+        if (defender === this.playerMon) this.playerFlashFire = true; else this.enemyFlashFire = true;
+        this.setMessage(`${defenderName}'s ${defAbilityName} raised the power of its Fire moves!`);
+        emitTestEvent("ability:flash-fire", { ability: defAbilityName });
+      }
+      await this.wait(700);
+      return;
     }
 
-    defender.hp = Math.max(0, defender.hp - result.damage);
-    this.updateHpText();
+    // Show attack animation with type-based effects
+    await this.showAttackAnimation(attackerSprite, defenderSprite, result.isCritical, moveType, move.category);
+
+    // Sturdy: a full-HP defender clings on with 1 HP through a would-be OHKO.
+    let sturdyEndured = false;
+    if (result.damage >= defender.hp && defender.hp === defender.maxHp && getAbility(defender.ability)?.sturdy) {
+      defender.hp = 1;
+      sturdyEndured = true;
+    } else {
+      defender.hp = Math.max(0, defender.hp - result.damage);
+    }
+    this.showDamageNumber(result, defenderSprite);
+    await this.animateHpDrain(defender === this.playerMon);
+    if (sturdyEndured) {
+      this.setMessage(`${defender === this.playerMon ? (defender.nickname || defender.name) : defender.name} endured the hit with Sturdy!`);
+      emitTestEvent("ability:sturdy-endure", { ability: "Sturdy" });
+      await this.wait(500);
+    }
 
     // ---- Held item effects triggered by damage ----
 
@@ -1602,6 +1701,7 @@ export default class Battle extends Phaser.Scene {
           result.statusInflicted === "freeze" ? "frozen" :
           result.statusInflicted === "poison" ? "poisoned" : result.statusInflicted;
         this.setMessage(`${defender.name} was ${statusName}!`);
+        this.pulseStatus(defenderSprite, result.statusInflicted);
         this.updateHpText();
         await this.wait(500);
       }
@@ -1614,6 +1714,7 @@ export default class Battle extends Phaser.Scene {
       if (tryInflictStatus(attacker, "paralysis")) {
         const atkName = attacker === this.playerMon ? (attacker.nickname || attacker.name) : attacker.name;
         this.setMessage(`${atkName} was paralyzed by ${defAbility.name}!`);
+        this.pulseStatus(attackerSprite, "paralysis");
         this.updateHpText();
         await this.wait(500);
       }
@@ -1631,7 +1732,7 @@ export default class Battle extends Phaser.Scene {
     return false;
   }
 
-  private async showAttackAnimation(attacker: Phaser.GameObjects.Sprite, target: Phaser.GameObjects.Sprite, isCritical: boolean, moveType?: string): Promise<void> {
+  private async showAttackAnimation(attacker: Phaser.GameObjects.Sprite, target: Phaser.GameObjects.Sprite, isCritical: boolean, moveType?: string, category?: string): Promise<void> {
     const originalX = attacker.x;
     const originalY = attacker.y;
     const targetX = target.x;
@@ -1674,22 +1775,40 @@ export default class Battle extends Phaser.Scene {
     });
     attacker.clearTint();
 
-    // Lunge toward target with trail effect
-    const trail1 = this.add.circle(originalX, originalY, 15, effectColor, 0.6).setDepth(5);
-    const trail2 = this.add.circle(originalX, originalY, 10, effectColor, 0.4).setDepth(5);
-
-    await new Promise<void>((resolve) => {
-      this.tweens.add({
-        targets: attacker,
-        x: originalX + (targetX > originalX ? 50 : -50),
-        duration: 120,
-        ease: "Quad.easeIn",
-        onComplete: () => resolve()
+    if (category === "special") {
+      // Ranged delivery: launch a type-coloured orb (with a tail) at the target.
+      const orb = this.add.circle(originalX, originalY, 13, effectColor, 0.95).setDepth(6);
+      const tail = this.add.circle(originalX, originalY, 9, effectColor, 0.5).setDepth(5);
+      this.tweens.add({ targets: tail, x: targetX, y: targetY, duration: 320, ease: "Quad.easeIn" });
+      await new Promise<void>((resolve) => {
+        this.tweens.add({
+          targets: orb,
+          x: targetX,
+          y: targetY,
+          duration: 260,
+          ease: "Quad.easeIn",
+          onComplete: () => resolve()
+        });
       });
-    });
+      this.tweens.add({ targets: [orb, tail], alpha: 0, scale: 0.3, duration: 180, onComplete: () => { orb.destroy(); tail.destroy(); }});
+    } else {
+      // Contact delivery: lunge toward the target with a motion trail.
+      const trail1 = this.add.circle(originalX, originalY, 15, effectColor, 0.6).setDepth(5);
+      const trail2 = this.add.circle(originalX, originalY, 10, effectColor, 0.4).setDepth(5);
 
-    // Fade out trails
-    this.tweens.add({ targets: [trail1, trail2], alpha: 0, duration: 200, onComplete: () => { trail1.destroy(); trail2.destroy(); }});
+      await new Promise<void>((resolve) => {
+        this.tweens.add({
+          targets: attacker,
+          x: originalX + (targetX > originalX ? 50 : -50),
+          duration: 120,
+          ease: "Quad.easeIn",
+          onComplete: () => resolve()
+        });
+      });
+
+      // Fade out trails
+      this.tweens.add({ targets: [trail1, trail2], alpha: 0, duration: 200, onComplete: () => { trail1.destroy(); trail2.destroy(); }});
+    }
 
     // Impact effect - spawn particles at target
     this.createImpactEffect(targetX, targetY, effectColor, isCritical);
@@ -1965,7 +2084,41 @@ export default class Battle extends Phaser.Scene {
       this.enemyStatusText.setColor(`#${getStatusColor(this.enemyMon.status).toString(16)}`);
     }
 
+    // Snap the rendered bars to the real values (drain animation drives these directly).
+    this.playerHpDisplay = this.playerMon.maxHp > 0 ? this.playerMon.hp / this.playerMon.maxHp : 0;
+    this.enemyHpDisplay = this.enemyMon.maxHp > 0 ? this.enemyMon.hp / this.enemyMon.maxHp : 0;
     this.drawHpBars();
+  }
+
+  /** Smoothly drain one side's HP bar (and its HP readout) toward the real value. */
+  private animateHpDrain(isPlayer: boolean): Promise<void> {
+    const mon = isPlayer ? this.playerMon : this.enemyMon;
+    const target = mon.maxHp > 0 ? mon.hp / mon.maxHp : 0;
+    const from = isPlayer ? this.playerHpDisplay : this.enemyHpDisplay;
+    const hpText = isPlayer ? this.playerHpText : this.enemyHpText;
+    if (Math.abs(target - from) < 0.001) {
+      this.updateHpText();
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      const proxy = { v: from };
+      this.tweens.add({
+        targets: proxy,
+        v: target,
+        duration: 450,
+        ease: "Quad.easeOut",
+        onUpdate: () => {
+          if (isPlayer) this.playerHpDisplay = proxy.v; else this.enemyHpDisplay = proxy.v;
+          const shownHp = Math.max(0, Math.round(proxy.v * mon.maxHp));
+          hpText.setText(`${mon.nickname || mon.name} Lv${mon.level}\nHP: ${shownHp}/${mon.maxHp}`);
+          this.drawHpBars();
+        },
+        onComplete: () => {
+          this.updateHpText();
+          resolve();
+        }
+      });
+    });
   }
 
   /** Draw colour-coded HP bars above the two Pokémon sprites. */
@@ -1993,9 +2146,9 @@ export default class Battle extends Phaser.Scene {
       g.strokeRect(x, cy, barW, barH);
     };
     draw(this.playerHpBar, this.scale.width * 0.25, this.scale.height * 0.45 - 100,
-      this.playerMon.hp / this.playerMon.maxHp);
+      this.playerHpDisplay);
     draw(this.enemyHpBar, this.scale.width * 0.7, this.scale.height * 0.3 - 110,
-      this.enemyMon.hp / this.enemyMon.maxHp);
+      this.enemyHpDisplay);
   }
 
   /** Set the active weather, show a message, and tint the field. */

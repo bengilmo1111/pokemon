@@ -27,6 +27,7 @@
   { "id": "nasty-plot", "name": "Nasty Plot", "type": "dark", "category": "status", "power": 0, "accuracy": 1, "pp": 20, "effect": { "statStage": { "stat": "spAtk", "delta": 2, "target": "self" } } },
   { "id": "charm", "name": "Charm", "type": "fairy", "category": "status", "power": 0, "accuracy": 1, "pp": 20, "effect": { "statStage": { "stat": "atk", "delta": -2, "target": "enemy" } } },
   { "id": "string-shot", "name": "String Shot", "type": "bug", "category": "status", "power": 0, "accuracy": 0.95, "pp": 40, "effect": { "statStage": { "stat": "spd", "delta": -1, "target": "enemy" } } },
+  { "id": "sand-attack", "name": "Sand-Attack", "type": "ground", "category": "status", "power": 0, "accuracy": 1, "pp": 15, "effect": { "statStage": { "stat": "acc", "delta": -1, "target": "enemy" } } },
   { "id": "sing", "name": "Sing", "type": "normal", "category": "status", "power": 0, "accuracy": 0.55, "pp": 15, "effect": { "status": "sleep" } },
   { "id": "hypnosis", "name": "Hypnosis", "type": "psychic", "category": "status", "power": 0, "accuracy": 0.6, "pp": 20, "effect": { "status": "sleep" } },
   { "id": "spore", "name": "Spore", "type": "grass", "category": "status", "power": 0, "accuracy": 1, "pp": 15, "effect": { "status": "sleep" } },

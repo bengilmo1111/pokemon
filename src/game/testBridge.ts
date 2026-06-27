@@ -21,6 +21,8 @@ import type Phaser from "phaser";
 import { gameState } from "./store";
 import { getSeed, setSeed } from "./rng";
 import { createInitialState, getRegion, makePokemon, WORLD_SCALE } from "./state";
+import type { PokemonInstance } from "./state";
+import { calculateDamage, type DamageResult } from "./battle";
 
 /** A starter spec for {@link TestBridgeApi.bootIntoOverworld}. */
 export interface TeamSpec {
@@ -101,6 +103,19 @@ export interface TestBridgeApi {
   bootIntoOverworld(opts?: { team?: TeamSpec[]; seed?: number }): void;
   /** Replace the active team with freshly built Pokémon. */
   giveTeam(team: TeamSpec[]): void;
+  /** Build a single Pokémon instance (for deterministic battle-calc assertions). */
+  makeMon(speciesId: string, level: number): PokemonInstance;
+  /**
+   * Run the pure damage calculation for two instances, exposing ability/weather
+   * behaviour to tests without driving a full battle. `flashFireActive` mimics a
+   * prior Fire absorption.
+   */
+  calcDamage(
+    attacker: PokemonInstance,
+    defender: PokemonInstance,
+    moveId: string,
+    flashFireActive?: boolean
+  ): DamageResult;
   /** Set every team member's HP to 0 (reproduces the fully-fainted state). */
   faintTeam(): void;
   /** Fully heal the team. */
@@ -284,6 +299,9 @@ export function installTestBridge(game: Phaser.Game): void {
     giveTeam: (team) => {
       gameState.team = team.map((s) => makePokemon(s.speciesId, s.level));
     },
+    makeMon: (speciesId, level) => makePokemon(speciesId, level),
+    calcDamage: (attacker, defender, moveId, flashFireActive = false) =>
+      calculateDamage(attacker, defender, moveId, undefined, undefined, "none", flashFireActive),
     faintTeam: () => {
       gameState.team.forEach((m) => { m.hp = 0; });
       emitTestEvent("scenario:faint-team");

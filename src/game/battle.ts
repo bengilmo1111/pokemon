@@ -11,6 +11,10 @@ export interface DamageResult {
   effectiveness: number;
   isCritical: boolean;
   statusInflicted?: StatusEffect;
+  /** Defender ability absorbed the hit (no damage). "heal" restores HP; "flash-fire" powers up Fire. */
+  absorbed?: "heal" | "flash-fire";
+  /** HP the defender should recover when `absorbed === "heal"`. */
+  healAmount?: number;
 }
 
 export function getMove(moveId: string): MoveData {
@@ -28,6 +32,12 @@ export interface StatStages {
   spd: number;
   spAtk: number;
   spDef: number;
+  acc: number;
+}
+
+// Accuracy/evasion stages use the 3/(3±stage) ratio table, not the standard one.
+export function accStageMultiplier(stage: number): number {
+  return stage >= 0 ? (3 + stage) / 3 : 3 / (3 - stage);
 }
 
 export type Weather = "none" | "rain" | "sun" | "sandstorm";
@@ -38,7 +48,8 @@ export function calculateDamage(
   moveId: string,
   attackerStages?: StatStages,
   defenderStages?: StatStages,
-  weather: Weather = "none"
+  weather: Weather = "none",
+  flashFireActive = false
 ): DamageResult {
   const move = MOVES[moveId];
   if (!move || move.power <= 0) {
@@ -50,9 +61,19 @@ export function calculateDamage(
   // Type effectiveness (computed early so abilities can grant immunity)
   let effectiveness = getTypeEffectiveness(move.type, defender.types);
 
-  // Defender ability: full type immunities (Levitate, Water/Volt Absorb, …)
+  // Defender ability: damage-negating absorption.
   const defAbility = getAbility(defender.ability);
-  if (defAbility?.immuneTo?.includes(move.type) || defAbility?.absorbType === move.type) {
+  // Water/Volt Absorb: negate the hit and restore HP.
+  if (defAbility?.absorbHeal === move.type && defender.hp < defender.maxHp) {
+    const healAmount = Math.min(defender.maxHp - defender.hp, Math.max(1, Math.floor(defender.maxHp / 4)));
+    return { damage: 0, effectivenessText: "", effectiveness: 0, isCritical: false, absorbed: "heal", healAmount };
+  }
+  // Flash Fire: negate the Fire hit and power up the defender's own Fire moves.
+  if (defAbility?.absorbType === move.type) {
+    return { damage: 0, effectivenessText: "", effectiveness: 0, isCritical: false, absorbed: "flash-fire" };
+  }
+  // Other full type immunities (Levitate, and a topped-off Water/Volt Absorb).
+  if (defAbility?.immuneTo?.includes(move.type)) {
     return { damage: 0, effectivenessText: "It doesn't affect " + defender.name + "…", effectiveness: 0, isCritical: false };
   }
 
@@ -66,7 +87,10 @@ export function calculateDamage(
   const atkBase = isSpecial ? attacker.stats.spAtk : attacker.stats.atk;
   const defBase = isSpecial ? defender.stats.spDef : defender.stats.def;
 
-  const atk = Math.floor(atkBase * stageMultiplier(atkStage));
+  const atkAbility = getAbility(attacker.ability);
+  // Guts: 50% physical Attack boost while the attacker carries a status condition.
+  const gutsBoost = atkAbility?.guts && attacker.status !== "none" && !isSpecial ? 1.5 : 1;
+  const atk = Math.floor(atkBase * stageMultiplier(atkStage) * gutsBoost);
   let def = Math.max(1, Math.floor(defBase * stageMultiplier(defStage)));
   // Sandstorm raises Sp. Def of Rock-type defenders by 50%.
   if (weather === "sandstorm" && isSpecial && defender.types.includes("rock")) {
@@ -98,20 +122,24 @@ export function calculateDamage(
   // Random variance (85-100%)
   modifier *= 0.85 + rng() * 0.15;
 
-  // Burn halves physical damage
-  if (attacker.status === "burn" && move.category === "physical") {
+  // Burn halves physical damage (Guts shrugs off the burn penalty).
+  if (attacker.status === "burn" && move.category === "physical" && !atkAbility?.guts) {
     modifier *= 0.5;
   }
 
   // Attacker ability: pinch boost (Blaze/Torrent/Overgrow/Swarm) when low HP
-  const atkAbility = getAbility(attacker.ability);
   if (atkAbility?.pinchType === move.type && attacker.hp <= attacker.maxHp / 3) {
     modifier *= 1.5;
   }
 
-  // Defender ability: Thick Fat softens Fire/Ice
-  if (defAbility?.name === "Thick Fat" && (move.type === "fire" || move.type === "ice")) {
-    modifier *= 0.5;
+  // Flash Fire: a previously-absorbed Fire hit powers up this Fire-type move.
+  if (flashFireActive && move.type === "fire") {
+    modifier *= 1.5;
+  }
+
+  // Defender ability: Thick Fat (and any resist ability) softens listed types.
+  if (defAbility?.resist?.types.includes(move.type)) {
+    modifier *= defAbility.resist.factor;
   }
 
   const damage = Math.max(1, Math.floor(base * modifier));
@@ -134,11 +162,14 @@ export function calculateDamage(
   return { damage, effectivenessText: getEffectivenessText(effectiveness), effectiveness, isCritical, statusInflicted };
 }
 
-export function rollAccuracy(moveId: string, attacker: PokemonInstance): boolean {
+export function rollAccuracy(moveId: string, attacker: PokemonInstance, accStage = 0): boolean {
   const move = MOVES[moveId];
   if (!move) return false;
 
   let accuracy = move.accuracy;
+
+  // Accuracy stage changes (Sand-Attack and friends).
+  if (accStage !== 0) accuracy *= accStageMultiplier(accStage);
 
   // Paralysis reduces accuracy
   if (attacker.status === "paralysis") {
