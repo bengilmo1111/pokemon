@@ -37,37 +37,43 @@ export default class Title extends Phaser.Scene {
     const W = this.scale.width;
     const H = this.scale.height;
 
-    // Dark background
-    this.add.rectangle(0, 0, W, H, 0x0d1b2a).setOrigin(0);
+    // Vertical gradient backdrop (deep navy → near-black) for depth.
+    const bg = this.add.graphics().setScrollFactor(0).setDepth(0);
+    bg.fillGradientStyle(0x142544, 0x142544, 0x070d18, 0x070d18, 1);
+    bg.fillRect(0, 0, W, H);
 
-    // Drifting circles background (10 circles)
-    for (let i = 0; i < 10; i++) {
-      const radius = Phaser.Math.Between(8, 20);
+    // Drifting type-coloured orbs, soft and low-alpha so they read as ambience.
+    for (let i = 0; i < 14; i++) {
+      const radius = Phaser.Math.Between(10, 26);
       const color = TYPE_COLOURS[i % TYPE_COLOURS.length];
       const x = Phaser.Math.Between(radius, W - radius);
       const y = Phaser.Math.Between(0, H);
-      const vy = -(0.3 + rng() * 0.5);
+      const vy = -(0.25 + rng() * 0.5);
 
-      const graphic = this.add.arc(x, y, radius, 0, 360, false, color, 0.35);
+      const graphic = this.add.arc(x, y, radius, 0, 360, false, color, 0.22);
       graphic.setScrollFactor(0).setDepth(1);
 
       this.driftCircles.push({ x, y, vy, radius, color, graphic });
     }
 
-    // Title text — animated bob, font size capped so it fits any viewport width
-    const titleFontSize = Math.min(48, Math.floor(W / 10));
-    const titleY = H / 2 - 150;
-    const titleText = this.add.text(W / 2, titleY, "Pokémon Adventure", {
+    // ---- Header ----------------------------------------------------------
+    const titleLabel = "Pokémon Adventure";
+    // Size to fit the viewport width (monospace bold ≈ 0.62em per glyph).
+    const titleFontSize = Math.min(52, Math.floor((W - 28) / (titleLabel.length * 0.62)));
+    const titleY = Math.max(76, Math.floor(H * 0.12));
+    const titleText = this.add.text(W / 2, titleY, titleLabel, {
       fontFamily: "monospace",
       fontSize: `${titleFontSize}px`,
       color: "#fbbf24",
       fontStyle: "bold",
       stroke: "#000000",
-      strokeThickness: 4,
-      shadow: { offsetX: 2, offsetY: 2, color: "#000000", blur: 4, fill: true }
+      strokeThickness: 5,
+      shadow: { offsetX: 2, offsetY: 3, color: "#000000", blur: 6, fill: true }
     }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
+    // Safety: never let the stroke/shadow push it past the edges.
+    if (titleText.displayWidth > W - 16) titleText.setScale((W - 16) / titleText.displayWidth);
 
-    // Bob tween: ±4px, ~2s period (1s each way)
+    // Bob tween: ±4px, ~2s period.
     this.tweens.add({
       targets: titleText,
       y: titleY + 4,
@@ -77,12 +83,30 @@ export default class Title extends Phaser.Scene {
       ease: "Sine.easeInOut"
     });
 
-    // Subtitle
-    this.add.text(W / 2, H / 2 - 92, "Choose a save slot", {
+    // A small row of type-coloured dots under the title for flavour.
+    const dotColours = [0xf97316, 0x3b82f6, 0x22c55e, 0xfbbf24, 0x9333ea];
+    const dotGap = 22;
+    const dotStartX = W / 2 - (dotColours.length - 1) * dotGap / 2;
+    dotColours.forEach((c, i) => {
+      this.add.circle(dotStartX + i * dotGap, titleY + titleFontSize * 0.7, 5, c)
+        .setScrollFactor(0).setDepth(10);
+    });
+
+    this.add.text(W / 2, titleY + titleFontSize * 0.7 + 26, "Choose a save slot to begin", {
       fontFamily: "monospace",
-      fontSize: "16px",
+      fontSize: "15px",
       color: "#94a3b8"
     }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
+
+    // Footer hint.
+    this.add.text(W / 2, H - 22, "Tap a card to play  •  Mobile-first", {
+      fontFamily: "monospace",
+      fontSize: "12px",
+      color: "#475569"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
+
+    // Remember where the slot list should start (just below the header).
+    this.listTop = titleY + titleFontSize * 0.7 + 52;
 
     // Wait one resize tick so RESIZE mode has settled to the true viewport size
     // before placing interactive buttons (first paint can be off by a frame).
@@ -91,64 +115,88 @@ export default class Title extends Phaser.Scene {
     this.drawSaveSlots();
   }
 
+  private listTop = 0;
+
   private drawSaveSlots(): void {
     const W = this.scale.width;
     const H = this.scale.height;
     const slots = getSaveSlots();
-    const slotW = Math.min(440, W * 0.88);
-    const slotH = 96;
-    const startY = H / 2 - 58;
+
+    const pad = 16;
+    const slotW = Math.min(460, W - 28);
+    const gap = 16;
+    // Size cards to fill the space below the header without overflowing short
+    // screens, clamped to a comfortable range.
+    const available = H - this.listTop - 30;
+    const slotH = Math.max(96, Math.min(132, Math.floor((available - gap * (slots.length - 1)) / slots.length)));
+    const totalH = slots.length * slotH + (slots.length - 1) * gap;
+    const startY = Math.max(this.listTop, this.listTop + (available - totalH) / 2);
+    const cardX = W / 2 - slotW / 2;
 
     slots.forEach((slotInfo, index) => {
-      const y = startY + index * (slotH + 14);
+      const y = startY + index * (slotH + gap);
       const hasData = hasSaveData(slotInfo.slot);
-      const title = `${slotInfo.slot}. ${slotInfo.name}`;
-      const detail = hasData
-        ? `${slotInfo.teamSize} Pokémon  •  ${slotInfo.badges} badges  •  ${new Date(slotInfo.timestamp).toLocaleDateString()}`
-        : "Empty slot";
+      const accent = hasData ? 0x22d3ee : 0x64748b;
 
+      // Card body.
       const bg = this.add.graphics().setScrollFactor(0).setDepth(10);
-      bg.fillStyle(hasData ? 0x1e293b : 0x172033, 0.96);
-      bg.fillRoundedRect(W / 2 - slotW / 2, y, slotW, slotH, 12);
-      bg.lineStyle(2, hasData ? 0x22d3ee : 0x64748b, 1);
-      bg.strokeRoundedRect(W / 2 - slotW / 2, y, slotW, slotH, 12);
+      bg.fillStyle(hasData ? 0x1c2942 : 0x141d30, 0.97);
+      bg.fillRoundedRect(cardX, y, slotW, slotH, 14);
+      bg.lineStyle(2, hasData ? 0x2b4a63 : 0x33415a, 1);
+      bg.strokeRoundedRect(cardX, y, slotW, slotH, 14);
+      // Left accent stripe.
+      bg.fillStyle(accent, 1);
+      bg.fillRoundedRect(cardX, y + 10, 5, slotH - 20, 3);
 
-      this.add.text(W / 2 - slotW / 2 + 18, y + 16, title, {
+      const title = `${slotInfo.slot}. ${slotInfo.name}`;
+      this.add.text(cardX + pad + 8, y + 14, title, {
         fontFamily: "monospace",
         fontSize: "20px",
         color: "#f8fafc",
         fontStyle: "bold"
       }).setScrollFactor(0).setDepth(11);
 
-      this.add.text(W / 2 - slotW / 2 + 18, y + 48, detail, {
+      const detail = hasData
+        ? `${slotInfo.teamSize} Pokémon  •  ${slotInfo.badges} badges  •  ${new Date(slotInfo.timestamp).toLocaleDateString()}`
+        : "Empty slot — tap New Game to begin";
+      this.add.text(cardX + pad + 8, y + 44, detail, {
         fontFamily: "monospace",
-        fontSize: "14px",
-        color: "#cbd5e1"
+        fontSize: "13px",
+        color: hasData ? "#cbd5e1" : "#7c8aa3"
       }).setScrollFactor(0).setDepth(11);
 
-      const primaryLabel = hasData ? "Continue" : "New Game";
-      this.makeButton(W / 2 + slotW / 2 - 72, y + 9, 126, 26, hasData ? 0x22d3ee : 0xfbbf24, primaryLabel, "#0f172a", () => {
-        if (hasData) {
+      // ---- Button row (touch-friendly, no overlap) ----------------------
+      const rowH = 40;
+      const rowY = y + slotH - rowH - 12;
+      const rowW = slotW - pad * 2;
+      const rowX = cardX + pad;
+
+      if (hasData) {
+        const btnGap = 8;
+        const usable = rowW - btnGap * 2;
+        const wContinue = Math.round(usable * 0.46);
+        const wSmall = Math.round((usable - wContinue) / 2);
+
+        const xContinue = rowX + wContinue / 2;
+        const xRename = rowX + wContinue + btnGap + wSmall / 2;
+        const xNew = rowX + wContinue + btnGap + wSmall + btnGap + wSmall / 2;
+
+        this.makeButton(xContinue, rowY, wContinue, rowH, 0x22d3ee, "▶ Continue", "#06283c", () => {
           setActiveSaveSlot(slotInfo.slot);
           loadGame(slotInfo.slot);
           this.scene.start("Boot");
-        } else {
-          this.startNewGame(slotInfo.slot);
-        }
-      });
-
-      this.makeButton(W / 2 + slotW / 2 - 72, y + 39, 126, 24, 0x334155, hasData ? "Rename" : "Name Slot", "#e5e7eb", () => {
-        if (hasData) {
+        });
+        this.makeButton(xRename, rowY, wSmall, rowH, 0x334155, "Rename", "#e5e7eb", () => {
           const name = this.promptSlotName(slotInfo.slot, slotInfo.name);
           if (name && renameSaveSlot(slotInfo.slot, name)) this.scene.restart();
-        } else {
-          this.startNewGame(slotInfo.slot);
-        }
-      });
-
-      if (hasData) {
-        this.makeButton(W / 2 + slotW / 2 - 72, y + 67, 126, 22, 0xef4444, "New Game", "#ffffff", () => {
+        });
+        this.makeButton(xNew, rowY, wSmall, rowH, 0xef4444, "New Game", "#ffffff", () => {
           this.confirmNewGame(slotInfo.slot);
+        });
+      } else {
+        // Single, full-width primary action — impossible to mis-tap.
+        this.makeButton(cardX + slotW / 2, rowY, rowW, rowH, 0xfbbf24, "＋ New Game", "#3b2f06", () => {
+          this.startNewGame(slotInfo.slot);
         });
       }
     });
@@ -216,14 +264,21 @@ export default class Title extends Phaser.Scene {
   ): void {
     const x = cx - w / 2;
     const y = cy;
+    const radius = Math.min(10, h / 2);
 
     const bg = this.add.graphics().setScrollFactor(0).setDepth(depthBase);
     bg.fillStyle(fillColor, 1);
-    bg.fillRoundedRect(x, y, w, h, 8);
+    bg.fillRoundedRect(x, y, w, h, radius);
+
+    // Font scales with button height and is capped to the width so labels in
+    // the narrow secondary buttons don't bleed past the edges on small screens.
+    const byHeight = h < 30 ? 12 : h < 44 ? 15 : 19;
+    const byWidth = Math.floor((w - 12) / Math.max(1, label.length) * 1.7);
+    const fontPx = Math.max(11, Math.min(byHeight, byWidth));
 
     const txt = this.add.text(cx, cy + h / 2, label, {
       fontFamily: "monospace",
-      fontSize: h < 36 ? "13px" : "20px",
+      fontSize: `${fontPx}px`,
       color: textColor,
       fontStyle: "bold"
     }).setOrigin(0.5).setScrollFactor(0).setDepth(depthBase + 1);
@@ -237,17 +292,24 @@ export default class Title extends Phaser.Scene {
     hoverColor.darken(15);
     const hoverFill = hoverColor.color;
 
-    hit.on("pointerover", () => {
+    const paint = (fill: number) => {
       bg.clear();
-      bg.fillStyle(hoverFill, 1);
-      bg.fillRoundedRect(x, y, w, h, 8);
+      bg.fillStyle(fill, 1);
+      bg.fillRoundedRect(x, y, w, h, radius);
+    };
+
+    hit.on("pointerover", () => paint(hoverFill));
+    hit.on("pointerout", () => { paint(fillColor); txt.setScale(1); });
+    // Brief press feedback, then fire (works for touch and mouse alike).
+    hit.on("pointerdown", () => {
+      paint(hoverFill);
+      txt.setScale(0.96);
     });
-    hit.on("pointerout", () => {
-      bg.clear();
-      bg.fillStyle(fillColor, 1);
-      bg.fillRoundedRect(x, y, w, h, 8);
+    hit.on("pointerup", () => {
+      txt.setScale(1);
+      paint(fillColor);
+      onDown();
     });
-    hit.on("pointerdown", onDown);
   }
 
   update(): void {
