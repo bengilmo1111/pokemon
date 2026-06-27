@@ -128,6 +128,23 @@ export default class Battle extends Phaser.Scene {
   private cursorKeys?: Phaser.Types.Input.Keyboard.CursorKeys;
   private throwButton?: Phaser.GameObjects.Text;
   private targetingPointerHandler?: (pointer: Phaser.Input.Pointer) => void;
+  private targetingReleaseHandler?: () => void;
+  // True once the player has begun a fresh touch inside the mini-game, so the
+  // tap that opened it can't immediately "release-to-throw".
+  private targetingArmed = false;
+  // Catch mini-game tuning. Forgiving for our 7-10 audience — a clumsy aim is a
+  // weak chance, never a wasted ball — but still a real skill check: the ring
+  // surges and eases as it loops, so you can't tap on a fixed rhythm.
+  private readonly CATCH_PERFECT_R = 24; // sweet spot → bonus catch chance
+  private readonly CATCH_GOOD_R = 46;    // anywhere on the ring → normal chance
+  private readonly RING_SPEED = 0.015;   // nominal radians/frame (was a flat 0.03)
+  private readonly RING_SPEED_WOBBLE = 0.6; // ± fraction the speed surges/eases mid-loop
+  private readonly RING_WOBBLE_FREQ = 1.3;  // speed-wobble cycles per orbit
+  private readonly RING_RADIUS_WOBBLE = 12; // px the orbit breathes in/out
+  // Per-throw randomised orbit so no two catches feel the same.
+  private ringSpeed = 0.015; // this throw's base angular speed
+  private ringDir = 1;       // orbit direction (+1 / -1)
+  private ringWobblePhase = 0;
 
   // Move tooltip
   private tooltipBg?: Phaser.GameObjects.Rectangle;
@@ -170,8 +187,11 @@ export default class Battle extends Phaser.Scene {
     this.pendingCatchMon = undefined;
     // Reset targeting state
     this.targetingActive = false;
+    this.targetingArmed = false;
     this.targetingBallType = undefined;
     this.targetingElements = [];
+    this.targetingReleaseHandler = undefined;
+    this.targetingPointerHandler = undefined;
     // Reset tooltip
     this.tooltipBg = undefined;
     this.tooltipText = undefined;
@@ -412,11 +432,15 @@ export default class Battle extends Phaser.Scene {
       // Update reticle position
       this.reticle.setPosition(this.reticleX, this.reticleY);
 
-      // Animate target ring - moves in a circle around the enemy
-      this.ringAngle += 0.03;
+      // Animate the target ring around the enemy. The speed surges and eases
+      // (deterministic sine — no RNG in the frame loop) and the orbit breathes
+      // in and out, so the sweet spot can't be tracked on a fixed rhythm.
+      const wobble = 1 + this.RING_SPEED_WOBBLE * Math.sin(this.ringAngle * this.RING_WOBBLE_FREQ + this.ringWobblePhase);
+      this.ringAngle += this.ringSpeed * this.ringDir * wobble;
       if (this.targetRing && this.targetRingInner) {
-        const ringX = enemyX + Math.cos(this.ringAngle) * this.ringRadius;
-        const ringY = enemyY + Math.sin(this.ringAngle) * this.ringRadius;
+        const radius = this.ringRadius + Math.sin(this.ringAngle * 0.7 + this.ringWobblePhase) * this.RING_RADIUS_WOBBLE;
+        const ringX = enemyX + Math.cos(this.ringAngle) * radius;
+        const ringY = enemyY + Math.sin(this.ringAngle) * radius;
         this.targetRing.setPosition(ringX, ringY);
         this.targetRingInner.setPosition(ringX, ringY);
       }
@@ -1144,27 +1168,38 @@ export default class Battle extends Phaser.Scene {
 
   private startTargetingGame(ballType: "pokeball" | "greatball" | "ultraball"): void {
     this.targetingActive = true;
+    this.targetingArmed = false;
     this.targetingBallType = ballType;
-    this.ringAngle = 0;
+
+    // Randomise this throw's orbit (once, via the seeded RNG): a fresh start
+    // angle, direction, base speed and wobble phase, so catching always takes a
+    // little timing rather than a memorised path.
+    this.ringAngle = rng() * Math.PI * 2;
+    this.ringDir = rng() < 0.5 ? 1 : -1;
+    this.ringSpeed = this.RING_SPEED * (0.85 + rng() * 0.5); // 0.85×–1.35×
+    this.ringWobblePhase = rng() * Math.PI * 2;
 
     // Hide root menu during targeting
     this.rootMenuItems.forEach((item) => item.setVisible(false));
 
     const enemyX = this.enemySprite?.x ?? this.scale.width * 0.7;
     const enemyY = this.enemySprite?.y ?? this.scale.height * 0.3;
+    const ringX = enemyX + Math.cos(this.ringAngle) * this.ringRadius;
+    const ringY = enemyY + Math.sin(this.ringAngle) * this.ringRadius;
 
-    // Initialize reticle position at center
+    // Reticle starts on the enemy — you have to aim onto the moving ring. A
+    // missed aim is only a weak throw, never a wasted ball, so this stays fair.
     this.reticleX = enemyX;
     this.reticleY = enemyY;
 
     // Create outer target ring (moves in circle around enemy)
-    this.targetRing = this.add.circle(enemyX + this.ringRadius, enemyY, 30, 0x00000000);
+    this.targetRing = this.add.circle(ringX, ringY, this.CATCH_GOOD_R, 0x00000000);
     this.targetRing.setStrokeStyle(4, 0x22c55e);
     this.targetRing.setDepth(50);
     this.targetingElements.push(this.targetRing);
 
     // Create inner target ring (sweet spot)
-    this.targetRingInner = this.add.circle(enemyX + this.ringRadius, enemyY, 15, 0x22c55e, 0.3);
+    this.targetRingInner = this.add.circle(ringX, ringY, this.CATCH_PERFECT_R, 0x22c55e, 0.3);
     this.targetRingInner.setDepth(50);
     this.targetingElements.push(this.targetRingInner);
 
@@ -1188,8 +1223,8 @@ export default class Battle extends Phaser.Scene {
     // Instructions text — drop the keyboard hint on touch devices.
     const isTouch = TouchControls.shouldEnable(this);
     const instrText = isTouch
-      ? "Drag to aim, then tap THROW"
-      : "Drag to aim • THROW, or arrow keys + SPACE";
+      ? "Tap the green ring to throw!"
+      : "Aim for the ring • tap, or arrow keys + SPACE";
     const instructions = this.add.text(this.scale.width / 2, this.scale.height - 60, instrText, {
         fontFamily: "monospace",
         fontSize: "14px",
@@ -1216,16 +1251,26 @@ export default class Battle extends Phaser.Scene {
     });
     this.targetingElements.push(this.throwButton);
 
-    // Drag-to-aim: move the reticle to wherever the player touches/drags,
-    // except when the touch lands on the THROW button.
+    // Tap/drag-to-aim: move the reticle to wherever the player touches/drags,
+    // except when the touch lands on the THROW button. The first fresh touch
+    // "arms" the throw so the tap that opened this mini-game can't fire it.
     this.targetingPointerHandler = (pointer: Phaser.Input.Pointer) => {
       if (!this.targetingActive || !pointer.isDown) return;
       if (this.throwButton && this.throwButton.getBounds().contains(pointer.x, pointer.y)) return;
       this.reticleX = pointer.x;
       this.reticleY = pointer.y;
+      this.targetingArmed = true;
     };
     this.input.on("pointerdown", this.targetingPointerHandler);
     this.input.on("pointermove", this.targetingPointerHandler);
+
+    // Release-to-throw: lifting the finger after a tap/drag throws at the spot
+    // you aimed — one continuous gesture, so the ring can't drift away while you
+    // hunt for a separate button. The THROW button and SPACE still work too.
+    this.targetingReleaseHandler = () => {
+      if (this.targetingActive && this.targetingArmed) this.fireAtTarget();
+    };
+    this.input.on("pointerup", this.targetingReleaseHandler);
 
     // Ball type indicator
     const ballName = ballType === "pokeball" ? "Poke Ball" : ballType === "greatball" ? "Great Ball" : "Ultra Ball";
@@ -1251,12 +1296,17 @@ export default class Battle extends Phaser.Scene {
 
     this.targetingActive = false;
 
-    // Remove the drag-to-aim listeners
+    // Remove the drag-to-aim / release listeners
     if (this.targetingPointerHandler) {
       this.input.off("pointerdown", this.targetingPointerHandler);
       this.input.off("pointermove", this.targetingPointerHandler);
       this.targetingPointerHandler = undefined;
     }
+    if (this.targetingReleaseHandler) {
+      this.input.off("pointerup", this.targetingReleaseHandler);
+      this.targetingReleaseHandler = undefined;
+    }
+    this.targetingArmed = false;
     this.throwButton = undefined;
 
     // Get current positions
@@ -1268,9 +1318,10 @@ export default class Battle extends Phaser.Scene {
     const dy = this.reticleY - ringY;
     const distance = Math.sqrt(dx * dx + dy * dy);
 
-    // Determine hit quality (15 = inner ring radius, 30 = outer ring radius)
-    const perfectHit = distance <= 15;
-    const goodHit = distance <= 30;
+    // Hit quality: sweet spot → bonus, on the ring → normal, off the ring →
+    // a weak throw that still has a real (reduced) chance.
+    const perfectHit = distance <= this.CATCH_PERFECT_R;
+    const goodHit = distance <= this.CATCH_GOOD_R;
 
     // Clean up targeting elements
     this.targetingElements.forEach(el => el.destroy());
@@ -1287,38 +1338,33 @@ export default class Battle extends Phaser.Scene {
     const ballName = this.targetingBallType === "pokeball" ? "Poke Ball" :
                      this.targetingBallType === "greatball" ? "Great Ball" : "Ultra Ball";
 
-    if (!goodHit) {
-      // Missed the target completely - 0% catch chance
-      this.setMessage(`You threw the ${ballName}...`);
-      await this.animateBallThrowMiss();
-      Sound.playMiss();
-      this.setMessage("The ball missed completely!");
-      await this.wait(600);
-
-      // Enemy gets a turn
-      const enemyMove = this.pickEnemyMove();
-      await this.executeEnemyTurn(enemyMove);
-      if (await this.resolvePlayerFaint()) return;
-      this.busy = false;
-      return;
-    }
-
-    // Good hit - proceed with normal catch logic
-    this.setMessage(`You threw a ${ballName}!`);
+    // Every throw is a real attempt at the Pokémon — no wasted balls. The aim
+    // just sets how good the chance is: perfect > on-ring > weak.
+    this.setMessage(
+      perfectHit ? "Perfect throw!" :
+      goodHit ? `You threw a ${ballName}!` :
+      "A wobbly throw..."
+    );
     await this.animateBallThrow();
+    if (perfectHit) await this.wait(300);
 
-    // Perfect hit gives a catch bonus
     let caught: boolean;
     if (perfectHit) {
-      this.setMessage("Perfect throw!");
-      await this.wait(300);
-      // Perfect throw - much higher catch rate
-      const baseChance = attemptCatch(this.enemyMon, this.targetingBallType);
-      caught = baseChance || rng() < 0.3; // Extra 30% chance on perfect
-    } else {
-      // Good hit - normal catch chance
+      // Sweet spot: normal chance plus a generous bonus roll.
+      caught = attemptCatch(this.enemyMon, this.targetingBallType) || rng() < 0.3;
+    } else if (goodHit) {
+      // On the ring: the normal catch chance.
       caught = attemptCatch(this.enemyMon, this.targetingBallType);
+    } else {
+      // Off the ring: still a chance, just a weaker one (never a 0% waste).
+      caught = attemptCatch(this.enemyMon, this.targetingBallType) && rng() < 0.5;
     }
+
+    emitTestEvent("catch:throw", {
+      quality: perfectHit ? "perfect" : goodHit ? "good" : "weak",
+      caught,
+      ballType: this.targetingBallType
+    });
 
     if (caught) {
       // Catch animation
@@ -1345,30 +1391,6 @@ export default class Battle extends Phaser.Scene {
     await this.executeEnemyTurn(enemyMove);
     if (await this.resolvePlayerFaint()) return;
     this.busy = false;
-  }
-
-  private async animateBallThrowMiss(): Promise<void> {
-    // Ball flies past the enemy and off screen
-    const startX = this.scale.width * 0.3;
-    const startY = this.scale.height * 0.6;
-    const ball = this.add.circle(startX, startY, 8, 0xff0000);
-    const ballTop = this.add.circle(startX, startY - 2, 8, 0xffffff);
-    ballTop.setName("ball-top-miss");
-
-    await new Promise<void>((resolve) => {
-      this.tweens.add({
-        targets: [ball, ballTop],
-        x: this.scale.width + 50,
-        y: this.scale.height * 0.1,
-        duration: 600,
-        ease: "Quad.easeOut",
-        onComplete: () => {
-          ball.destroy();
-          ballTop.destroy();
-          resolve();
-        }
-      });
-    });
   }
 
   private async animateBallThrow(): Promise<void> {
