@@ -957,9 +957,10 @@ export const SPECIES: Record<string, SpeciesData> = {
     name: "Diglett",
     types: [TYPES.GROUND],
     baseStats: { hp: 10, atk: 55, def: 25, spd: 95, spAtk: 35, spDef: 45 },
-    moves: ["scratch", "mud-slap"],
+    moves: ["scratch", "sand-attack", "mud-slap"],
     learnableMoves: [
       { moveId: "scratch", level: 1 },
+      { moveId: "sand-attack", level: 1 },
       { moveId: "mud-slap", level: 1 },
       { moveId: "dig", level: 18 },
       { moveId: "earthquake", level: 35 }
@@ -1892,10 +1893,11 @@ export const SPECIES: Record<string, SpeciesData> = {
     name: "Sandshrew",
     types: [TYPES.GROUND],
     baseStats: { hp: 50, atk: 75, def: 85, spd: 40, spAtk: 20, spDef: 30 },
-    moves: ["scratch", "defense-curl"],
+    moves: ["scratch", "sand-attack", "defense-curl"],
     learnableMoves: [
       { moveId: "scratch", level: 1 },
       { moveId: "defense-curl", level: 1 },
+      { moveId: "sand-attack", level: 3 },
       { moveId: "mud-slap", level: 14 },
       { moveId: "dig", level: 26 },
       { moveId: "earthquake", level: 38 }

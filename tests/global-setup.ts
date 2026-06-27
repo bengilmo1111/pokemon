@@ -10,7 +10,10 @@ import { chromium, type FullConfig } from "@playwright/test";
  */
 export default async function globalSetup(config: FullConfig): Promise<void> {
   const baseURL = config.projects[0]?.use?.baseURL ?? "http://localhost:5173";
-  const browser = await chromium.launch();
+  // Honour a pre-installed browser when set (e.g. sandboxed CI where Playwright
+  // can't download its own); no effect on a normal local install.
+  const executablePath = process.env.PW_EXECUTABLE_PATH || undefined;
+  const browser = await chromium.launch({ executablePath });
   try {
     const page = await browser.newPage();
     await page.goto(`${baseURL}/?test=1`, { waitUntil: "load", timeout: 60_000 });

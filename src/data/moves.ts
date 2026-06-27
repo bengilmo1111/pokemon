@@ -9,7 +9,7 @@ export interface MoveEffect {
   /** Status condition this move can inflict. */
   status?: StatusEffect;
   /** Stat stage change applied to the target (negative) or self (positive). */
-  statStage?: { stat: NatureStat; delta: number; target: "self" | "enemy" };
+  statStage?: { stat: NatureStat | "acc"; delta: number; target: "self" | "enemy" };
   /** Weather this move sets, if any. */
   weather?: "rain" | "sun" | "sandstorm";
 }

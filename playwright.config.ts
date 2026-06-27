@@ -37,7 +37,11 @@ export default defineConfig({
       name: "mobile-chromium",
       use: {
         // A real phone profile: mobile viewport, touch enabled, device scale.
-        ...devices["Pixel 7"]
+        ...devices["Pixel 7"],
+        // Honour a pre-installed browser when set (sandboxed CI); ignored locally.
+        launchOptions: process.env.PW_EXECUTABLE_PATH
+          ? { executablePath: process.env.PW_EXECUTABLE_PATH }
+          : {}
       }
     }
   ],
