@@ -132,11 +132,19 @@ export default class Battle extends Phaser.Scene {
   // True once the player has begun a fresh touch inside the mini-game, so the
   // tap that opened it can't immediately "release-to-throw".
   private targetingArmed = false;
-  // Catch mini-game tuning. Generous for our 7-10 audience: a slow ring, big
-  // hit zones, and a forgiving outer band so a clumsy aim is never a wasted ball.
-  private readonly CATCH_PERFECT_R = 26; // sweet spot → bonus catch chance
-  private readonly CATCH_GOOD_R = 52;    // anywhere on the ring → normal chance
-  private readonly RING_SPEED = 0.014;   // radians/frame (was 0.03 — too fast to track)
+  // Catch mini-game tuning. Forgiving for our 7-10 audience — a clumsy aim is a
+  // weak chance, never a wasted ball — but still a real skill check: the ring
+  // surges and eases as it loops, so you can't tap on a fixed rhythm.
+  private readonly CATCH_PERFECT_R = 24; // sweet spot → bonus catch chance
+  private readonly CATCH_GOOD_R = 46;    // anywhere on the ring → normal chance
+  private readonly RING_SPEED = 0.015;   // nominal radians/frame (was a flat 0.03)
+  private readonly RING_SPEED_WOBBLE = 0.6; // ± fraction the speed surges/eases mid-loop
+  private readonly RING_WOBBLE_FREQ = 1.3;  // speed-wobble cycles per orbit
+  private readonly RING_RADIUS_WOBBLE = 12; // px the orbit breathes in/out
+  // Per-throw randomised orbit so no two catches feel the same.
+  private ringSpeed = 0.015; // this throw's base angular speed
+  private ringDir = 1;       // orbit direction (+1 / -1)
+  private ringWobblePhase = 0;
 
   // Move tooltip
   private tooltipBg?: Phaser.GameObjects.Rectangle;
@@ -424,11 +432,15 @@ export default class Battle extends Phaser.Scene {
       // Update reticle position
       this.reticle.setPosition(this.reticleX, this.reticleY);
 
-      // Animate target ring - moves in a circle around the enemy
-      this.ringAngle += this.RING_SPEED;
+      // Animate the target ring around the enemy. The speed surges and eases
+      // (deterministic sine — no RNG in the frame loop) and the orbit breathes
+      // in and out, so the sweet spot can't be tracked on a fixed rhythm.
+      const wobble = 1 + this.RING_SPEED_WOBBLE * Math.sin(this.ringAngle * this.RING_WOBBLE_FREQ + this.ringWobblePhase);
+      this.ringAngle += this.ringSpeed * this.ringDir * wobble;
       if (this.targetRing && this.targetRingInner) {
-        const ringX = enemyX + Math.cos(this.ringAngle) * this.ringRadius;
-        const ringY = enemyY + Math.sin(this.ringAngle) * this.ringRadius;
+        const radius = this.ringRadius + Math.sin(this.ringAngle * 0.7 + this.ringWobblePhase) * this.RING_RADIUS_WOBBLE;
+        const ringX = enemyX + Math.cos(this.ringAngle) * radius;
+        const ringY = enemyY + Math.sin(this.ringAngle) * radius;
         this.targetRing.setPosition(ringX, ringY);
         this.targetRingInner.setPosition(ringX, ringY);
       }
@@ -1158,27 +1170,36 @@ export default class Battle extends Phaser.Scene {
     this.targetingActive = true;
     this.targetingArmed = false;
     this.targetingBallType = ballType;
-    this.ringAngle = 0;
+
+    // Randomise this throw's orbit (once, via the seeded RNG): a fresh start
+    // angle, direction, base speed and wobble phase, so catching always takes a
+    // little timing rather than a memorised path.
+    this.ringAngle = rng() * Math.PI * 2;
+    this.ringDir = rng() < 0.5 ? 1 : -1;
+    this.ringSpeed = this.RING_SPEED * (0.85 + rng() * 0.5); // 0.85×–1.35×
+    this.ringWobblePhase = rng() * Math.PI * 2;
 
     // Hide root menu during targeting
     this.rootMenuItems.forEach((item) => item.setVisible(false));
 
     const enemyX = this.enemySprite?.x ?? this.scale.width * 0.7;
     const enemyY = this.enemySprite?.y ?? this.scale.height * 0.3;
+    const ringX = enemyX + Math.cos(this.ringAngle) * this.ringRadius;
+    const ringY = enemyY + Math.sin(this.ringAngle) * this.ringRadius;
 
-    // Start the reticle right on the ring, so a quick throw lands a good hit
-    // instead of the old guaranteed miss from starting at the enemy's centre.
-    this.reticleX = enemyX + this.ringRadius;
+    // Reticle starts on the enemy — you have to aim onto the moving ring. A
+    // missed aim is only a weak throw, never a wasted ball, so this stays fair.
+    this.reticleX = enemyX;
     this.reticleY = enemyY;
 
     // Create outer target ring (moves in circle around enemy)
-    this.targetRing = this.add.circle(enemyX + this.ringRadius, enemyY, this.CATCH_GOOD_R, 0x00000000);
+    this.targetRing = this.add.circle(ringX, ringY, this.CATCH_GOOD_R, 0x00000000);
     this.targetRing.setStrokeStyle(4, 0x22c55e);
     this.targetRing.setDepth(50);
     this.targetingElements.push(this.targetRing);
 
     // Create inner target ring (sweet spot)
-    this.targetRingInner = this.add.circle(enemyX + this.ringRadius, enemyY, this.CATCH_PERFECT_R, 0x22c55e, 0.3);
+    this.targetRingInner = this.add.circle(ringX, ringY, this.CATCH_PERFECT_R, 0x22c55e, 0.3);
     this.targetRingInner.setDepth(50);
     this.targetingElements.push(this.targetRingInner);
 

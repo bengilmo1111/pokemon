@@ -59,6 +59,31 @@ test("aiming on the sweet spot grades as a 'perfect' throw", async ({ probe, pag
   expect(await pokeballs(page), "one ball is used").toBe(before - 1);
 });
 
+test("each throw randomises the ring orbit (no fixed, memorisable rhythm)", async ({ probe, page }) => {
+  await enterWildBattle(probe, page);
+
+  // startTargetingGame draws its orbit (start angle, direction, speed, wobble)
+  // from the seeded RNG. Two different seeds must yield different orbits — if it
+  // ever reverted to a constant ring, these would be equal.
+  const orbit = (seed: number) =>
+    page.evaluate((s) => {
+      const api: any = (window as any).__GAME__;
+      api.seedRng(s);
+      const bs: any = api.game.scene.getScene("Battle");
+      bs.startTargetingGame("pokeball");
+      return {
+        dir: bs.ringDir,
+        speed: Math.round(bs.ringSpeed * 1e5),
+        angle: Math.round(bs.ringAngle * 1e3),
+        phase: Math.round(bs.ringWobblePhase * 1e3)
+      };
+    }, seed);
+
+  const a = await orbit(1);
+  const b = await orbit(7);
+  expect(a, "different seeds should produce different orbits").not.toEqual(b);
+});
+
 test("an off-ring throw is a forgiving 'weak' throw, not a wasted ball", async ({ probe, page }) => {
   await enterWildBattle(probe, page);
 
