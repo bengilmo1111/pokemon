@@ -40,6 +40,7 @@ import { pickWeighted } from "../game/utils";
 import { getStatusColor, getStatusDisplayText } from "../game/battle";
 import * as Sound from "../game/sound";
 import * as Narrator from "../game/narrator";
+import { STICKERS, stickerProgress } from "../game/achievements";
 import { saveGame, loadGame } from "../game/persistence";
 import { TouchControls, type TouchButtonConfig } from "../game/touch";
 import { fitMenu } from "../game/uiLayout";
@@ -134,6 +135,9 @@ export default class Overworld extends Phaser.Scene {
   private pokedexOpen = false;
   private pokedexOverlay?: Phaser.GameObjects.Rectangle;
   private pokedexText: Phaser.GameObjects.Text[] = [];
+  private stickerOpen = false;
+  private stickerContainer?: Phaser.GameObjects.Container;
+  private stickerText: Phaser.GameObjects.GameObject[] = [];
   private notificationText?: Phaser.GameObjects.Text;
   private notificationTimer = 0;
   private xpBoostActive = false;
@@ -198,6 +202,7 @@ export default class Overworld extends Phaser.Scene {
     this.teamOpen = false;
     this.martOpen = false;
     this.pokedexOpen = false;
+    this.stickerOpen = false;
     this.mapOpen = false;
     this.serviceMenuOpen = false;
     this.starterOpen = false;
@@ -382,7 +387,7 @@ export default class Overworld extends Phaser.Scene {
     });
 
     this.input.keyboard!.on("keydown-M", () => {
-      if (this.teamOpen || this.pokedexOpen || this.starterOpen) return;
+      if (this.teamOpen || this.pokedexOpen || this.stickerOpen || this.starterOpen) return;
       this.mapOpen = !this.mapOpen;
       if (this.mapOpen) {
         this.openVisualMap();
@@ -391,7 +396,7 @@ export default class Overworld extends Phaser.Scene {
       }
     });
     this.input.keyboard!.on("keydown-T", () => {
-      if (this.mapOpen || this.pokedexOpen || this.starterOpen) return;
+      if (this.mapOpen || this.pokedexOpen || this.stickerOpen || this.starterOpen) return;
       if (this.teamOpen) {
         this.closeTeamScreen();
       } else {
@@ -399,7 +404,7 @@ export default class Overworld extends Phaser.Scene {
       }
     });
     this.input.keyboard!.on("keydown-D", () => {
-      if (this.mapOpen || this.teamOpen || this.starterOpen) return;
+      if (this.mapOpen || this.teamOpen || this.stickerOpen || this.starterOpen) return;
       if (this.pokedexOpen) {
         this.closePokedex();
       } else {
@@ -487,7 +492,7 @@ export default class Overworld extends Phaser.Scene {
     // not update, so this only ever runs during real overworld play.
     if (this.touch?.active) {
       const menuOpen = this.starterOpen || this.isPaused || this.teamOpen ||
-        this.martOpen || this.pokedexOpen || this.mapOpen || this.serviceMenuOpen;
+        this.martOpen || this.pokedexOpen || this.stickerOpen || this.mapOpen || this.serviceMenuOpen;
       const desired = gameState.team.length > 0 && this.tutorialElements.length === 0 &&
         !menuOpen && !this.inBattle && !this.battleStarting && !this.portalTransitioning;
       // Compare against the controls' actual state so any out-of-sync hide is
@@ -497,7 +502,7 @@ export default class Overworld extends Phaser.Scene {
       }
     }
 
-    if (this.starterOpen || this.isPaused || this.teamOpen || this.martOpen || this.pokedexOpen || this.mapOpen || this.serviceMenuOpen) {
+    if (this.starterOpen || this.isPaused || this.teamOpen || this.martOpen || this.pokedexOpen || this.stickerOpen || this.mapOpen || this.serviceMenuOpen) {
       if (this.hudText?.visible) this.hudText.setVisible(false);
       this.goalBanner?.setVisible(false);
       this.goalArrow?.setVisible(false);
@@ -3773,6 +3778,7 @@ export default class Overworld extends Phaser.Scene {
     }
     // Responsive dialogs re-render at the new viewport size instead of scaling.
     if (this.pokedexOpen) { this.closePokedex(); this.openPokedex(); }
+    if (this.stickerOpen) { this.closeStickers(); this.openStickers(); }
     if (this.teamOpen) this.renderTeamScreen();
   }
 
@@ -3815,10 +3821,10 @@ export default class Overworld extends Phaser.Scene {
 
     // Themed panel framing the pause options.
     this.pausePanel = this.add.graphics().setScrollFactor(0).setDepth(1000.5);
-    drawPanel(this.pausePanel, centerX - 180, centerY - 150, 360, 372, { radius: 18 });
+    drawPanel(this.pausePanel, centerX - 180, centerY - 160, 360, 408, { radius: 18 });
 
     // Pause title
-    const title = this.add.text(centerX, centerY - 112, "PAUSED", {
+    const title = this.add.text(centerX, centerY - 122, "PAUSED", {
       fontFamily: "monospace",
       fontSize: "36px",
       color: "#fbbf24",
@@ -3837,12 +3843,13 @@ export default class Overworld extends Phaser.Scene {
     const labels = [
       { id: "resume", label: "Resume Game" },
       { id: "pokedex", label: "📖  Pokédex" },
+      { id: "stickers", label: "🏅  Sticker Book" },
       { id: "narration", label: narrationLabel() },
       { id: "save", label: isTouch ? "Save Game" : "Save Game [S]" },
       { id: "load", label: isTouch ? "Load Game" : "Load Game [F1]" }
     ];
-    const rowGap = 48;
-    const firstY = centerY - 58;
+    const rowGap = 42;
+    const firstY = centerY - 72;
     const menuItems = labels.map((item, i) => ({ ...item, y: firstY + i * rowGap }));
 
     menuItems.forEach((item) => {
@@ -3874,6 +3881,12 @@ export default class Overworld extends Phaser.Scene {
           this.resumeGame();
           this.openPokedex();
         });
+      } else if (item.id === "stickers") {
+        text.on("pointerdown", () => {
+          Sound.playMenuSelect();
+          this.resumeGame();
+          this.openStickers();
+        });
       } else if (item.id === "save") {
         text.on("pointerdown", () => {
           if (saveGame()) {
@@ -3898,7 +3911,7 @@ export default class Overworld extends Phaser.Scene {
     });
 
     // Controls hint — keyboard wording on desktop, tap wording on touch.
-    const hint = this.add.text(centerX, centerY + 172,
+    const hint = this.add.text(centerX, centerY + 196,
       isTouch ? "Tap Resume to continue" : "Press ESC to resume", {
       fontFamily: "monospace",
       fontSize: "14px",
@@ -4486,6 +4499,111 @@ export default class Overworld extends Phaser.Scene {
     }
     this.pokedexOverlay = undefined;
     this.pokedexText = [];
+  }
+
+  /** Sticker book — a grid of milestone stickers, earned ones bright and locked
+   *  ones dimmed with the requirement shown so kids know what to chase. */
+  private openStickers(): void {
+    if (this.stickerOpen) return;
+    this.stickerOpen = true;
+    this.touch?.setVisible(false);
+    this.setHudVisible(false);
+
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const cx = W / 2;
+    const DEPTH = 500;
+    const add = (go: Phaser.GameObjects.GameObject) => { this.stickerText.push(go); return go; };
+
+    // Full-screen themed panel + header.
+    const panelG = this.add.graphics().setScrollFactor(0).setDepth(DEPTH);
+    panelG.fillStyle(UI.bg, 0.97);
+    panelG.fillRect(0, 0, W, H);
+    panelG.fillStyle(UI.bgTop, 1);
+    panelG.fillRect(0, 0, W, 56);
+    panelG.fillStyle(UI.border, 0.9);
+    panelG.fillRect(0, 54, W, 2);
+
+    add(this.add.text(cx, 28, "🏅  Sticker Book", {
+      fontFamily: "monospace", fontSize: "24px", fontStyle: "bold", color: "#fde68a"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH + 1));
+
+    const prog = stickerProgress(gameState);
+    const progress = this.add.text(cx, 70, `Stickers: ${prog.earned} / ${prog.total}`, {
+      fontFamily: "monospace", fontSize: "18px", color: "#94a3b8"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH + 1);
+    progress.setData("testid", "sticker-progress");
+    add(progress);
+
+    // 2-column grid of sticker cards.
+    const cols = 2;
+    const margin = 12;
+    const gap = 10;
+    const top = 100;
+    const bottom = 72; // close-bar band
+    const cardW = (W - margin * 2 - gap * (cols - 1)) / cols;
+    const rows = Math.ceil(STICKERS.length / cols);
+    const cardH = Math.min(120, (H - top - bottom - gap * (rows - 1)) / rows);
+
+    STICKERS.forEach((sticker, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = margin + col * (cardW + gap);
+      const y = top + row * (cardH + gap);
+      const earned = sticker.earned(gameState);
+
+      const card = this.add.graphics().setScrollFactor(0).setDepth(DEPTH + 1);
+      card.fillStyle(earned ? 0x14532d : 0x1e293b, 0.95);
+      card.fillRoundedRect(x, y, cardW, cardH, 10);
+      card.lineStyle(2, earned ? 0xfbbf24 : 0x334155, 1);
+      card.strokeRoundedRect(x, y, cardW, cardH, 10);
+      add(card);
+
+      // Big emoji — dimmed while locked.
+      add(this.add.text(x + cardW / 2, y + 26, sticker.icon, {
+        fontFamily: "monospace", fontSize: "30px"
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH + 2).setAlpha(earned ? 1 : 0.3));
+
+      // Title.
+      add(this.add.text(x + cardW / 2, y + 58, sticker.title, {
+        fontFamily: "monospace", fontSize: "14px", fontStyle: "bold",
+        color: earned ? "#fde68a" : "#94a3b8", align: "center",
+        wordWrap: { width: cardW - 12 }
+      }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(DEPTH + 2));
+
+      // Earned tag, or the requirement hint while locked.
+      add(this.add.text(x + cardW / 2, y + cardH - 14, earned ? "✓ Earned!" : sticker.hint, {
+        fontFamily: "monospace", fontSize: "10px",
+        color: earned ? "#4ade80" : "#64748b", align: "center",
+        wordWrap: { width: cardW - 12 }
+      }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(DEPTH + 2));
+    });
+
+    const closeBtn = this.add.text(cx, H - 36, "✕  Close Stickers", {
+      fontFamily: "monospace", fontSize: "22px", fontStyle: "bold",
+      color: "#f8fafc", backgroundColor: "#374151",
+      padding: { left: 32, right: 32, top: 14, bottom: 14 }
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH + 2).setInteractive({ useHandCursor: true });
+    closeBtn.setData("testid", "close-stickers");
+    closeBtn.on("pointerover", () => closeBtn.setStyle({ backgroundColor: "#4b5563" }));
+    closeBtn.on("pointerout",  () => closeBtn.setStyle({ backgroundColor: "#374151" }));
+    closeBtn.on("pointerdown", () => this.closeStickers());
+    add(closeBtn);
+
+    this.stickerContainer = this.add.container(0, 0, [panelG, ...this.stickerText]);
+    this.stickerContainer.setScrollFactor(0);
+    this.stickerContainer.setDepth(DEPTH);
+  }
+
+  private closeStickers(): void {
+    this.stickerOpen = false;
+    this.touch?.setVisible(true);
+    this.setHudVisible(true);
+    if (this.stickerContainer) {
+      this.stickerContainer.destroy(true);
+      this.stickerContainer = undefined;
+    }
+    this.stickerText = [];
   }
 
   private openStarterSelect(): void {
