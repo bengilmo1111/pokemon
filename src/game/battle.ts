@@ -240,7 +240,14 @@ export function tryInflictStatus(target: PokemonInstance, status: StatusEffect, 
   return true;
 }
 
-export function attemptCatch(target: PokemonInstance, ballType: "pokeball" | "greatball" | "ultraball" = "pokeball"): boolean {
+/**
+ * Probability (0..1) of catching `target` with `ballType` right now. Rarity
+ * actually matters: a species' catchRate sets the *starting* odds, so common
+ * route Pokémon are easy from full HP while legendaries (catchRate 3) are very
+ * hard until you wear them down. Lowering HP and inflicting status are the
+ * universal levers that turn a rare catch from a long shot into a sure thing.
+ */
+export function catchChance(target: PokemonInstance, ballType: "pokeball" | "greatball" | "ultraball" = "pokeball"): number {
   const species = SPECIES[target.speciesId];
   const rate = species?.catchRate ?? 45;
 
@@ -255,10 +262,17 @@ export function attemptCatch(target: PokemonInstance, ballType: "pokeball" | "gr
     statusMod = 1.5;
   }
 
-  const hpFactor = 1 - target.hp / target.maxHp;
-  const chance = Math.min(0.95, 0.15 + hpFactor * (rate / 255) * ballMod * statusMod);
+  // Rarity sets the base: rate 255 (common) ≈ 0.56, rate 45 (mid) ≈ 0.15,
+  // rate 3 (legendary) ≈ 0.066 — clearly hard, but not hopeless.
+  const base = 0.06 + 0.50 * (rate / 255);
+  // Weakening always helps a lot, independent of rarity — the way to land a rare.
+  const hpBonus = (1 - target.hp / target.maxHp) * 0.45;
 
-  return rng() < chance;
+  return Math.min(0.9, Math.max(0.02, (base + hpBonus) * ballMod * statusMod));
+}
+
+export function attemptCatch(target: PokemonInstance, ballType: "pokeball" | "greatball" | "ultraball" = "pokeball"): boolean {
+  return rng() < catchChance(target, ballType);
 }
 
 export function getStatusDisplayText(status: StatusEffect): string {
