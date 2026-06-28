@@ -187,8 +187,12 @@ export default class Title extends Phaser.Scene {
           this.scene.start("Boot");
         });
         this.makeButton(xRename, rowY, wSmall, rowH, 0x334155, "Rename", "#e5e7eb", () => {
-          const name = this.promptSlotName(slotInfo.slot, slotInfo.name);
-          if (name && renameSaveSlot(slotInfo.slot, name)) this.scene.restart();
+          this.showNameModal({
+            title: "Rename this save",
+            initial: slotInfo.name,
+            confirmLabel: "Save",
+            onConfirm: (name) => { if (renameSaveSlot(slotInfo.slot, name)) this.scene.restart(); }
+          });
         });
         this.makeButton(xNew, rowY, wSmall, rowH, 0xef4444, "New Game", "#ffffff", () => {
           this.confirmNewGame(slotInfo.slot);
@@ -202,19 +206,88 @@ export default class Title extends Phaser.Scene {
     });
   }
 
-  private promptSlotName(slot: number, currentName?: string): string | null {
-    const name = window.prompt("Name this save slot:", currentName || `Save Slot ${slot}`);
-    if (name === null) return null;
-    return name.trim().replace(/\s+/g, " ").slice(0, 24) || `Save Slot ${slot}`;
+  /**
+   * On-screen name entry, replacing window.prompt — that browser dialog is
+   * clunky and breaks immersion on a kid's tablet (the primary device). Uses a
+   * real HTML <input> overlaid on the canvas so the soft keyboard opens on
+   * touch, the same proven pattern as the catch/starter naming screens.
+   */
+  private showNameModal(opts: { title: string; initial: string; confirmLabel: string; onConfirm: (name: string) => void }): void {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const depth = 60;
+
+    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.7)
+      .setOrigin(0).setScrollFactor(0).setDepth(depth).setInteractive();
+
+    const panelW = Math.min(420, W * 0.85);
+    const panelH = 232;
+    const panel = this.add.graphics().setScrollFactor(0).setDepth(depth + 1);
+    panel.fillStyle(0x1a1a2e, 0.98);
+    panel.fillRoundedRect(W / 2 - panelW / 2, H / 2 - panelH / 2, panelW, panelH, 14);
+    panel.lineStyle(3, 0xfbbf24, 1);
+    panel.strokeRoundedRect(W / 2 - panelW / 2, H / 2 - panelH / 2, panelW, panelH, 14);
+
+    const title = this.add.text(W / 2, H / 2 - 82, opts.title, {
+      fontFamily: "monospace", fontSize: "20px", color: "#fbbf24", fontStyle: "bold"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2);
+
+    const hint = this.add.text(W / 2, H / 2 - 46, "Tap the box to type a name", {
+      fontFamily: "monospace", fontSize: "12px", color: "#94a3b8"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 24;
+    input.value = opts.initial;
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("autocapitalize", "off");
+    Object.assign(input.style, {
+      position: "fixed", left: "50%", top: "50%", transform: "translate(-50%, -50%)",
+      width: "240px", height: "42px", fontFamily: "monospace", fontSize: "20px",
+      textAlign: "center", background: "#374151", color: "#f8fafc",
+      border: "2px solid #fbbf24", borderRadius: "6px", outline: "none", zIndex: "1000"
+    } as Partial<CSSStyleDeclaration>);
+    input.addEventListener("input", () => {
+      const cleaned = input.value.replace(/[^a-zA-Z0-9 \-'!?.]/g, "").slice(0, 24);
+      if (cleaned !== input.value) input.value = cleaned;
+    });
+    document.body.appendChild(input);
+    this.time.delayedCall(60, () => input.focus());
+
+    const els: Phaser.GameObjects.GameObject[] = [overlay, panel, title, hint];
+    const cleanup = () => {
+      els.forEach((e) => e.destroy());
+      if (document.body.contains(input)) document.body.removeChild(input);
+    };
+
+    const confirm = () => {
+      const name = input.value.trim().replace(/\s+/g, " ").slice(0, 24) || opts.initial;
+      cleanup();
+      opts.onConfirm(name);
+    };
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); confirm(); }
+      else if (e.key === "Escape") { e.preventDefault(); cleanup(); }
+    });
+
+    this.makeButton(W / 2 - 88, H / 2 + 60, 160, 46, 0x22c55e, opts.confirmLabel, "#06283c", confirm, depth + 2, els);
+    this.makeButton(W / 2 + 88, H / 2 + 60, 160, 46, 0x334155, "Cancel", "#e5e7eb", cleanup, depth + 2, els);
   }
 
   private startNewGame(slot: number): void {
-    const name = this.promptSlotName(slot);
-    if (!name) return;
-    deleteSave(slot);
-    Object.assign(gameState, createInitialState());
-    saveGame(slot, name);
-    this.scene.start("Boot");
+    this.showNameModal({
+      title: "Name your adventure",
+      initial: `Save Slot ${slot}`,
+      confirmLabel: "Start!",
+      onConfirm: (name) => {
+        deleteSave(slot);
+        Object.assign(gameState, createInitialState());
+        saveGame(slot, name);
+        this.scene.start("Boot");
+      }
+    });
   }
 
   /** Modal asking the player to confirm overwriting an existing save. */
