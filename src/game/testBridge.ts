@@ -23,6 +23,7 @@ import { getSeed, setSeed } from "./rng";
 import { createInitialState, getRegion, makePokemon, WORLD_SCALE } from "./state";
 import type { PokemonInstance } from "./state";
 import { calculateDamage, catchChance, type DamageResult } from "./battle";
+import { setTextSpeed, type TextSpeed } from "./settings";
 
 /** A starter spec for {@link TestBridgeApi.bootIntoOverworld}. */
 export interface TeamSpec {
@@ -118,6 +119,8 @@ export interface TestBridgeApi {
   ): DamageResult;
   /** The current catch probability (0..1) for a Pokémon with a given ball. */
   catchChance(target: PokemonInstance, ballType?: "pokeball" | "greatball" | "ultraball"): number;
+  /** Force the battle text-reveal speed (for deterministic typewriter tests). */
+  setTextSpeed(speed: TextSpeed): void;
   /** Set every team member's HP to 0 (reproduces the fully-fainted state). */
   faintTeam(): void;
   /** Fully heal the team. */
@@ -210,7 +213,7 @@ function readOverworld(game: Phaser.Game): GameSnapshot["overworld"] {
   if (!scene) return undefined;
   const menuKeys = [
     "starterOpen", "isPaused", "teamOpen", "martOpen",
-    "pokedexOpen", "stickerOpen", "mapOpen", "serviceMenuOpen"
+    "pokedexOpen", "stickerOpen", "settingsOpen", "mapOpen", "serviceMenuOpen"
   ];
   const menus: Record<string, boolean> = {};
   for (const k of menuKeys) menus[k] = Boolean(scene[k]);
@@ -305,6 +308,7 @@ export function installTestBridge(game: Phaser.Game): void {
     calcDamage: (attacker, defender, moveId, flashFireActive = false) =>
       calculateDamage(attacker, defender, moveId, undefined, undefined, "none", flashFireActive),
     catchChance: (target, ballType = "pokeball") => catchChance(target, ballType),
+    setTextSpeed: (speed) => setTextSpeed(speed),
     faintTeam: () => {
       gameState.team.forEach((m) => { m.hp = 0; });
       emitTestEvent("scenario:faint-team");

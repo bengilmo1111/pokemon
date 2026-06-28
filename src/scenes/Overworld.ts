@@ -40,6 +40,7 @@ import { pickWeighted } from "../game/utils";
 import { getStatusColor, getStatusDisplayText } from "../game/battle";
 import * as Sound from "../game/sound";
 import * as Narrator from "../game/narrator";
+import { cycleTextSpeed, getTextSpeed } from "../game/settings";
 import { STICKERS, stickerProgress } from "../game/achievements";
 import { saveGame, loadGame } from "../game/persistence";
 import { TouchControls, type TouchButtonConfig } from "../game/touch";
@@ -138,6 +139,9 @@ export default class Overworld extends Phaser.Scene {
   private stickerOpen = false;
   private stickerContainer?: Phaser.GameObjects.Container;
   private stickerText: Phaser.GameObjects.GameObject[] = [];
+  private settingsOpen = false;
+  private settingsContainer?: Phaser.GameObjects.Container;
+  private settingsText: Phaser.GameObjects.GameObject[] = [];
   private notificationText?: Phaser.GameObjects.Text;
   private notificationTimer = 0;
   private xpBoostActive = false;
@@ -203,6 +207,7 @@ export default class Overworld extends Phaser.Scene {
     this.martOpen = false;
     this.pokedexOpen = false;
     this.stickerOpen = false;
+    this.settingsOpen = false;
     this.mapOpen = false;
     this.serviceMenuOpen = false;
     this.starterOpen = false;
@@ -492,7 +497,7 @@ export default class Overworld extends Phaser.Scene {
     // not update, so this only ever runs during real overworld play.
     if (this.touch?.active) {
       const menuOpen = this.starterOpen || this.isPaused || this.teamOpen ||
-        this.martOpen || this.pokedexOpen || this.stickerOpen || this.mapOpen || this.serviceMenuOpen;
+        this.martOpen || this.pokedexOpen || this.stickerOpen || this.settingsOpen || this.mapOpen || this.serviceMenuOpen;
       const desired = gameState.team.length > 0 && this.tutorialElements.length === 0 &&
         !menuOpen && !this.inBattle && !this.battleStarting && !this.portalTransitioning;
       // Compare against the controls' actual state so any out-of-sync hide is
@@ -502,7 +507,7 @@ export default class Overworld extends Phaser.Scene {
       }
     }
 
-    if (this.starterOpen || this.isPaused || this.teamOpen || this.martOpen || this.pokedexOpen || this.stickerOpen || this.mapOpen || this.serviceMenuOpen) {
+    if (this.starterOpen || this.isPaused || this.teamOpen || this.martOpen || this.pokedexOpen || this.stickerOpen || this.settingsOpen || this.mapOpen || this.serviceMenuOpen) {
       if (this.hudText?.visible) this.hudText.setVisible(false);
       this.goalBanner?.setVisible(false);
       this.goalArrow?.setVisible(false);
@@ -1100,42 +1105,44 @@ export default class Overworld extends Phaser.Scene {
 
     this.e4CooldownActive = true;
     this.encounterCooldown = 1500;
-    this.inBattle = true;
-    this.scene.pause();
-    this.scene.launch("Battle", {
-      type: "elite",
-      trainerId: trainer.id,
-      trainerName: trainer.name,
-      trainerTeam: trainer.team
-    });
+    this.beginBattle(() => {
+      this.inBattle = true;
+      this.scene.pause();
+      this.scene.launch("Battle", {
+        type: "elite",
+        trainerId: trainer.id,
+        trainerName: trainer.name,
+        trainerTeam: trainer.team
+      });
 
-    const battleScene = this.scene.get("Battle");
-    battleScene.events.once("battle-complete", (payload: { result: string }) => {
-      if (payload.result === "victory") {
-        gameState.e4Progress = index + 1;
-        if (gameState.e4Progress >= 4) {
-          gameState.eliteFourDefeated = true;
-          gameState.isChampion = true;
+      const battleScene = this.scene.get("Battle");
+      battleScene.events.once("battle-complete", (payload: { result: string }) => {
+        if (payload.result === "victory") {
+          gameState.e4Progress = index + 1;
+          if (gameState.e4Progress >= 4) {
+            gameState.eliteFourDefeated = true;
+            gameState.isChampion = true;
+            this.scene.resume();
+            Sound.playOverworldMusic();
+            this.time.delayedCall(300, () => this.showChampionCelebration());
+          } else {
+            const next = gameState.e4Progress + 1;
+            this.showNotification(`Victory! Next: Elite Four battle ${next} of 4`, 2500);
+            this.scene.resume();
+            Sound.playOverworldMusic();
+            this.e4CooldownActive = false;
+          }
+        } else if (payload.result === "defeat") {
           this.scene.resume();
           Sound.playOverworldMusic();
-          this.time.delayedCall(300, () => this.showChampionCelebration());
+          this.handleBattleDefeat();
+          this.e4CooldownActive = false;
         } else {
-          const next = gameState.e4Progress + 1;
-          this.showNotification(`Victory! Next: Elite Four battle ${next} of 4`, 2500);
           this.scene.resume();
           Sound.playOverworldMusic();
           this.e4CooldownActive = false;
         }
-      } else if (payload.result === "defeat") {
-        this.scene.resume();
-        Sound.playOverworldMusic();
-        this.handleBattleDefeat();
-        this.e4CooldownActive = false;
-      } else {
-        this.scene.resume();
-        Sound.playOverworldMusic();
-        this.e4CooldownActive = false;
-      }
+      });
     });
   }
 
@@ -1207,29 +1214,31 @@ export default class Overworld extends Phaser.Scene {
 
   private startTrainerBattle(trainer: NpcTrainer): void {
     this.encounterCooldown = 1500;
-    this.inBattle = true;
-    this.scene.pause();
-    this.scene.launch("Battle", {
-      type: "trainer",
-      trainerId: trainer.id,
-      trainerName: trainer.name,
-      trainerTeam: trainer.team
-    });
-    const battleScene = this.scene.get("Battle");
-    battleScene.events.once("battle-complete", (payload: { result: string }) => {
-      if (payload.result === "victory") {
-        gameState.defeatedTrainers[trainer.id] = true;
-        // Remove trainer sprite
-        const sprite = this.trainerSprites.get(trainer.id);
-        if (sprite) {
-          sprite.destroy();
-          this.trainerSprites.delete(trainer.id);
+    this.beginBattle(() => {
+      this.inBattle = true;
+      this.scene.pause();
+      this.scene.launch("Battle", {
+        type: "trainer",
+        trainerId: trainer.id,
+        trainerName: trainer.name,
+        trainerTeam: trainer.team
+      });
+      const battleScene = this.scene.get("Battle");
+      battleScene.events.once("battle-complete", (payload: { result: string }) => {
+        if (payload.result === "victory") {
+          gameState.defeatedTrainers[trainer.id] = true;
+          // Remove trainer sprite
+          const sprite = this.trainerSprites.get(trainer.id);
+          if (sprite) {
+            sprite.destroy();
+            this.trainerSprites.delete(trainer.id);
+          }
+        } else if (payload.result === "defeat") {
+          this.handleBattleDefeat();
         }
-      } else if (payload.result === "defeat") {
-        this.handleBattleDefeat();
-      }
-      this.scene.resume();
-      Sound.playOverworldMusic();
+        this.scene.resume();
+        Sound.playOverworldMusic();
+      });
     });
   }
 
@@ -1237,34 +1246,51 @@ export default class Overworld extends Phaser.Scene {
     // Rematch team is 5 levels higher than original
     const rematchTeam = trainer.team.map(m => ({ speciesId: m.speciesId, level: m.level + 5 }));
     this.encounterCooldown = 1500;
-    this.inBattle = true;
-    this.scene.pause();
-    this.scene.launch("Battle", {
-      type: "trainer",
-      trainerId: trainer.id + "-rematch",
-      trainerName: trainer.name,
-      trainerTeam: rematchTeam
+    this.beginBattle(() => {
+      this.inBattle = true;
+      this.scene.pause();
+      this.scene.launch("Battle", {
+        type: "trainer",
+        trainerId: trainer.id + "-rematch",
+        trainerName: trainer.name,
+        trainerTeam: rematchTeam
+      });
+      const battleScene = this.scene.get("Battle");
+      battleScene.events.once("battle-complete", (payload: { result: string }) => {
+        if (payload.result === "victory") {
+          this.showNotification(`${trainer.name}: "${trainer.dialogue}"`, 2500);
+        } else if (payload.result === "defeat") {
+          this.handleBattleDefeat();
+        }
+        this.scene.resume();
+        Sound.playOverworldMusic();
+      });
     });
-    const battleScene = this.scene.get("Battle");
-    battleScene.events.once("battle-complete", (payload: { result: string }) => {
-      if (payload.result === "victory") {
-        this.showNotification(`${trainer.name}: "${trainer.dialogue}"`, 2500);
-      } else if (payload.result === "defeat") {
-        this.handleBattleDefeat();
-      }
-      this.scene.resume();
-      Sound.playOverworldMusic();
+  }
+
+  /**
+   * Shared battle-start transition: a quick flash + shake on the overworld, then
+   * launch after a short beat. Every battle — wild, trainer, gym, Elite Four,
+   * rival — now enters this same slick way instead of some hard-cutting straight
+   * in. The `battleStarting` guard also stops a double-trigger during the beat.
+   */
+  private beginBattle(start: () => void): void {
+    if (this.battleStarting) return;
+    this.battleStarting = true;
+    this.player.setVelocity(0, 0);
+    this.cameras.main.flash(220, 255, 255, 255);
+    this.cameras.main.shake(260, 0.012);
+    emitTestEvent("battle:transition", {});
+    this.time.delayedCall(300, () => {
+      this.battleStarting = false;
+      start();
     });
   }
 
   private startBattle(wildId: string): void {
     if (this.battleStarting) return;
-    this.battleStarting = true;
     this.encounterCooldown = 1500;
-    this.player.setVelocity(0, 0);
-    this.cameras.main.flash(200, 255, 255, 255);
-    this.cameras.main.shake(240, 0.012);
-    this.time.delayedCall(300, () => this.doStartBattle(wildId));
+    this.beginBattle(() => this.doStartBattle(wildId));
   }
 
   private doStartBattle(wildId: string): void {
@@ -1295,22 +1321,24 @@ export default class Overworld extends Phaser.Scene {
 
   private startGymBattle(gymId: string): void {
     this.encounterCooldown = 1500;
-    this.inBattle = true;
-    this.scene.pause();
-    this.scene.launch("Battle", { type: "gym", gymId });
-    const battleScene = this.scene.get("Battle");
-    battleScene.events.once("battle-complete", (payload: { result: string }) => {
-      if (payload.result === "victory") {
-        const region = getRegion(gameState);
-        const gym = region.gyms.find(g => g.id === gymId);
-        if (gym) {
-          this.showNotification(`You earned the ${gym.badge}!`, 3000);
+    this.beginBattle(() => {
+      this.inBattle = true;
+      this.scene.pause();
+      this.scene.launch("Battle", { type: "gym", gymId });
+      const battleScene = this.scene.get("Battle");
+      battleScene.events.once("battle-complete", (payload: { result: string }) => {
+        if (payload.result === "victory") {
+          const region = getRegion(gameState);
+          const gym = region.gyms.find(g => g.id === gymId);
+          if (gym) {
+            this.showNotification(`You earned the ${gym.badge}!`, 3000);
+          }
+        } else if (payload.result === "defeat") {
+          this.handleBattleDefeat();
         }
-      } else if (payload.result === "defeat") {
-        this.handleBattleDefeat();
-      }
-      this.scene.resume();
-      Sound.playOverworldMusic();
+        this.scene.resume();
+        Sound.playOverworldMusic();
+      });
     });
   }
 
@@ -1913,42 +1941,44 @@ export default class Overworld extends Phaser.Scene {
 
   private startRivalBattle(encounter: RivalEncounter): void {
     this.encounterCooldown = 2000;
-    this.inBattle = true;
-    this.scene.pause();
+    this.beginBattle(() => {
+      this.inBattle = true;
+      this.scene.pause();
 
-    const rivalTeam = getRivalTeam(gameState, encounter.battleNumber);
+      const rivalTeam = getRivalTeam(gameState, encounter.battleNumber);
 
-    this.scene.launch("Battle", {
-      type: "rival",
-      trainerId: encounter.id,
-      trainerName: "Rival Blue",
-      trainerTeam: rivalTeam
-    });
+      this.scene.launch("Battle", {
+        type: "rival",
+        trainerId: encounter.id,
+        trainerName: "Rival Blue",
+        trainerTeam: rivalTeam
+      });
 
-    const battleScene = this.scene.get("Battle");
-    battleScene.events.once("battle-complete", (payload: { result: string }) => {
-      if (payload.result === "victory") {
-        gameState.rivalDefeated[encounter.battleNumber] = true;
-        gameState.rivalBattles = encounter.battleNumber;
-        this.showNotification(`RIVAL: "${encounter.defeatDialogue}"`, 3000);
+      const battleScene = this.scene.get("Battle");
+      battleScene.events.once("battle-complete", (payload: { result: string }) => {
+        if (payload.result === "victory") {
+          gameState.rivalDefeated[encounter.battleNumber] = true;
+          gameState.rivalBattles = encounter.battleNumber;
+          this.showNotification(`RIVAL: "${encounter.defeatDialogue}"`, 3000);
 
-        // Remove rival sprite
-        const sprite = this.rivalSprites.get(encounter.id);
-        if (sprite) {
-          sprite.destroy();
-          this.rivalSprites.delete(encounter.id);
+          // Remove rival sprite
+          const sprite = this.rivalSprites.get(encounter.id);
+          if (sprite) {
+            sprite.destroy();
+            this.rivalSprites.delete(encounter.id);
+          }
+
+          // Spawn next rival encounter if any
+          this.time.delayedCall(1000, () => {
+            this.createRivalSprites();
+          });
+        } else if (payload.result === "defeat") {
+          // Teleport player to nearest Pokemon Center on defeat
+          this.handleBattleDefeat();
         }
-
-        // Spawn next rival encounter if any
-        this.time.delayedCall(1000, () => {
-          this.createRivalSprites();
-        });
-      } else if (payload.result === "defeat") {
-        // Teleport player to nearest Pokemon Center on defeat
-        this.handleBattleDefeat();
-      }
-      this.scene.resume();
-      Sound.playOverworldMusic();
+        this.scene.resume();
+        Sound.playOverworldMusic();
+      });
     });
   }
 
@@ -3768,6 +3798,14 @@ export default class Overworld extends Phaser.Scene {
     );
   }
 
+  /** A quick rise + fade so full-screen menus slide in rather than pop. Origin-
+   *  safe (no scaling from a corner): just alpha + a small downward-to-zero Y
+   *  nudge on the whole container. */
+  private animateMenuIn(container: Phaser.GameObjects.Container): void {
+    container.setAlpha(0).setY(16);
+    this.tweens.add({ targets: container, alpha: 1, y: 0, duration: 170, ease: "Quad.easeOut" });
+  }
+
   /** Re-fit any open full-screen menu after a viewport resize/rotation. */
   private fitOpenMenus(): void {
     if (this.martContainer) fitMenu(this, this.martContainer, 440, 620);
@@ -3779,6 +3817,7 @@ export default class Overworld extends Phaser.Scene {
     // Responsive dialogs re-render at the new viewport size instead of scaling.
     if (this.pokedexOpen) { this.closePokedex(); this.openPokedex(); }
     if (this.stickerOpen) { this.closeStickers(); this.openStickers(); }
+    if (this.settingsOpen) { this.closeSettings(); this.openSettings(); }
     if (this.teamOpen) this.renderTeamScreen();
   }
 
@@ -3838,13 +3877,11 @@ export default class Overworld extends Phaser.Scene {
     const isTouch = Boolean(this.touch?.active);
     // The Pokédex is otherwise keyboard-only ([D]); surface it here so it's
     // reachable on touch. Items are laid out evenly from a top offset.
-    const narrationLabel = () =>
-      Narrator.isNarrationEnabled() ? "🔊  Read aloud: ON" : "🔇  Read aloud: OFF";
     const labels = [
       { id: "resume", label: "Resume Game" },
       { id: "pokedex", label: "📖  Pokédex" },
       { id: "stickers", label: "🏅  Sticker Book" },
-      { id: "narration", label: narrationLabel() },
+      { id: "settings", label: "⚙  Settings" },
       { id: "save", label: isTouch ? "Save Game" : "Save Game [S]" },
       { id: "load", label: isTouch ? "Load Game" : "Load Game [F1]" }
     ];
@@ -3867,13 +3904,11 @@ export default class Overworld extends Phaser.Scene {
       text.on("pointerout", () => text.setStyle({ backgroundColor: "#1e293b" }));
       if (item.id === "resume") {
         text.on("pointerdown", () => this.resumeGame());
-      } else if (item.id === "narration") {
+      } else if (item.id === "settings") {
         text.on("pointerdown", () => {
-          const enabled = Narrator.toggleNarration();
           Sound.playMenuSelect();
-          text.setText(narrationLabel());
-          // Confirm by voice when switching on so a young player hears it work.
-          if (enabled) Narrator.speak("Read aloud is on");
+          this.resumeGame();
+          this.openSettings();
         });
       } else if (item.id === "pokedex") {
         text.on("pointerdown", () => {
@@ -3919,6 +3954,11 @@ export default class Overworld extends Phaser.Scene {
     });
     hint.setScrollFactor(0).setOrigin(0.5).setDepth(1001);
     this.pauseText.push(hint);
+
+    // Fade the panel + options in over the dim backdrop so it doesn't pop.
+    const fadeEls = [this.pausePanel, ...this.pauseText].filter(Boolean) as Phaser.GameObjects.GameObject[];
+    fadeEls.forEach((e) => (e as unknown as Phaser.GameObjects.Components.Alpha).setAlpha(0));
+    this.tweens.add({ targets: fadeEls, alpha: 1, duration: 150, ease: "Quad.easeOut" });
   }
 
   private setHudVisible(visible: boolean): void {
@@ -4487,6 +4527,7 @@ export default class Overworld extends Phaser.Scene {
     // scrollFactor 0 → routed to the UI camera (see teamContainer note above).
     this.pokedexContainer.setScrollFactor(0);
     this.pokedexContainer.setDepth(DEPTH);
+    this.animateMenuIn(this.pokedexContainer);
   }
 
   private closePokedex(): void {
@@ -4593,6 +4634,7 @@ export default class Overworld extends Phaser.Scene {
     this.stickerContainer = this.add.container(0, 0, [panelG, ...this.stickerText]);
     this.stickerContainer.setScrollFactor(0);
     this.stickerContainer.setDepth(DEPTH);
+    this.animateMenuIn(this.stickerContainer);
   }
 
   private closeStickers(): void {
@@ -4604,6 +4646,101 @@ export default class Overworld extends Phaser.Scene {
       this.stickerContainer = undefined;
     }
     this.stickerText = [];
+  }
+
+  /** Settings — one place for audio, read-aloud and text speed. */
+  private openSettings(): void {
+    if (this.settingsOpen) return;
+    this.settingsOpen = true;
+    this.touch?.setVisible(false);
+    this.setHudVisible(false);
+
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const cx = W / 2;
+    const DEPTH = 500;
+    const add = (go: Phaser.GameObjects.GameObject) => { this.settingsText.push(go); return go; };
+
+    const panelG = this.add.graphics().setScrollFactor(0).setDepth(DEPTH);
+    panelG.fillStyle(UI.bg, 0.97);
+    panelG.fillRect(0, 0, W, H);
+    panelG.fillStyle(UI.bgTop, 1);
+    panelG.fillRect(0, 0, W, 56);
+    panelG.fillStyle(UI.border, 0.9);
+    panelG.fillRect(0, 54, W, 2);
+
+    add(this.add.text(cx, 28, "⚙  Settings", {
+      fontFamily: "monospace", fontSize: "24px", fontStyle: "bold", color: "#fde68a"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH + 1));
+
+    const speedLabel: Record<string, string> = { slow: "Slow", normal: "Normal", fast: "Fast" };
+    const rows = [
+      { id: "music",     icon: "🎵", label: "Music",         value: () => (Sound.isMusicEnabled() ? "ON" : "OFF"),
+        onTap: () => { if (Sound.toggleMusic()) Sound.playOverworldMusic(); } },
+      { id: "sfx",       icon: "🔊", label: "Sound effects", value: () => (Sound.isSfxEnabled() ? "ON" : "OFF"),
+        onTap: () => { Sound.toggleSfx(); } },
+      { id: "narration", icon: "🗣️", label: "Read aloud",    value: () => (Narrator.isNarrationEnabled() ? "ON" : "OFF"),
+        onTap: () => { if (Narrator.toggleNarration()) Narrator.speak("Read aloud is on"); } },
+      { id: "textspeed", icon: "⏩", label: "Text speed",    value: () => speedLabel[getTextSpeed()],
+        onTap: () => { cycleTextSpeed(); } },
+    ];
+
+    const rowH = 62;
+    const gap = 14;
+    const top = 108;
+    rows.forEach((row, i) => {
+      const y = top + i * (rowH + gap);
+      const rowBg = this.add.rectangle(cx, y + rowH / 2, W - 32, rowH, 0x1e293b, 0.95)
+        .setStrokeStyle(2, 0x334155).setScrollFactor(0).setDepth(DEPTH + 1)
+        .setInteractive({ useHandCursor: true });
+      rowBg.setData("testid", `setting-${row.id}`);
+      add(rowBg);
+
+      add(this.add.text(28, y + rowH / 2, `${row.icon}  ${row.label}`, {
+        fontFamily: "monospace", fontSize: "19px", color: "#f8fafc"
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(DEPTH + 2));
+
+      const valueTxt = this.add.text(W - 28, y + rowH / 2, row.value(), {
+        fontFamily: "monospace", fontSize: "19px", fontStyle: "bold", color: "#fde68a"
+      }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(DEPTH + 2);
+      valueTxt.setData("testid", `setting-${row.id}-value`);
+      add(valueTxt);
+
+      rowBg.on("pointerover", () => rowBg.setFillStyle(0x334155, 0.95));
+      rowBg.on("pointerout", () => rowBg.setFillStyle(0x1e293b, 0.95));
+      rowBg.on("pointerdown", () => {
+        Sound.playMenuSelect();
+        row.onTap();
+        valueTxt.setText(row.value());
+      });
+    });
+
+    const closeBtn = this.add.text(cx, H - 36, "✕  Close Settings", {
+      fontFamily: "monospace", fontSize: "22px", fontStyle: "bold",
+      color: "#f8fafc", backgroundColor: "#374151",
+      padding: { left: 32, right: 32, top: 14, bottom: 14 }
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH + 2).setInteractive({ useHandCursor: true });
+    closeBtn.setData("testid", "close-settings");
+    closeBtn.on("pointerover", () => closeBtn.setStyle({ backgroundColor: "#4b5563" }));
+    closeBtn.on("pointerout",  () => closeBtn.setStyle({ backgroundColor: "#374151" }));
+    closeBtn.on("pointerdown", () => this.closeSettings());
+    add(closeBtn);
+
+    this.settingsContainer = this.add.container(0, 0, [panelG, ...this.settingsText]);
+    this.settingsContainer.setScrollFactor(0);
+    this.settingsContainer.setDepth(DEPTH);
+    this.animateMenuIn(this.settingsContainer);
+  }
+
+  private closeSettings(): void {
+    this.settingsOpen = false;
+    this.touch?.setVisible(true);
+    this.setHudVisible(true);
+    if (this.settingsContainer) {
+      this.settingsContainer.destroy(true);
+      this.settingsContainer = undefined;
+    }
+    this.settingsText = [];
   }
 
   private openStarterSelect(): void {
