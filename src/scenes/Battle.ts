@@ -9,6 +9,7 @@ import { getTypeEffectiveness } from "../data/types";
 import { gameState } from "../game/store";
 import * as Sound from "../game/sound";
 import { speak as narrate } from "../game/narrator";
+import { charDelayMs } from "../game/settings";
 import {
   attemptCatch,
   calculateDamage,
@@ -86,6 +87,10 @@ export default class Battle extends Phaser.Scene {
   private enemyShadow?: Phaser.GameObjects.Ellipse;
   private messageText!: Phaser.GameObjects.Text;
   private messageBg?: Phaser.GameObjects.Graphics;
+  // Typewriter state for the message bar.
+  private messageTimer?: Phaser.Time.TimerEvent;
+  private fullMessage = "";
+  private isTyping = false;
   private playerHpText!: Phaser.GameObjects.Text;
   private enemyHpText!: Phaser.GameObjects.Text;
   private playerHpBar?: Phaser.GameObjects.Graphics;
@@ -178,6 +183,9 @@ export default class Battle extends Phaser.Scene {
     this.moveMenuOpen = false;
     this.switchMenuOpen = false;
     this.ballMenuOpen = false;
+    this.messageTimer = undefined;
+    this.isTyping = false;
+    this.fullMessage = "";
     this.rootMenuItems = [];
     this.moveMenuItems = [];
     this.switchMenuItems = [];
@@ -401,6 +409,10 @@ export default class Battle extends Phaser.Scene {
 
     // Setup cursor keys for targeting mini-game
     this.cursorKeys = this.input.keyboard?.createCursorKeys();
+
+    // Tap anywhere to finish a line that's still typing (doesn't consume the
+    // tap, so menu buttons keep working).
+    this.input.on("pointerdown", () => this.completeMessage());
   }
 
   update(_time: number, _delta: number): void {
@@ -2336,9 +2348,51 @@ export default class Battle extends Phaser.Scene {
     // A message is always meant to be seen — make sure the bar wasn't left
     // hidden by an open submenu.
     this.setBattleMessageVisible(true);
-    this.messageText.setText(message);
     // Read every battle line aloud for players who follow the game by ear.
     narrate(message);
+    this.typeMessage(message);
+  }
+
+  /** Reveal a line character-by-character with a soft blip — the classic feel.
+   *  A fresh message instantly finishes any line still typing. */
+  private typeMessage(message: string): void {
+    this.messageTimer?.remove();
+    this.messageTimer = undefined;
+    this.fullMessage = message;
+
+    const delay = charDelayMs();
+    if (delay <= 0 || message.length <= 1) {
+      this.messageText.setText(message);
+      this.isTyping = false;
+      return;
+    }
+
+    this.isTyping = true;
+    this.messageText.setText("");
+    let shown = 0;
+    this.messageTimer = this.time.addEvent({
+      delay,
+      repeat: message.length - 1,
+      callback: () => {
+        shown += 1;
+        this.messageText.setText(message.slice(0, shown));
+        // A blip every couple of letters — not every one, so it stays pleasant.
+        if (shown % 2 === 0 && shown < message.length) Sound.playTextBlip();
+        if (shown >= message.length) {
+          this.isTyping = false;
+          this.messageTimer = undefined;
+        }
+      }
+    });
+  }
+
+  /** Skip the reveal and show the whole line at once (tap-to-continue). */
+  private completeMessage(): void {
+    if (!this.isTyping) return;
+    this.messageTimer?.remove();
+    this.messageTimer = undefined;
+    this.messageText.setText(this.fullMessage);
+    this.isTyping = false;
   }
 
   private applyDisplayHeight(sprite: Phaser.GameObjects.Sprite, height: number): void {
