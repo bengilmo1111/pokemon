@@ -210,7 +210,7 @@ function readOverworld(game: Phaser.Game): GameSnapshot["overworld"] {
   if (!scene) return undefined;
   const menuKeys = [
     "starterOpen", "isPaused", "teamOpen", "martOpen",
-    "pokedexOpen", "mapOpen", "serviceMenuOpen"
+    "pokedexOpen", "stickerOpen", "mapOpen", "serviceMenuOpen"
   ];
   const menus: Record<string, boolean> = {};
   for (const k of menuKeys) menus[k] = Boolean(scene[k]);
