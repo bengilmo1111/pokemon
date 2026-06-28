@@ -18,7 +18,10 @@ const allButtonsVisible = (probe: import("./harness/probe").GameProbe) =>
 test.describe("touch controls", () => {
   test("controls recover if left hidden during overworld play", async ({ probe }) => {
     await probe.bootIntoOverworld();
-    expect(await allButtonsVisible(probe)).toBe(true);
+    // Clear roaming wilds so a chance encounter can't pause the scene and hide
+    // the controls during this reconcile check.
+    await probe.page.evaluate(() => { (window as any).__GAME__.gameState.wildMons = []; });
+    await expect.poll(() => allButtonsVisible(probe), { timeout: 4000 }).toBe(true);
 
     // Simulate any transition (portal restart, arrival encounter, …) that left
     // the controls hidden without restoring them. The per-tick reconcile must
@@ -35,6 +38,7 @@ test.describe("touch controls", () => {
 
   test("controls stay hidden while a menu is open", async ({ probe }) => {
     await probe.bootIntoOverworld();
+    await probe.page.evaluate(() => { (window as any).__GAME__.gameState.wildMons = []; });
     await expect.poll(() => allButtonsVisible(probe), { timeout: 4000 }).toBe(true);
 
     // Open a menu; controls must hide and stay hidden (reconcile must respect it).

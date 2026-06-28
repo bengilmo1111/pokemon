@@ -212,6 +212,11 @@ export default class Overworld extends Phaser.Scene {
     this.serviceMenuOpen = false;
     this.starterOpen = false;
 
+    // A brief grace period on every (re)entry — fresh boot, Load Game, and
+    // especially arriving through a portal — so the player is never ambushed by
+    // a wild the instant they spawn into a zone.
+    this.encounterCooldown = 1000;
+
     // Smooth fade-in (pairs with the portal/scene fade-out).
     this.cameras.main.fadeIn(250, 0, 0, 0);
     const region = getRegion(gameState);
@@ -515,7 +520,12 @@ export default class Overworld extends Phaser.Scene {
     }
     if (this.hudText && !this.hudText.visible) this.hudText.setVisible(true);
 
-    if (this.battleStarting) return;
+    // While a battle is starting OR a portal swirl is playing, freeze gameplay.
+    // The portal transition runs on a chain of timed callbacks; if a wandering
+    // wild were allowed to collide here it would launch a battle that pauses the
+    // scene, freezing that chain mid-transition — which left portalTransitioning
+    // stuck true and the touch controls hidden for good.
+    if (this.battleStarting || this.portalTransitioning) return;
 
     this.interactPressed = false;
     this.processTouchButtons();
@@ -1283,6 +1293,10 @@ export default class Overworld extends Phaser.Scene {
     emitTestEvent("battle:transition", {});
     this.time.delayedCall(300, () => {
       this.battleStarting = false;
+      // If a region portal began during the wind-up, abort — launching a battle
+      // now would pause the overworld and freeze the portal's transition chain
+      // (which left the touch controls hidden for good).
+      if (this.portalTransitioning) return;
       start();
     });
   }
@@ -1584,6 +1598,12 @@ export default class Overworld extends Phaser.Scene {
   private triggerPortalTransition(portal: PortalData): void {
     this.portalTransitioning = true;
     Sound.playMenuSelect();
+
+    // Clear roaming wilds up front so none can collide with the (frozen) player
+    // mid-swirl and start a battle that would pause the scene and stall the
+    // transition. They'd be cleared on arrival anyway.
+    gameState.wildMons = [];
+    this.encounterCooldown = 9e9;
 
     // Disable player movement
     this.player.setVelocity(0, 0);
